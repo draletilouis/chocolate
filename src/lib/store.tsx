@@ -19,6 +19,7 @@ export interface MeasuredOutput { name: string; kind: OutputKind; weight: number
 
 export interface NewBatchInput {
   productId: string;
+  name?: string;
   startWeight: number;
   lotUses: { lotId: string; quantity: number }[];
   recipeVersion?: number;
@@ -138,7 +139,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         id = nextBatchId(s, product.prefix);
         const stamp = now();
         const batch: Batch = {
-          id, productId: product.id, product: product.name, route: route.id, startedAt: stamp, status: 'active',
+          id, name: input.name?.trim() || undefined, productId: product.id, product: product.name, route: route.id, startedAt: stamp, status: 'active',
           nextStation: route.stations[0],
           startInput: { material: route.startMaterial, weight: round2(input.startWeight), lotIds: input.lotUses.map((u) => u.lotId) },
           recipeId: product.recipeId, recipeVersion: input.recipeVersion, ingredients: input.ingredients,

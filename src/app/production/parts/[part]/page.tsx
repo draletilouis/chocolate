@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { ArrowLeft, ArrowRight, GitBranch } from 'lucide-react';
 import { Back, Badge, Empty, LinkButton, PageHeader, Panel, RowLink, SubNav } from '@/components/ui';
-import { activeBatches, nextInput, stationQueue } from '@/lib/derive';
+import { activeBatches, batchDisplayName, nextInput, stationQueue } from '@/lib/derive';
 import { kg } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { groupBySlug, stationGroups, stationName, stations } from '@/lib/stations';
@@ -41,12 +41,12 @@ export default function PartPage() {
           return (
             <div key={batch.id} className="grid grid-cols-[1fr_auto] items-center gap-3 border-b border-line px-4 py-3 last:border-b-0 md:px-5">
               <span className="min-w-0">
-                <span className="flex flex-wrap items-center gap-2"><Link href={`/production/batches/${batch.id}`} className="font-bold text-green hover:underline">{batch.id}</Link><span>{batch.product}</span>{onHold && <Badge tone="danger">On hold</Badge>}</span>
+                <span className="flex flex-wrap items-center gap-2"><Link href={`/production/batches/${batch.id}`} className="font-bold text-green hover:underline">{batchDisplayName(batch)}</Link>{batch.name && <span className="text-[11px] text-muted">ID {batch.id}</span>}<span>{batch.product}</span>{onHold && <Badge tone="danger">On hold</Badge>}</span>
                 <span className="block text-[12px] text-muted">Next: {stationName(batch.nextStation)}{batch.nextStation !== 'completion' ? (input.weight > 0 ? ` · ${kg(input.weight)} ${input.material.toLowerCase()} ready` : ' · input to be confirmed') : ''}</span>
               </span>
               {onHold
                 ? <LinkButton variant="secondary" href={`/production/batches/${batch.id}`}>Review hold</LinkButton>
-                : <LinkButton href={`/production/batches/${batch.id}/record/${batch.nextStation}`} aria-label={`Continue ${batch.id}`}>{batch.nextStation === 'completion' ? 'Complete' : `Record ${stationName(batch.nextStation).toLowerCase()}`} <ArrowRight size={15} /></LinkButton>}
+                : <LinkButton href={`/production/batches/${batch.id}/record/${batch.nextStation}`} aria-label={`Continue ${batchDisplayName(batch)}`}>{batch.nextStation === 'completion' ? 'Complete' : `Record ${stationName(batch.nextStation).toLowerCase()}`} <ArrowRight size={15} /></LinkButton>}
             </div>
           );
         })}

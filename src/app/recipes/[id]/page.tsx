@@ -6,6 +6,7 @@ import { useState, type FormEvent } from 'react';
 import { Check, Plus } from 'lucide-react';
 import { Back, Badge, Button, Empty, Field, Input, LinkButton, Notice, PageHeader, Panel, Table, td, tdNum } from '@/components/ui';
 import { round2 } from '@/lib/balance';
+import { batchDisplayName } from '@/lib/derive';
 import { dateTime, num } from '@/lib/format';
 import { useStore } from '@/lib/store';
 
@@ -75,7 +76,7 @@ export default function RecipePage() {
           const actual = round2(b.ingredients!.reduce((s, i) => s + i.actual, 0));
           return (
             <div key={b.id} className="border-b border-line last:border-b-0">
-              <div className="flex flex-wrap items-center gap-2 px-5 pt-3 text-[13px]"><Link href={`/production/batches/${b.id}`} className="font-bold text-green">{b.id}</Link><span className="text-muted">v{b.recipeVersion} · expected {num(expected)} kg · actual {num(actual)} kg</span></div>
+              <div className="flex flex-wrap items-center gap-2 px-5 pt-3 text-[13px]"><Link href={`/production/batches/${b.id}`} className="font-bold text-green">{batchDisplayName(b)}</Link>{b.name && <span className="text-[11px] text-muted">ID {b.id}</span>}<span className="text-muted">v{b.recipeVersion} · expected {num(expected)} kg · actual {num(actual)} kg</span></div>
               <Table head={['Ingredient', 'Expected', 'Actual', 'Difference', 'Lot']}>
                 {b.ingredients!.map((i) => { const diff = round2(i.actual - i.expected); return (
                   <tr key={i.name}><td className={td}>{i.name}</td><td className={tdNum}>{num(i.expected)} kg</td><td className={tdNum}>{num(i.actual)} kg</td><td className={`${tdNum} ${diff !== 0 ? 'text-warn' : 'text-muted'}`}>{diff > 0 ? '+' : ''}{num(diff)} kg</td><td className={td}>{i.lotId ? <Link href={`/materials/${i.lotId}`} className="font-semibold text-green">{i.lotId}</Link> : <span className="text-faint">—</span>}</td></tr>

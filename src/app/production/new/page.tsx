@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useMemo, useState, type FormEvent } from 'react';
 import { ArrowRight } from 'lucide-react';
-import { Back, Button, Field, LinkButton, Notice, PageHeader, Panel, Select, Textarea, UnitInput } from '@/components/ui';
+import { Back, Button, Field, Input, LinkButton, Notice, PageHeader, Panel, Select, Textarea, UnitInput } from '@/components/ui';
 import { round2 } from '@/lib/balance';
 import { kg } from '@/lib/format';
 import { useStore } from '@/lib/store';
@@ -13,6 +13,7 @@ export default function NewBatchPage() {
   const store = useStore();
   const router = useRouter();
   const [productId, setProductId] = useState(store.products[0]?.id ?? '');
+  const [batchName, setBatchName] = useState('');
   const [weight, setWeight] = useState('');
   const [note, setNote] = useState('');
   const [batchSize, setBatchSize] = useState('100');
@@ -48,7 +49,7 @@ export default function NewBatchPage() {
     if (route.id === 'chocolate') {
       if (!recipeVersion || ingredientTotal <= 0) return setError('Enter the ingredient weights you actually used.');
       const id = store.createBatch({
-        productId, startWeight: ingredientTotal, recipeVersion: recipeVersion.version, note,
+        productId, name: batchName, startWeight: ingredientTotal, recipeVersion: recipeVersion.version, note,
         ingredients: ingredients.map((i) => ({ name: i.name, expected: i.expected, actual: i.actual, lotId: i.lotId || undefined })),
         lotUses: ingredients.filter((i) => i.lotId).map((i) => ({ lotId: i.lotId, quantity: i.actual })),
       });
@@ -57,7 +58,7 @@ export default function NewBatchPage() {
     }
     const startWeight = Number(weight);
     if (!(startWeight > 0)) return setError('Enter the weight from the scale.');
-    const id = store.createBatch({ productId, startWeight, note, lotUses: [] });
+    const id = store.createBatch({ productId, name: batchName, startWeight, note, lotUses: [] });
     router.push(`/production/batches/${id}/record/${route.stations[0]}`);
   }
 
@@ -75,6 +76,9 @@ export default function NewBatchPage() {
             </Field>
             <Field label="Route" hint={route?.note}>
               <div className="rounded-lg border border-line bg-paper px-3 py-2.5 text-[13px]">{route?.name} · starts at {stationName(route?.stations[0])}</div>
+            </Field>
+            <Field label="Batch name (optional)" hint="Use a memorable name for the production run. The system ID is kept automatically.">
+              <Input value={batchName} onChange={(e) => setBatchName(e.target.value)} maxLength={80} placeholder="e.g. Monday morning roast" />
             </Field>
           </div>
         </Panel>

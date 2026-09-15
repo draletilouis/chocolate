@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { AlertTriangle, ArrowRight, Check, CheckCircle2, Plus, Trash2 } from 'lucide-react';
 import { Back, Badge, Button, Empty, Field, LinkButton, Notice, PageHeader, Panel, Select, UnitInput, inputClass } from '@/components/ui';
 import { calculateBalance, calculatePackaging, round2 } from '@/lib/balance';
-import { batchById, nextInput, recordBalance, recordFor } from '@/lib/derive';
+import { batchById, batchDisplayName, nextInput, recordBalance, recordFor } from '@/lib/derive';
 import { destinationLabel, kg, kindLabel, num, pct } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { isStationId, stationById, stationName } from '@/lib/stations';
@@ -28,20 +28,20 @@ export default function RecordPage() {
     return (
       <>
         <Back href={`/production/stations/${station.id}`} label={station.name} />
-        <PageHeader eyebrow={`Batch ${batch.id}`} title={`${station.name} · on hold`} />
-        <Notice tone="danger" icon={AlertTriangle}>{batch.id} is on hold: {batch.holds.find((h) => !h.releasedAt)?.reason} Release the hold from the batch page before recording.</Notice>
-        <LinkButton href={`/production/batches/${batch.id}`}>Open batch {batch.id}</LinkButton>
+        <PageHeader eyebrow={`Batch ${batch.id}`} title={`${station.name} · ${batchDisplayName(batch)} is on hold`} />
+        <Notice tone="danger" icon={AlertTriangle}>{batchDisplayName(batch)} is on hold: {batch.holds.find((h) => !h.releasedAt)?.reason} Release the hold from the batch page before recording.</Notice>
+        <LinkButton href={`/production/batches/${batch.id}`}>Open batch {batchDisplayName(batch)}</LinkButton>
       </>
     );
   }
   if (batch.status === 'completed' && station.form !== 'completion' && !record) {
-    return <><Back href={`/production/batches/${batch.id}`} label={`Batch ${batch.id}`} /><Notice tone="neutral">{batch.id} is completed. Nothing more can be recorded.</Notice></>;
+    return <><Back href={`/production/batches/${batch.id}`} label={`Batch ${batchDisplayName(batch)}`} /><Notice tone="neutral">{batchDisplayName(batch)} is completed. Nothing more can be recorded.</Notice></>;
   }
   if (!record && batch.nextStation !== station.id) {
     return (
       <>
         <Back href={`/production/stations/${station.id}`} label={station.name} />
-        <PageHeader eyebrow={`Batch ${batch.id}`} title={`${batch.id} is not at ${station.name.toLowerCase()}`} subtitle={`Its next step is ${stationName(batch.nextStation).toLowerCase()}.`} />
+        <PageHeader eyebrow={`Batch ${batch.id}`} title={`${batchDisplayName(batch)} is not at ${station.name.toLowerCase()}`} subtitle={`Its next step is ${stationName(batch.nextStation).toLowerCase()}.`} />
         <LinkButton href={`/production/batches/${batch.id}/record/${batch.nextStation}`}>Record {stationName(batch.nextStation).toLowerCase()} <ArrowRight size={15} /></LinkButton>
       </>
     );
@@ -100,7 +100,7 @@ function StationForm({ batch, station, record }: { batch: Batch; station: Statio
 
   const summary = (
     <div className="grid gap-x-6 gap-y-2 rounded-xl border border-line bg-white px-5 py-4 text-[14px] sm:grid-cols-3">
-      <div><span className="block text-[11px] font-bold tracking-wide text-faint uppercase">Batch</span><strong>{batch.id}</strong> <span className="text-muted">{batch.product}</span></div>
+      <div><span className="block text-[11px] font-bold tracking-wide text-faint uppercase">Batch</span><strong>{batchDisplayName(batch)}</strong>{batch.name && <span className="ml-2 text-[11px] text-muted">ID {batch.id}</span>} <span className="text-muted">{batch.product}</span></div>
       <div><span className="block text-[11px] font-bold tracking-wide text-faint uppercase">Input material</span>{record?.inputMaterial ?? ready.material}</div>
       <div><span className="block text-[11px] font-bold tracking-wide text-faint uppercase">Input weight</span><strong className="tabular-nums">{kg(record?.inputWeight ?? input)}</strong></div>
     </div>
@@ -109,7 +109,7 @@ function StationForm({ batch, station, record }: { batch: Batch; station: Statio
   return (
     <>
       <Back href={`/production/stations/${station.id}`} label={`${station.name} queue`} />
-      <PageHeader eyebrow={`Step ${['input', 'outputs', 'destinations', 'done'].indexOf(step) + 1} of 4 · ${station.group}`} title={`${station.name} · ${batch.id}`} subtitle={station.help} />
+      <PageHeader eyebrow={`Step ${['input', 'outputs', 'destinations', 'done'].indexOf(step) + 1} of 4 · ${station.group}`} title={`${station.name} · ${batchDisplayName(batch)}`} subtitle={<>{station.help} · ID {batch.id}</>} />
 
       {step === 'input' && (
         <>
@@ -248,7 +248,7 @@ function NextActions({ batch, record, station, onRecordAgain }: { batch: Batch; 
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex gap-2">
-        <LinkButton variant="secondary" href={`/production/batches/${batch.id}`}>View batch {batch.id}</LinkButton>
+        <LinkButton variant="secondary" href={`/production/batches/${batch.id}`}>View batch {batchDisplayName(batch)}</LinkButton>
         <LinkButton variant="ghost" href={`/production/stations/${station.id}`}>Station queue</LinkButton>
       </div>
       <div className="flex gap-2">
@@ -306,7 +306,7 @@ function CompletionScreen({ batch }: { batch: Batch }) {
   return (
     <>
       <Back href="/production/stations/completion" label="Completion queue" />
-      <PageHeader eyebrow={`Batch ${batch.id}`} title={batch.status === 'completed' ? `${batch.id} is completed` : 'Review and complete the batch'} subtitle={batch.product} />
+      <PageHeader eyebrow={`Batch ${batch.id}`} title={batch.status === 'completed' ? `${batchDisplayName(batch)} is completed` : 'Review and complete the batch'} subtitle={<>{batch.product} · ID {batch.id}</>} />
       {batch.status === 'completed' && <Notice tone="green" icon={CheckCircle2}>Completed {batch.completedAt?.replace('T', ' ').slice(0, 16)}. The record is closed; corrections stay available on the batch page.</Notice>}
       {pending.length > 0 && <Notice tone="warn" icon={AlertTriangle}>{pending.map((r) => stationName(r.station)).join(', ')} still needs destinations before the batch can be completed.</Notice>}
       <Panel title="Stations recorded">

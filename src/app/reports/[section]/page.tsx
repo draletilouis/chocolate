@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { useState } from 'react';
 import { Badge, Empty, PageHeader, Panel, Select, Stat, SubNav, Table, td, tdNum } from '@/components/ui';
 import { round2 } from '@/lib/balance';
-import { recordBalance, userName } from '@/lib/derive';
+import { batchDisplayName, recordBalance, userName } from '@/lib/derive';
 import { dateTime, kg, num, pct } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { stationName, stations } from '@/lib/stations';
@@ -75,7 +75,8 @@ export default function ReportsPage() {
                   return (
                     <tr key={b.id}>
                       <td className={`${td} whitespace-nowrap`}>
-                        <Link href={`/production/batches/${b.id}`} className="font-semibold text-green">{b.id}</Link>
+                        <Link href={`/production/batches/${b.id}`} className="font-semibold text-green">{batchDisplayName(b)}</Link>
+                        {b.name && <span className="block text-[11px] text-faint">ID {b.id}</span>}
                         <span className="block text-[11px] text-muted">{b.product}{b.status === 'hold' ? ' · on hold' : b.status === 'completed' ? ' · completed' : ''}</span>
                       </td>
                       <td className={tdNum}>{num(b.startInput.weight)}</td>
@@ -101,7 +102,7 @@ export default function ReportsPage() {
           </Panel>
 
           <Panel title="Follow one batch down the line" subtitle="What went in at each process, what useful material came out, and how much of the starting weight is left."
-            action={<Select value={batchId} onChange={(e) => setBatchId(e.target.value)} aria-label="Batch to follow" className="w-auto">{withRecords.map((b) => <option key={b.id} value={b.id}>{b.id} · {b.product}</option>)}</Select>}>
+            action={<Select value={batchId} onChange={(e) => setBatchId(e.target.value)} aria-label="Batch to follow" className="w-auto">{withRecords.map((b) => <option key={b.id} value={b.id}>{batchDisplayName(b)}{b.name ? ` · ${b.id}` : ''} · {b.product}</option>)}</Select>}>
             {!followed ? <Empty>No batch has recorded a station yet.</Empty> : (
               <Table head={['Process', 'Went in', 'Useful out', 'By-product', 'Waste', 'Unaccounted', 'Lost this step', 'Left of start']}>
                 <tr>
@@ -169,7 +170,7 @@ export default function ReportsPage() {
               <Table head={['Batch', 'Station', 'Input', 'Useful', 'Waste', 'By-product', 'Variance', 'Variance %', 'Limit']}>
                 {rows.map(({ batch, record, balance, limit }) => (
                   <tr key={record.id} className={Math.abs(balance.variancePct) > limit ? 'bg-warn-soft/60' : ''}>
-                    <td className={td}><Link href={`/production/batches/${batch.id}`} className="font-semibold text-green">{batch.id}</Link></td>
+                    <td className={td}><Link href={`/production/batches/${batch.id}`} className="font-semibold text-green">{batchDisplayName(batch)}</Link>{batch.name && <span className="block text-[11px] text-faint">ID {batch.id}</span>}</td>
                     <td className={td}>{stationName(record.station)}</td>
                     <td className={tdNum}>{num(balance.input)}</td><td className={tdNum}>{num(balance.useful)}</td><td className={tdNum}>{num(balance.waste)}</td><td className={tdNum}>{num(balance.byproduct)}</td>
                     <td className={tdNum}>{num(balance.variance)}</td><td className={`${tdNum} ${Math.abs(balance.variancePct) > limit ? 'font-semibold text-warn' : ''}`}>{pct(balance.variancePct)}</td><td className={tdNum}>{limit}%</td>
@@ -189,7 +190,7 @@ export default function ReportsPage() {
               const variance = round2(b.records.reduce((s, r) => s + recordBalance(r).variance, 0));
               return (
                 <tr key={b.id}>
-                  <td className={td}><Link href={`/production/batches/${b.id}`} className="font-semibold text-green">{b.id}</Link></td>
+                  <td className={td}><Link href={`/production/batches/${b.id}`} className="font-semibold text-green">{batchDisplayName(b)}</Link>{b.name && <span className="block text-[11px] text-faint">ID {b.id}</span>}</td>
                   <td className={td}>{b.product}</td><td className={td}>{dateTime(b.startedAt)}</td>
                   <td className={td}><Badge tone={b.status === 'completed' ? 'neutral' : b.status === 'hold' ? 'danger' : 'green'}>{b.status === 'completed' ? 'Completed' : b.status === 'hold' ? 'On hold' : 'In progress'}</Badge></td>
                   <td className={td}>{b.records.map((r) => stationName(r.station)).join(' → ') || '—'}{b.nextStation && b.status !== 'completed' ? ` → (${stationName(b.nextStation)})` : ''}</td>
@@ -206,7 +207,7 @@ export default function ReportsPage() {
           {store.batches.every((b) => b.corrections.length === 0) ? <Empty>No corrections recorded.</Empty> : (
             <Table head={['When', 'Batch', 'Station', 'Output', 'Before', 'After', 'Reason', 'By']}>
               {store.batches.flatMap((b) => b.corrections.map((c) => ({ b, c }))).sort((x, y) => y.c.correctedAt.localeCompare(x.c.correctedAt)).map(({ b, c }) => (
-                <tr key={c.id}><td className={td}>{dateTime(c.correctedAt)}</td><td className={td}><Link href={`/production/batches/${b.id}`} className="font-semibold text-green">{b.id}</Link></td><td className={td}>{stationName(c.station)}</td><td className={td}>{c.output}</td><td className={tdNum}>{num(c.previous)} kg</td><td className={tdNum}>{num(c.corrected)} kg</td><td className={td}>{c.reason}</td><td className={td}>{userName(store, c.correctedBy)}</td></tr>
+                <tr key={c.id}><td className={td}>{dateTime(c.correctedAt)}</td><td className={td}><Link href={`/production/batches/${b.id}`} className="font-semibold text-green">{batchDisplayName(b)}</Link>{b.name && <span className="block text-[11px] text-faint">ID {b.id}</span>}</td><td className={td}>{stationName(c.station)}</td><td className={td}>{c.output}</td><td className={tdNum}>{num(c.previous)} kg</td><td className={tdNum}>{num(c.corrected)} kg</td><td className={td}>{c.reason}</td><td className={td}>{userName(store, c.correctedBy)}</td></tr>
               ))}
             </Table>
           )}
@@ -218,7 +219,7 @@ export default function ReportsPage() {
           {store.batches.every((b) => b.holds.length === 0) ? <Empty>No holds recorded.</Empty> : (
             <Table head={['Placed', 'Batch', 'At station', 'Reason', 'By', 'Released']}>
               {store.batches.flatMap((b) => b.holds.map((h) => ({ b, h }))).sort((x, y) => y.h.placedAt.localeCompare(x.h.placedAt)).map(({ b, h }) => (
-                <tr key={h.id}><td className={td}>{dateTime(h.placedAt)}</td><td className={td}><Link href={`/production/batches/${b.id}`} className="font-semibold text-green">{b.id}</Link></td><td className={td}>{stationName(h.station)}</td><td className={td}>{h.reason}</td><td className={td}>{userName(store, h.placedBy)}</td><td className={td}>{h.releasedAt ? `${dateTime(h.releasedAt)}${h.releaseNote ? ` · ${h.releaseNote}` : ''}` : <Badge tone="danger">Still on hold</Badge>}</td></tr>
+                <tr key={h.id}><td className={td}>{dateTime(h.placedAt)}</td><td className={td}><Link href={`/production/batches/${b.id}`} className="font-semibold text-green">{batchDisplayName(b)}</Link>{b.name && <span className="block text-[11px] text-faint">ID {b.id}</span>}</td><td className={td}>{stationName(h.station)}</td><td className={td}>{h.reason}</td><td className={td}>{userName(store, h.placedBy)}</td><td className={td}>{h.releasedAt ? `${dateTime(h.releasedAt)}${h.releaseNote ? ` · ${h.releaseNote}` : ''}` : <Badge tone="danger">Still on hold</Badge>}</td></tr>
               ))}
             </Table>
           )}

@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { AlertTriangle, ArrowRight, Check, Circle, Pause, PenLine, Play } from 'lucide-react';
 import { Back, Badge, Button, Empty, Field, LinkButton, Notice, PageHeader, Panel, Select, Textarea, UnitInput } from '@/components/ui';
-import { batchAlerts, batchById, nextInput, recordBalance, userName } from '@/lib/derive';
+import { batchAlerts, batchById, batchDisplayName, nextInput, recordBalance, userName } from '@/lib/derive';
 import { dateTime, destinationLabel, kg, kindLabel, num, pct } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { stationById, stationName } from '@/lib/stations';
@@ -50,8 +50,8 @@ export default function BatchPage() {
   return (
     <>
       <Back href="/production" label="Production line" />
-      <PageHeader eyebrow={`Batch ${batch.id}`} title={`${batch.id} · ${batch.product}`}
-        subtitle={<span className="flex flex-wrap items-center gap-2">{statusBadge}<span>Started {dateTime(batch.startedAt)}</span>{batch.recipeId && <span>· Recipe {batch.recipeId} v{batch.recipeVersion}</span>}</span>}
+      <PageHeader eyebrow={`Batch ${batch.id}`} title={`${batchDisplayName(batch)} · ${batch.product}`}
+        subtitle={<span className="flex flex-wrap items-center gap-2">{statusBadge}<span>ID {batch.id}</span><span>Started {dateTime(batch.startedAt)}</span>{batch.recipeId && <span>· Recipe {batch.recipeId} v{batch.recipeVersion}</span>}</span>}
         action={batch.status === 'active' && batch.nextStation ? <LinkButton href={`/production/batches/${batch.id}/record/${batch.nextStation}`}>{batch.nextStation === 'completion' ? 'Review & complete' : `Record ${stationName(batch.nextStation).toLowerCase()}`} <ArrowRight size={15} /></LinkButton> : undefined} />
 
       {activeHold && <Notice tone="danger" icon={Pause}><strong>On hold</strong> since {dateTime(activeHold.placedAt)} by {userName(store, activeHold.placedBy)}: {activeHold.reason}</Notice>}

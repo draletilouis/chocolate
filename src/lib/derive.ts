@@ -5,6 +5,9 @@ import type { Alert, Batch, Lot, StationId, StationRecord } from './types';
 
 export const recordBalance = (r: StationRecord) => calculateBalance(r.inputWeight, r.outputs);
 
+/** Operator-facing batch label with a safe fallback for older records. */
+export const batchDisplayName = (batch: Pick<Batch, 'id' | 'name'>) => batch.name?.trim() || batch.id;
+
 export const lastRecord = (batch: Batch) => batch.records.at(-1);
 
 /** Station the batch was last recorded at */
@@ -42,10 +45,10 @@ export function recordAlerts(state: State, batch: Batch, record: StationRecord):
   const alerts: Alert[] = [];
   const limit = state.thresholds.variancePct[record.station];
   if (Math.abs(balance.variancePct) > limit) {
-    alerts.push({ id: `${batch.id}-${record.id}-variance`, kind: 'variance', message: `${batch.id} · ${stationName(record.station)}: variance ${balance.variancePct.toFixed(2)}% is above the ${limit}% limit`, href: `/production/batches/${batch.id}` });
+    alerts.push({ id: `${batch.id}-${record.id}-variance`, kind: 'variance', message: `${batchDisplayName(batch)} · ${stationName(record.station)}: variance ${balance.variancePct.toFixed(2)}% is above the ${limit}% limit`, href: `/production/batches/${batch.id}` });
   }
   if (balance.wastePct > state.thresholds.wastePct) {
-    alerts.push({ id: `${batch.id}-${record.id}-waste`, kind: 'waste', message: `${batch.id} · ${stationName(record.station)}: waste ${balance.wastePct.toFixed(2)}% is above the ${state.thresholds.wastePct}% limit`, href: `/production/batches/${batch.id}` });
+    alerts.push({ id: `${batch.id}-${record.id}-waste`, kind: 'waste', message: `${batchDisplayName(batch)} · ${stationName(record.station)}: waste ${balance.wastePct.toFixed(2)}% is above the ${state.thresholds.wastePct}% limit`, href: `/production/batches/${batch.id}` });
   }
   return alerts;
 }
@@ -53,7 +56,7 @@ export function recordAlerts(state: State, batch: Batch, record: StationRecord):
 export function batchAlerts(state: State, batch: Batch): Alert[] {
   const alerts = batch.records.flatMap((r) => recordAlerts(state, batch, r));
   const hold = batch.holds.find((h) => !h.releasedAt);
-  if (hold) alerts.push({ id: `${batch.id}-hold`, kind: 'hold', message: `${batch.id} is on hold: ${hold.reason}`, href: `/production/batches/${batch.id}` });
+  if (hold) alerts.push({ id: `${batch.id}-hold`, kind: 'hold', message: `${batchDisplayName(batch)} is on hold: ${hold.reason}`, href: `/production/batches/${batch.id}` });
   return alerts;
 }
 
@@ -72,8 +75,11 @@ export const supplierName = (state: State, id: string) => state.suppliers.find((
 
 /** Plain description of the step that produced a lot */
 export function lotOrigin(state: State, lot: Lot) {
-  if (lot.source.type === 'supplier') return `Delivered by ${supplierName(state, lot.source.supplierId)}${lot.source.reference ? ` · ${lot.source.reference}` : ''}`;
-  return `Made by batch ${lot.source.batchId} at ${stationById[lot.source.station].name.toLowerCase()}`;
+  const source = lot.source;
+  if (source.type === 'supplier') return `Delivered by ${supplierName(state, source.supplierId)}${source.reference ? ` · ${source.reference}` : ''}`;
+  const batch = state.batches.find((b) => b.id === source.batchId);
+  const label = batch ? batchDisplayName(batch) : source.batchId;
+  return `Made by batch ${label}${batch?.name ? ` (ID ${batch.id})` : ''} at ${stationById[source.station].name.toLowerCase()}`;
 }
 
 export function nextBatchId(state: State, prefix: string) {

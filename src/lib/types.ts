@@ -108,6 +108,8 @@ export type RouteId = 'beans' | 'pressing' | 'chocolate';
 
 export interface Batch {
   id: string;
+  /** Optional operator-facing name; id remains the immutable system identifier. */
+  name?: string;
   productId: string;
   product: string;
   route: RouteId;

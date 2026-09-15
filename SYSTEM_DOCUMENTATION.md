@@ -96,9 +96,12 @@ Routes provide the default path for a new batch. A station's destination choices
 
 For bean and pressing products, the worker enters a positive starting weight. For chocolate products, the worker selects a recipe version, enters a planned size, reviews the expected ingredient quantities, and records actual ingredient weights and optional source lots. The sum of actual ingredient weights becomes the mixing input.
 
+The worker may also enter an optional operator-facing batch name. It is trimmed and stored separately from the generated batch ID. The name is used in queues, alerts, records, and reports; the immutable ID remains the canonical key for URLs, lot uses, and traceability. Older batches without a name continue to display their ID.
+
 `createBatch()` then:
 
 - Generates the next batch ID from the product prefix, such as `CH-019`.
+- Stores the optional manual batch name, when provided.
 - Sets status to `active`.
 - Sets `nextStation` to the first station in the route.
 - Stores the starting material, weight, source lot IDs, optional recipe snapshot, and note.

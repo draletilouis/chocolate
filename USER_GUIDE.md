@@ -34,9 +34,10 @@ On a phone, use the bottom navigation bar. On a desktop, use the sidebar. Number
 2. Select **New batch**.
 3. Choose the product.
 4. Check the route shown by the system.
-5. Enter the starting material or ingredient weights.
-6. Add an optional note.
-7. Select **Create batch and record…**.
+5. Enter an optional **Batch name**, such as `Monday morning roast`. This is the name staff will see in queues, records, alerts, and reports.
+6. Enter the starting material or ingredient weights.
+7. Add an optional note.
+8. Select **Create batch and record…**.
 
 For cocoa beans or pressing liquor, enter the positive starting weight shown by the scale.
 
@@ -48,7 +49,7 @@ For chocolate batches:
 4. Select the source lot for each ingredient when available.
 5. Check the total weighed-in amount. This becomes the Mixing input.
 
-The system creates a batch ID such as `CH-019` and opens the first station's recording screen.
+The system keeps a unique batch ID such as `CH-019` for links and traceability, and opens the first station's recording screen. If no name is entered, the batch ID is used as the display name.
 
 ## 4. Record work at a station
 
