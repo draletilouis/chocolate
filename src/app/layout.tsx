@@ -1,5 +1,23 @@
+import type { ReactNode } from 'react';
 import './globals.css';
-import './system.css';
-import './production-list.css';
-export const metadata = { title: 'Cocoa · Production', description: 'Chocolate factory production screen prototype' };
-export default function Layout({children}:{children:React.ReactNode}) { return <html lang="en"><body>{children}</body></html> }
+import { Shell } from '@/components/Shell';
+import { StoreProvider } from '@/lib/store';
+
+export const metadata = { title: 'Cocoa Factory · Production', description: 'Record what happens at every station of the chocolate production line' };
+
+export default function Layout({ children }: { children: ReactNode }) {
+  return (
+    <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+      </head>
+      <body>
+        <StoreProvider>
+          <Shell>{children}</Shell>
+        </StoreProvider>
+      </body>
+    </html>
+  );
+}
