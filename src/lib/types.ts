@@ -167,6 +167,13 @@ export interface PackSize { id: string; name: string; grams: number }
 export interface Supplier { id: string; name: string; supplies: string; contact: string }
 export interface User { id: string; name: string; role: string; initials: string; email: string; password: string }
 
+export interface BusinessDetails {
+  name: string;
+  address: string;
+  phone: string;
+  email: string;
+}
+
 export interface OutputCategory extends OutputRowDef { station: StationId; custom?: boolean }
 
 export interface Thresholds {

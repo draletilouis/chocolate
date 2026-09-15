@@ -94,7 +94,7 @@ Routes provide the default path for a new batch. A station's destination choices
 
 `/production/new` creates a batch using a selected product. Products map to a route and, for chocolate products, to a recipe.
 
-For bean and pressing products, the worker enters a positive starting weight. For chocolate products, the worker selects a recipe version, enters a planned size, reviews the expected ingredient quantities, and records actual ingredient weights and optional source lots. The sum of actual ingredient weights becomes the mixing input.
+For bean and pressing products, the worker enters a positive starting weight. For chocolate products, the worker selects a recipe version, enters a planned size, reviews the expected ingredient quantities, and records actual ingredient weights and optional source lots. The sum of actual ingredient weights becomes the mixing input. The worker also enters the calendar date on which the batch started; this defaults to today in the new-batch form and allows historical batches to be entered.
 
 The worker may also enter an optional operator-facing batch name. It is trimmed and stored separately from the generated batch ID. The name is used in queues, alerts, records, and reports; the immutable ID remains the canonical key for URLs, lot uses, and traceability. Older batches without a name continue to display their ID.
 
@@ -102,6 +102,7 @@ The worker may also enter an optional operator-facing batch name. It is trimmed 
 
 - Generates the next batch ID from the product prefix, such as `CH-019`.
 - Stores the optional manual batch name, when provided.
+- Stores the entered batch calendar date as `startedAt` (at noon local time); older callers without a date continue to use the current timestamp.
 - Sets status to `active`.
 - Sets `nextStation` to the first station in the route.
 - Stores the starting material, weight, source lot IDs, optional recipe snapshot, and note.
@@ -264,6 +265,7 @@ Alerts appear in the Overview, in the production navigation counts, on batch pag
 | `/reports/batches` | Lists all batches and their routes/statuses/summary quantities. |
 | `/reports/corrections` | Audits all output corrections. |
 | `/reports/holds` | Audits all holds and releases. |
+| `/setup/business` | Edits the business name and contact details rendered on reports. |
 | `/setup/products` | Lists and adds products and route/recipe associations. |
 | `/setup/pack-sizes` | Lists and adds packaging sizes. |
 | `/setup/paper-catalog` | Shows the printed row labels transcribed from the supplied Tempering, Production, Bean, ready-product, packaging-item, and weekly-usage forms. |
@@ -274,6 +276,8 @@ Alerts appear in the Overview, in the production navigation counts, on batch pag
 | `/setup/alerts` | Edits thresholds and resets sample data. |
 
 `/reports` redirects to `/reports/losses`; `/setup` redirects to `/setup/products`.
+
+All report sections support a duration filter for preset periods or a custom date range. Their export dialog defaults to an Excel-compatible CSV and also supports print/PDF output. Exported reports include the configured business details from `/setup/business`.
 
 ## 12. Setup data and configuration
 

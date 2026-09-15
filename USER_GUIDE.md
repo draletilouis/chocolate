@@ -35,9 +35,10 @@ On a phone, use the bottom navigation bar. On a desktop, use the sidebar. Number
 3. Choose the product.
 4. Check the route shown by the system.
 5. Enter an optional **Batch name**, such as `Monday morning roast`. This is the name staff will see in queues, records, alerts, and reports.
-6. Enter the starting material or ingredient weights.
-7. Add an optional note.
-8. Select **Create batch and record…**.
+6. Enter the **Batch date**. It defaults to today; choose an earlier date when entering a past batch.
+7. Enter the starting material or ingredient weights.
+8. Add an optional note.
+9. Select **Create batch and record…**.
 
 For cocoa beans or pressing liquor, enter the positive starting weight shown by the scale.
 
@@ -230,6 +231,8 @@ Open **Reports** and choose a section:
 - **Corrections** — see every changed weight, reason, time, and user.
 - **Holds** — see when holds were placed, why, by whom, and whether they were released.
 
+Use the duration filter on any report to select all time, today, this week, this month, this year, or a custom date range. Select **Export report** to download the selected report; the default **Excel spreadsheet (CSV)** format opens in Excel, and print/PDF is also available.
+
 Use the Overview page for a quick view of active batches, alerts, completed batches, and recent station records.
 
 ## 13. Respond to alerts
@@ -247,6 +250,7 @@ Select an alert to open the related batch or material lot. Investigate the scale
 
 Users with access to Setup can configure:
 
+- **Business details** — the business name and contact details shown on exported Excel and print/PDF reports.
 - **Products** — products, batch prefixes, routes, and recipes.
 - **Pack sizes** — grams per unit used in Packaging.
 - **Paper catalog** — the product, summary, ready-product, packaging-item, and weekly-usage rows transcribed from the paper forms.
@@ -256,7 +260,7 @@ Users with access to Setup can configure:
 - **Users** — staff accounts and the user used for recording.
 - **Alert thresholds** — station variance limits, waste limit, and low-stock warning.
 
-Changes apply immediately in the current browser.
+Changes apply immediately in the current browser. Business details are saved with the browser data and are included in future reports.
 
 ## 15. Important operating notes
 

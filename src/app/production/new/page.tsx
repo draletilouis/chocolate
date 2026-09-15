@@ -14,6 +14,7 @@ export default function NewBatchPage() {
   const router = useRouter();
   const [productId, setProductId] = useState(store.products[0]?.id ?? '');
   const [batchName, setBatchName] = useState('');
+  const [batchDate, setBatchDate] = useState(new Date().toISOString().slice(0, 10));
   const [weight, setWeight] = useState('');
   const [note, setNote] = useState('');
   const [batchSize, setBatchSize] = useState('100');
@@ -49,7 +50,7 @@ export default function NewBatchPage() {
     if (route.id === 'chocolate') {
       if (!recipeVersion || ingredientTotal <= 0) return setError('Enter the ingredient weights you actually used.');
       const id = store.createBatch({
-        productId, name: batchName, startWeight: ingredientTotal, recipeVersion: recipeVersion.version, note,
+        productId, name: batchName, batchDate, startWeight: ingredientTotal, recipeVersion: recipeVersion.version, note,
         ingredients: ingredients.map((i) => ({ name: i.name, expected: i.expected, actual: i.actual, lotId: i.lotId || undefined })),
         lotUses: ingredients.filter((i) => i.lotId).map((i) => ({ lotId: i.lotId, quantity: i.actual })),
       });
@@ -58,7 +59,7 @@ export default function NewBatchPage() {
     }
     const startWeight = Number(weight);
     if (!(startWeight > 0)) return setError('Enter the weight from the scale.');
-    const id = store.createBatch({ productId, name: batchName, startWeight, note, lotUses: [] });
+    const id = store.createBatch({ productId, name: batchName, batchDate, startWeight, note, lotUses: [] });
     router.push(`/production/batches/${id}/record/${route.stations[0]}`);
   }
 
@@ -79,6 +80,9 @@ export default function NewBatchPage() {
             </Field>
             <Field label="Batch name (optional)" hint="Use a memorable name for the production run. The system ID is kept automatically.">
               <Input value={batchName} onChange={(e) => setBatchName(e.target.value)} maxLength={80} placeholder="e.g. Monday morning roast" />
+            </Field>
+            <Field label="Batch date" hint="Use the production date so past batches appear in the correct report period.">
+              <Input type="date" value={batchDate} onChange={(e) => setBatchDate(e.target.value)} aria-label="Batch date" required />
             </Field>
           </div>
         </Panel>

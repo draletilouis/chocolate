@@ -7,7 +7,7 @@ import { seedState, type State } from './seed';
 import { stationById } from './stations';
 import type {
   Batch, Destination, Ingredient, Lot, LotCategory, OutputKind, PackSize, Product, RecipeIngredient, RecordedOutput,
-  StationId, StationRecord, Supplier, Thresholds, User,
+  StationId, StationRecord, Supplier, Thresholds, User, BusinessDetails,
 } from './types';
 
 const STORAGE_KEY = 'cocoa-production-v1';
@@ -18,6 +18,8 @@ export interface MeasuredOutput { name: string; kind: OutputKind; weight: number
 export interface NewBatchInput {
   productId: string;
   name?: string;
+  /** Calendar date on which the batch was started; defaults to today for older callers. */
+  batchDate?: string;
   startWeight: number;
   lotUses: { lotId: string; quantity: number }[];
   recipeVersion?: number;
@@ -50,6 +52,7 @@ interface Actions {
   addSupplier: (supplier: Omit<Supplier, 'id'>) => void;
   addUser: (user: Omit<User, 'id' | 'initials'>) => void;
   setCurrentUser: (id: string) => void;
+  setBusinessDetails: (patch: Partial<BusinessDetails>) => void;
   setThresholds: (patch: Partial<Thresholds>) => void;
   setStationVariance: (station: StationId, value: number) => void;
   addOutputCategory: (station: StationId, name: string, kind: OutputKind) => void;
@@ -81,6 +84,7 @@ function migrate(stored: State): State {
     ...seed,
     ...stored,
     users,
+    business: { ...seed.business, ...(stored.business ?? {}) },
     // Keep user-created entries, while adding new paper-derived seed entries to an older browser profile.
     products: [...seed.products, ...(stored.products ?? []).filter((item) => !seed.products.some((seedItem) => seedItem.id === item.id))],
     // The old demo seeded 100 g and 250 g packs; the supplied forms use 7 g, 45 g, 80 g, 200 g and 1 kg.
@@ -135,7 +139,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!product) return s;
         const route = s.routes.find((r) => r.id === product.route)!;
         id = nextBatchId(s, product.prefix);
-        const stamp = now();
+        const stamp = /^\d{4}-\d{2}-\d{2}$/.test(input.batchDate ?? '') ? `${input.batchDate}T12:00:00` : now();
         const batch: Batch = {
           id, name: input.name?.trim() || undefined, productId: product.id, product: product.name, route: route.id, startedAt: stamp, status: 'active',
           nextStation: route.stations[0],
@@ -284,6 +288,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setState((s) => ({ ...s, users: [...s.users, { ...user, id: `U-${Date.now()}`, initials: user.name.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase() }] }));
     },
     setCurrentUser(id) { setState((s) => ({ ...s, currentUserId: id })); },
+    setBusinessDetails(patch) { setState((s) => ({ ...s, business: { ...s.business, ...patch } })); },
     setThresholds(patch) { setState((s) => ({ ...s, thresholds: { ...s.thresholds, ...patch } })); },
     setStationVariance(station, value) { setState((s) => ({ ...s, thresholds: { ...s.thresholds, variancePct: { ...s.thresholds.variancePct, [station]: value } } })); },
     addOutputCategory(station, name, kind) { setState((s) => ({ ...s, outputCategories: [...s.outputCategories, { station, name, kind, custom: true }] })); },

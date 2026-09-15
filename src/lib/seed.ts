@@ -1,7 +1,7 @@
 import { stations } from './stations';
 import type {
   Batch, Destination, Lot, OutputCategory, OutputKind, PackSize, Product, Recipe, RecordedOutput, Route,
-  PaperCatalog, StationId, StationRecord, Supplier, Thresholds, User,
+  PaperCatalog, StationId, StationRecord, Supplier, Thresholds, User, BusinessDetails,
 } from './types';
 
 export interface State {
@@ -17,6 +17,7 @@ export interface State {
   thresholds: Thresholds;
   outputCategories: OutputCategory[];
   paperCatalog: PaperCatalog;
+  business: BusinessDetails;
 }
 
 const at = (day: string, time: string) => `${day}T${time}:00`;
@@ -224,9 +225,16 @@ const lots: Lot[] = [
   { id: 'REW-018', material: 'Machine residue', category: 'Rework', received: 0.5, available: 0.5, unit: 'kg', source: { type: 'batch', batchId: 'CH-018', station: 'mixing' }, receivedAt: at('2026-09-14', '07:40'), uses: [] },
 ];
 
+const business: BusinessDetails = {
+  name: 'Cocoa Factory',
+  address: 'Kampala, Uganda',
+  phone: '+256 700 000 000',
+  email: 'production@cocoafactory.example',
+};
+
 export function seedState(): State {
   return structuredClone({
     batches, lots, recipes, products, routes, packSizes, suppliers, users,
-    currentUserId: 'U-AM', thresholds, outputCategories, paperCatalog,
+    currentUserId: 'U-AM', thresholds, outputCategories, paperCatalog, business,
   });
 }

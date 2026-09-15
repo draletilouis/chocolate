@@ -7,9 +7,10 @@ import { Badge, Button, Field, Input, Notice, PageHeader, Panel, Select, SubNav,
 import { kindLabel } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { stationName, stations } from '@/lib/stations';
-import type { OutputKind, RouteId, StationId } from '@/lib/types';
+import type { BusinessDetails, OutputKind, RouteId, StationId } from '@/lib/types';
 
 const sections = [
+  { id: 'business', label: 'Business details', href: '/setup/business' },
   { id: 'products', label: 'Products', href: '/setup/products' },
   { id: 'pack-sizes', label: 'Pack sizes', href: '/setup/pack-sizes' },
   { id: 'paper-catalog', label: 'Paper catalog', href: '/setup/paper-catalog' },
@@ -39,12 +40,36 @@ function AddForm({ title, onSubmit, children, submitLabel = 'Add' }: { title: st
 export default function SetupPage() {
   const { section } = useParams<{ section: string }>();
   const store = useStore();
+  const [businessDetails, setBusinessDetails] = useState<BusinessDetails>(store.business);
   const current = sections.find((s) => s.id === section) ?? sections[0];
 
   return (
     <>
       <PageHeader eyebrow="Setup" title={current.label} />
       <SubNav items={sections} current={current.id} />
+
+      {current.id === 'business' && (
+        <Panel title="Business details" subtitle="These details appear in the header of exported Excel and print/PDF reports.">
+          <form className="grid gap-4 p-5 md:grid-cols-2" onSubmit={(event) => { event.preventDefault(); store.setBusinessDetails(businessDetails); }}>
+            <Field label="Business name">
+              <Input value={businessDetails.name} onChange={(event) => setBusinessDetails({ ...businessDetails, name: event.target.value })} required maxLength={100} />
+            </Field>
+            <Field label="Address / location">
+              <Input value={businessDetails.address} onChange={(event) => setBusinessDetails({ ...businessDetails, address: event.target.value })} maxLength={160} placeholder="e.g. Kampala, Uganda" />
+            </Field>
+            <Field label="Phone">
+              <Input value={businessDetails.phone} onChange={(event) => setBusinessDetails({ ...businessDetails, phone: event.target.value })} maxLength={40} placeholder="e.g. +256 700 000 000" />
+            </Field>
+            <Field label="Email">
+              <Input type="email" value={businessDetails.email} onChange={(event) => setBusinessDetails({ ...businessDetails, email: event.target.value })} maxLength={120} placeholder="e.g. info@yourfactory.example" />
+            </Field>
+            <div className="flex justify-end md:col-span-2">
+              <Button type="submit">Save business details</Button>
+            </div>
+          </form>
+          <p className="section-note">These values are saved in this browser and are included whenever a report is generated.</p>
+        </Panel>
+      )}
 
       {current.id === 'products' && (
         <Panel title="Products" subtitle="What the factory makes, and which route each product follows.">
