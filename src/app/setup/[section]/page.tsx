@@ -178,10 +178,10 @@ export default function SetupPage() {
               <Field label="Low stock warning for raw materials (kg)"><Input type="number" step="1" min="0" value={store.thresholds.lowStockKg} onChange={(e) => store.setThresholds({ lowStockKg: Number(e.target.value) })} aria-label="Low stock limit" /></Field>
             </div>
           </Panel>
-          <Panel title="Reset recorded data">
+          <Panel title="Sample data">
             <div className="flex flex-wrap items-center justify-between gap-3 p-5 text-[13px]">
-              <span className="text-muted">Data is kept in this browser. Reset to remove recorded batches and lots while keeping the setup and paper forms.</span>
-              <Button variant="danger" onClick={() => { if (window.confirm('Clear all batches and material lots in this browser? Setup and paper forms will remain.')) store.resetData(); }}>Reset to empty factory</Button>
+              <span className="text-muted">Data is kept in this browser. Reset to start again from the sample batches.</span>
+              <Button variant="danger" onClick={() => { if (window.confirm('Reset all data to the sample set?')) store.resetData(); }}>Reset sample data</Button>
             </div>
           </Panel>
         </>

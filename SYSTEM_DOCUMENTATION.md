@@ -41,14 +41,14 @@ All feature screens read and mutate state through `useStore()` from `src/lib/sto
 
 On the first client render, the provider starts with `seedState()` and then hydrates from browser storage:
 
-- Data key: `cocoa-production-v2`
+- Data key: `cocoa-production-v1`
 - Session key: `cocoa-session`
 
 The shell waits for hydration so the seed data does not briefly flash, then shows `LoginScreen` when there is no session user. Login compares the submitted email and password with the in-browser `users` array. A successful login stores the user ID in `cocoa-session` and also sets `currentUserId`, which is written onto new measurements, holds, and corrections.
 
 Sample users are defined in `src/lib/seed.ts`; all seeded accounts use the password `cocoa123`. The login screen includes Alex Morgan's demo credentials.
 
-The `migrate()` function in `src/lib/store.tsx` upgrades saved users that do not yet have email or password fields and retains user-created setup entries. Version 2 intentionally starts with no batches or material lots; the old v1 demo data is not loaded into the clean first-use dataset.
+The `migrate()` function in `src/lib/store.tsx` upgrades older stored users that do not yet have email or password fields. It merges stored data over a fresh seed shape and fills missing user credentials from the matching seed user or a generated default.
 
 ## 4. Production line model
 
@@ -271,7 +271,7 @@ Alerts appear in the Overview, in the production navigation counts, on batch pag
 | `/setup/routes` | Displays the configured route sequences. |
 | `/setup/suppliers` | Lists and adds suppliers. |
 | `/setup/users` | Lists staff accounts and changes the user used for recording. |
-| `/setup/alerts` | Edits thresholds and resets recorded data to the empty-factory state. |
+| `/setup/alerts` | Edits thresholds and resets sample data. |
 
 `/reports` redirects to `/reports/losses`; `/setup` redirects to `/setup/products`.
 
@@ -286,7 +286,7 @@ The Setup screens mutate the same browser state used by production:
 - Recipe versions must total exactly 100% (within 0.01 percentage points) before saving.
 - Output categories are the rows shown on station recording forms and can be extended with custom rows.
 
-The seed configuration includes the bean and liquor products, seven paper-listed chocolate strengths (four marked catalog-only because no verified recipe quantities were visible), three recipes, the paper pack sizes (7 g, 45 g, 80 g, 200 g sachet, and 1 kg), three suppliers, five demo users, three routes, threshold values, empty batch and lot arrays, and a `paperCatalog` containing the transcribed form rows. `resetData()` clears recorded batches and lots while restoring setup/forms. Because the app is browser-local, the reset affects only the browser profile being used. Blank cells and unclear handwritten annotations from the photographs are intentionally not seeded as measurements.
+The seed configuration includes the bean and liquor products, seven paper-listed chocolate strengths (four marked catalog-only because no verified recipe quantities were visible), three recipes, the paper pack sizes (7 g, 45 g, 80 g, 200 g sachet, and 1 kg), three suppliers, five demo users, three routes, threshold values, sample lots, sample batches, and a `paperCatalog` containing the transcribed form rows. `resetData()` replaces the in-memory state with a fresh cloned seed state. Because the app is browser-local, the reset affects only the browser profile being used. Blank cells and unclear handwritten annotations from the photographs are intentionally not seeded as measurements.
 
 ## 13. Navigation and visual system
 
@@ -329,6 +329,6 @@ The current app is a browser-local prototype/demo rather than a production deplo
 - IDs are generated from the current browser state and are not safe for concurrent multi-user creation.
 - Weights are recorded in kilograms and rounded to two decimals; Packaging also stores accepted units.
 - Setup changes apply immediately to the current browser's forms and reports.
-- The initial seed contains setup/forms and no transactional history. Recorded batches and lots can be cleared from Setup → Alert thresholds.
+- The seeded data is intentionally representative sample data and can be reset from Setup → Alert thresholds.
 
 For a production rollout, the store actions would need to move behind an authenticated server/API, with database transactions for batch/lots, server-side validation, role-based permissions, and conflict-safe ID generation.

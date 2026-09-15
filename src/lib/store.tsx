@@ -10,9 +10,7 @@ import type {
   StationId, StationRecord, Supplier, Thresholds, User,
 } from './types';
 
-// v2 intentionally starts with an empty transaction history while retaining the seeded setup/forms.
-// The previous demo data remains isolated under the old v1 key and is not loaded into a clean install.
-const STORAGE_KEY = 'cocoa-production-v2';
+const STORAGE_KEY = 'cocoa-production-v1';
 const SESSION_KEY = 'cocoa-session';
 
 export interface MeasuredOutput { name: string; kind: OutputKind; weight: number }

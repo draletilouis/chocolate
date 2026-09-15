@@ -265,5 +265,5 @@ Changes apply immediately in the current browser.
 - By-products are tracked separately and are not counted as recorded waste.
 - Variance is reported separately from waste.
 - Save destinations after changing them; otherwise the batch cannot be completed.
-- The current system stores data in this browser only. It is not shared between browsers or devices.
-- **Setup → Alert thresholds → Reset to empty factory** clears recorded batches and material lots but keeps the setup and paper forms.
+- The current demo stores data in this browser only. It is not shared between browsers or devices.
+- **Setup → Alert thresholds → Reset sample data** replaces the current browser data with the sample dataset.
