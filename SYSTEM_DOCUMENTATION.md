@@ -263,6 +263,7 @@ Alerts appear in the Overview, in the production navigation counts, on batch pag
 | `/reports/holds` | Audits all holds and releases. |
 | `/setup/products` | Lists and adds products and route/recipe associations. |
 | `/setup/pack-sizes` | Lists and adds packaging sizes. |
+| `/setup/paper-catalog` | Shows the printed row labels transcribed from the supplied Tempering, Production, Bean, ready-product, packaging-item, and weekly-usage forms. |
 | `/setup/outputs` | Lists and adds station output rows. |
 | `/setup/routes` | Displays the configured route sequences. |
 | `/setup/suppliers` | Lists and adds suppliers. |
@@ -282,7 +283,7 @@ The Setup screens mutate the same browser state used by production:
 - Recipe versions must total exactly 100% (within 0.01 percentage points) before saving.
 - Output categories are the rows shown on station recording forms and can be extended with custom rows.
 
-The seed configuration includes five products, three recipes, four pack sizes, three suppliers, five demo users, three routes, threshold values, sample lots, and sample batches. `resetData()` replaces the in-memory state with a fresh cloned seed state. Because the app is browser-local, the reset affects only the browser profile being used.
+The seed configuration includes the bean and liquor products, seven paper-listed chocolate strengths (four marked catalog-only because no verified recipe quantities were visible), three recipes, the paper pack sizes (7 g, 45 g, 80 g, 200 g sachet, and 1 kg), three suppliers, five demo users, three routes, threshold values, sample lots, sample batches, and a `paperCatalog` containing the transcribed form rows. `resetData()` replaces the in-memory state with a fresh cloned seed state. Because the app is browser-local, the reset affects only the browser profile being used. Blank cells and unclear handwritten annotations from the photographs are intentionally not seeded as measurements.
 
 ## 13. Navigation and visual system
 

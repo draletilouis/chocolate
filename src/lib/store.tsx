@@ -76,7 +76,16 @@ function migrate(stored: State): State {
       password: u.password || fromSeed?.password || 'cocoa123',
     };
   });
-  return { ...seed, ...stored, users };
+  return {
+    ...seed,
+    ...stored,
+    users,
+    // Keep user-created entries, while adding new paper-derived seed entries to an older browser profile.
+    products: [...seed.products, ...(stored.products ?? []).filter((item) => !seed.products.some((seedItem) => seedItem.id === item.id))],
+    // The old demo seeded 100 g and 250 g packs; the supplied forms use 7 g, 45 g, 80 g, 200 g and 1 kg.
+    packSizes: [...seed.packSizes, ...(stored.packSizes ?? []).filter((item) => !seed.packSizes.some((seedItem) => seedItem.id === item.id) && !['PK-100', 'PK-250'].includes(item.id))],
+    paperCatalog: stored.paperCatalog ?? seed.paperCatalog,
+  };
 }
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 

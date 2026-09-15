@@ -24,6 +24,8 @@ The main navigation is:
 - **Reports** — losses, variance, batch history, corrections, and holds.
 - **Setup** — products, pack sizes, output rows, routes, suppliers, users, and thresholds.
 
+Use **Setup → Paper catalog** to review the printed row labels transcribed from the factory's paper forms. It is a reference catalog; blank cells and unclear handwritten annotations are not treated as production measurements.
+
 On a phone, use the bottom navigation bar. On a desktop, use the sidebar. Numbers beside Production and Overview show active batches and alerts that need attention.
 
 ## 3. Start a new batch
@@ -246,6 +248,7 @@ Users with access to Setup can configure:
 
 - **Products** — products, batch prefixes, routes, and recipes.
 - **Pack sizes** — grams per unit used in Packaging.
+- **Paper catalog** — the product, summary, ready-product, packaging-item, and weekly-usage rows transcribed from the paper forms.
 - **Output categories** — the standard rows workers see at each station.
 - **Routes** — the default station order for each batch type.
 - **Suppliers** — delivery sources and contact details.

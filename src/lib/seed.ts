@@ -1,7 +1,7 @@
 import { stations } from './stations';
 import type {
   Batch, Destination, Lot, OutputCategory, OutputKind, PackSize, Product, Recipe, RecordedOutput, Route,
-  StationId, StationRecord, Supplier, Thresholds, User,
+  PaperCatalog, StationId, StationRecord, Supplier, Thresholds, User,
 } from './types';
 
 export interface State {
@@ -16,6 +16,7 @@ export interface State {
   currentUserId: string;
   thresholds: Thresholds;
   outputCategories: OutputCategory[];
+  paperCatalog: PaperCatalog;
 }
 
 const at = (day: string, time: string) => `${day}T${time}:00`;
@@ -43,9 +44,13 @@ export const routes: Route[] = [
 export const products: Product[] = [
   { id: 'P-BEANS', name: 'Cocoa beans', prefix: 'CB', route: 'beans' },
   { id: 'P-LIQUOR', name: 'Cocoa liquor (pressing)', prefix: 'CL', route: 'pressing' },
+  { id: 'P-34', name: '34% White chocolate', prefix: 'CH', route: 'chocolate', catalogOnly: true },
   { id: 'P-70', name: '70% Dark chocolate', prefix: 'CH', route: 'chocolate', recipeId: 'R-70' },
   { id: 'P-85', name: '85% Dark chocolate', prefix: 'CH', route: 'chocolate', recipeId: 'R-85' },
   { id: 'P-MILK', name: '40% Milk chocolate', prefix: 'CH', route: 'chocolate', recipeId: 'R-MILK' },
+  { id: 'P-50', name: '50% Dark Milk chocolate', prefix: 'CH', route: 'chocolate', catalogOnly: true },
+  { id: 'P-56', name: '56% Dark chocolate', prefix: 'CH', route: 'chocolate', catalogOnly: true },
+  { id: 'P-100', name: '100% Dark chocolate', prefix: 'CH', route: 'chocolate', catalogOnly: true },
 ];
 
 export const recipes: Recipe[] = [
@@ -83,10 +88,11 @@ export const users: User[] = [
 ];
 
 export const packSizes: PackSize[] = [
+  { id: 'PK-7', name: '7 g bar', grams: 7 },
   { id: 'PK-45', name: '45 g bar', grams: 45 },
-  { id: 'PK-100', name: '100 g bar', grams: 100 },
-  { id: 'PK-250', name: '250 g bar', grams: 250 },
-  { id: 'PK-1000', name: '1 kg block', grams: 1000 },
+  { id: 'PK-80', name: '80 g bar', grams: 80 },
+  { id: 'PK-200', name: '200 g sachet', grams: 200 },
+  { id: 'PK-1000', name: '1 kg pack', grams: 1000 },
 ];
 
 export const thresholds: Thresholds = {
@@ -99,6 +105,35 @@ export const thresholds: Thresholds = {
 };
 
 export const outputCategories: OutputCategory[] = stations.flatMap((s) => s.rows.map((row) => ({ ...row, station: s.id })));
+
+export const paperCatalog: PaperCatalog = {
+  source: 'Printed row labels transcribed from the supplied Tempering, Production, Bean and stock/usage summary photographs.',
+  chocolateStrengths: ['34% White', '40% Milk', '50% Dark Milk', '56% Dark', '70% Dark', '85% Dark', '100% Dark'],
+  productionSummary: {
+    usage: ['Liquor usage', 'Butter usage production', 'Butter usage for Silk', 'Sugar usage', 'Milk Powder usage'],
+    productOutput: ['34% White on', '40% Milk on', '50% Dark Milk on', '56% Dark on', '70% Dark on', '85% Dark on', '100% Dark on'],
+    specialOutput: ['Marzipan made', 'Any other (1)', 'Any other (2)', 'Any other (3)'],
+  },
+  beanSummary: {
+    inputAndSorting: ['Date', 'Supplier', 'Bag weight', 'Weight after roasting', 'Unusable Beans sorted off', 'Husks and Rubbish'],
+    usage: ['Crushed nibs for liquor', 'Crushed nibs for butter', 'Crushed nibs for other', 'Nibs for inclusion and sale', 'Whole peeled beans', 'Yield of total usage from bag', 'Yield of winnower'],
+    derivatives: ['Liquor produced from this sack', 'Butter produced from this sack', 'Powder produced from this sack', 'Butter yield from nibs pressed'],
+  },
+  temperingSummary: {
+    products: ['34%', '40%', '50%', '56%', '70%', '85%', '100%', 'Other (1)', 'Other (2)', 'Other (3)', 'Silk Butter', 'Plain truffle', 'Whisky truffle'],
+    columns: [{ label: '7 g', unit: 'pc' }, { label: '45 g', unit: 'pc' }, { label: '1 kg', unit: 'pc' }, { label: 'Total', unit: 'kg' }],
+  },
+  readyProducts: [
+    { section: '7 g bars', items: ['7g Bars 34%', '7g Bars 40%', '7g Bars 50%', '7g Bars 70%', '7g Bars 85%', '7g Bars 100%'] },
+    { section: '45 g budget bars', items: ['45g Budget Bars 34%', '45g Budget Bars 40%', '45g Budget Bars 70%', '45g Budget Bars 85%'] },
+    { section: '45 g premium bars', items: ['45g Premium Bars 34%', '45g Premium Bars 40%', '45g Premium Bars 50%', '45g Premium Bars 70%', '45g Premium Bars 85%', '45g Premium Bars 100%'] },
+    { section: '80 g premium bars', items: ['80g Premium Bars 34%', '80g Premium Bars 40%', '80g Premium Bars 50%', '80g Premium Bars 70%', '80g Premium Bars 85%', '80g Premium Bars 100%'] },
+    { section: '1 kg bars', items: ['1kg Bars 34%', '1kg Bars 40%', '1kg Bars 50%', '1kg Bars 56%', '1kg Bars 70%', '1kg Bars 85%', '1kg Bars 100%'] },
+    { section: 'Cocoa and nib products', items: ['Cocoa Powder 200g sachets', 'Cocoa Powder 1kg packs', 'Cocoa Powder Ungraded kg', 'Whole Roasted Beans 200g sachets', 'Whole Roasted Beans 1kg packs', 'Crushed Nibs 200g sachets', 'Crushed Nibs 1kg packs', 'Coated Nibs 200g', 'Coated Nibs kg', 'Whisky Truffles', 'Plain Truffles'] },
+    { section: 'Packaging production items', items: ['Kaveera rolls for 1kg bars', 'Glue Sticks', 'Aluminium Foil rolls', 'A4 sticker paper', 'Rubber Bands', 'Disposable Gloves', 'Hair Nets', 'Black Delivery Bags', 'Mini 8 Boxes', 'Taste Uganda Box', 'Gift 6x45 box', 'Gift 3x45 box', 'Black Boxes 45g/7g', 'Black Boxes 80g', 'Sachets 200g'] },
+  ],
+  weeklyUsage: ['Raw Beans', 'Roasted Beans', 'Nibs', 'Whole Roasted Peeled Beans', 'Liquor', 'Clear Butter', 'Brown Butter', 'Ungrounded Cocoa Powder', 'Milk Powder', 'Sugar', 'Lecithin', 'Machine 34%', 'Machine 40%', 'Machine 56%', 'Machine 70%', 'Machine 85%', 'Machine 100%', 'Warmer 34%', 'Warmer 40%', 'Warmer 56%', 'Warmer 70%', 'Warmer 85%', 'Warmer 100%'],
+};
 
 const batches: Batch[] = [
   {
@@ -192,6 +227,6 @@ const lots: Lot[] = [
 export function seedState(): State {
   return structuredClone({
     batches, lots, recipes, products, routes, packSizes, suppliers, users,
-    currentUserId: 'U-AM', thresholds, outputCategories,
+    currentUserId: 'U-AM', thresholds, outputCategories, paperCatalog,
   });
 }

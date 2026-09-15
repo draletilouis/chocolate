@@ -21,7 +21,9 @@ export default function NewBatchPage() {
   const [ingredientLots, setIngredientLots] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
 
-  const product = store.products.find((p) => p.id === productId);
+  const batchableProducts = store.products.filter((p) => !p.catalogOnly);
+
+  const product = batchableProducts.find((p) => p.id === productId);
   const route = store.routes.find((r) => r.id === product?.route);
   const recipe = store.recipes.find((r) => r.id === product?.recipeId);
   const recipeVersion = recipe?.versions.find((v) => v.version === (version ?? recipe.currentVersion));
@@ -68,7 +70,7 @@ export default function NewBatchPage() {
           <div className="grid gap-4 p-5 md:grid-cols-2">
             <Field label="Product">
               <Select value={productId} onChange={(e) => { setProductId(e.target.value); setVersion(null); setActuals({}); setIngredientLots({}); }}>
-                {store.products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {batchableProducts.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </Select>
             </Field>
             <Field label="Route" hint={route?.note}>

@@ -12,6 +12,7 @@ import type { OutputKind, RouteId, StationId } from '@/lib/types';
 const sections = [
   { id: 'products', label: 'Products', href: '/setup/products' },
   { id: 'pack-sizes', label: 'Pack sizes', href: '/setup/pack-sizes' },
+  { id: 'paper-catalog', label: 'Paper catalog', href: '/setup/paper-catalog' },
   { id: 'outputs', label: 'Output categories', href: '/setup/outputs' },
   { id: 'routes', label: 'Routes', href: '/setup/routes' },
   { id: 'suppliers', label: 'Suppliers', href: '/setup/suppliers' },
@@ -47,9 +48,10 @@ export default function SetupPage() {
 
       {current.id === 'products' && (
         <Panel title="Products" subtitle="What the factory makes, and which route each product follows.">
-          <Table head={['Product', 'Batch prefix', 'Route', 'Recipe']}>
-            {store.products.map((p) => <tr key={p.id}><td className={td}>{p.name}</td><td className={td}>{p.prefix}-</td><td className={td}>{store.routes.find((r) => r.id === p.route)?.name}</td><td className={td}>{p.recipeId ? store.recipes.find((r) => r.id === p.recipeId)?.name : <span className="text-faint">—</span>}</td></tr>)}
+          <Table head={['Product', 'Batch prefix', 'Route', 'Recipe / status']}>
+            {store.products.map((p) => <tr key={p.id}><td className={td}>{p.name}</td><td className={td}>{p.prefix}-</td><td className={td}>{store.routes.find((r) => r.id === p.route)?.name}</td><td className={td}>{p.catalogOnly ? <Badge tone="neutral">Paper catalog · recipe pending</Badge> : p.recipeId ? store.recipes.find((r) => r.id === p.recipeId)?.name : <span className="text-faint">—</span>}</td></tr>)}
           </Table>
+          <p className="section-note">Products marked “Paper catalog” were printed on the supplied form, but no recipe quantities were visible. They are kept out of the new-batch selector until a verified recipe is configured.</p>
           <AddForm title="Add product" onSubmit={(d) => store.addProduct({ name: String(d.get('name')), prefix: String(d.get('prefix')).toUpperCase(), route: d.get('route') as RouteId, recipeId: String(d.get('recipe')) || undefined })}>
             <Field label="Name"><Input name="name" required /></Field>
             <Field label="Batch prefix"><Input name="prefix" required maxLength={3} placeholder="CH" /></Field>
@@ -67,6 +69,48 @@ export default function SetupPage() {
             <Field label="Grams per unit"><Input name="grams" type="number" min="1" required /></Field>
           </AddForm>
         </Panel>
+      )}
+
+      {current.id === 'paper-catalog' && (
+        <>
+          <Notice tone="neutral">{store.paperCatalog.source} Blank quantity cells and unclear handwritten annotations were not imported as measurements.</Notice>
+
+          <Panel title="Paper product strengths" subtitle="Printed chocolate rows found on the Tempering and Production Summary forms.">
+            <div className="flex flex-wrap gap-2 p-5">{store.paperCatalog.chocolateStrengths.map((name) => <Badge key={name} tone="green">{name}</Badge>)}</div>
+          </Panel>
+
+          <Panel title="Production Summary rows" subtitle="The labels the paper form expects for daily ingredient usage and output.">
+            <div className="grid gap-5 p-5 md:grid-cols-3">
+              <div><h3 className="mb-2 text-[12px] font-bold uppercase tracking-wide text-faint">Usage</h3><div className="space-y-2">{store.paperCatalog.productionSummary.usage.map((row) => <div key={row} className="rounded-lg border border-line bg-paper px-3 py-2 text-[13px]">{row} <span className="float-right text-faint">kg</span></div>)}</div></div>
+              <div><h3 className="mb-2 text-[12px] font-bold uppercase tracking-wide text-faint">Chocolate output</h3><div className="space-y-2">{store.paperCatalog.productionSummary.productOutput.map((row) => <div key={row} className="rounded-lg border border-line bg-paper px-3 py-2 text-[13px]">{row} <span className="float-right text-faint">kg</span></div>)}</div></div>
+              <div><h3 className="mb-2 text-[12px] font-bold uppercase tracking-wide text-faint">Other output</h3><div className="space-y-2">{store.paperCatalog.productionSummary.specialOutput.map((row) => <div key={row} className="rounded-lg border border-line bg-paper px-3 py-2 text-[13px]">{row} <span className="float-right text-faint">kg</span></div>)}</div></div>
+            </div>
+          </Panel>
+
+          <Panel title="Bean Summary rows" subtitle="Input, sorting, nib usage, yields and derivatives transcribed from the bean sheet.">
+            <Table head={['Input & sorting', 'Usage / yield', 'Derivatives']}>
+              {Array.from({ length: Math.max(store.paperCatalog.beanSummary.inputAndSorting.length, store.paperCatalog.beanSummary.usage.length, store.paperCatalog.beanSummary.derivatives.length) }, (_, i) => <tr key={i}><td className={td}>{store.paperCatalog.beanSummary.inputAndSorting[i] ?? <span className="text-faint">—</span>}</td><td className={td}>{store.paperCatalog.beanSummary.usage[i] ?? <span className="text-faint">—</span>}</td><td className={td}>{store.paperCatalog.beanSummary.derivatives[i] ?? <span className="text-faint">—</span>}</td></tr>)}
+            </Table>
+          </Panel>
+
+          <Panel title="Tempering Summary rows" subtitle="The paper's product rows and columns. The live batch records remain the source of measured quantities.">
+            <Table head={['Product', ...store.paperCatalog.temperingSummary.columns.map((c) => `${c.label} (${c.unit})`)]}>
+              {store.paperCatalog.temperingSummary.products.map((row) => <tr key={row}><td className={td}>{row}</td>{store.paperCatalog.temperingSummary.columns.map((column) => <td key={column.label} className={`${tdNum} text-faint`}>—</td>)}</tr>)}
+            </Table>
+          </Panel>
+
+          <Panel title="Ready Products rows" subtitle="Printed daily stock-sheet rows grouped as they appear on the supplied form.">
+            <div className="grid gap-4 p-5 md:grid-cols-2">
+              {store.paperCatalog.readyProducts.map((group) => <div key={group.section} className="rounded-lg border border-line"><div className="border-b border-line bg-paper px-3 py-2 text-[12px] font-bold uppercase tracking-wide text-faint">{group.section}</div><div className="divide-y divide-line">{group.items.map((item) => <div key={item} className="px-3 py-2 text-[13px]">{item}<span className="float-right text-faint">—</span></div>)}</div></div>)}
+            </div>
+          </Panel>
+
+          <Panel title="Weekly usage rows" subtitle="The weekly sheet records these items in kilograms by day.">
+            <Table head={['Item', 'Unit']}>
+              {store.paperCatalog.weeklyUsage.map((item) => <tr key={item}><td className={td}>{item}</td><td className={`${td} text-muted`}>kg</td></tr>)}
+            </Table>
+          </Panel>
+        </>
       )}
 
       {current.id === 'outputs' && (
