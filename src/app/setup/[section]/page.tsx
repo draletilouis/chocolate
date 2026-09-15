@@ -1,9 +1,9 @@
 'use client';
 
-import { useParams } from 'next/navigation';
-import { useState, type FormEvent, type ReactNode } from 'react';
-import { Plus } from 'lucide-react';
-import { Badge, Button, Field, Input, Notice, PageHeader, Panel, Select, SubNav, Table, td, tdNum } from '@/components/ui';
+import { redirect, useParams } from 'next/navigation';
+import { Fragment, useState, type FormEvent, type ReactNode } from 'react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { Badge, Button, Field, Input, Notice, PageHeader, Panel, Select, SubNav, Table, Textarea, td, tdNum } from '@/components/ui';
 import { kindLabel } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { stationName, stations } from '@/lib/stations';
@@ -13,7 +13,6 @@ const sections = [
   { id: 'business', label: 'Business details', href: '/setup/business' },
   { id: 'products', label: 'Products', href: '/setup/products' },
   { id: 'pack-sizes', label: 'Pack sizes', href: '/setup/pack-sizes' },
-  { id: 'paper-catalog', label: 'Paper catalog', href: '/setup/paper-catalog' },
   { id: 'outputs', label: 'Output categories', href: '/setup/outputs' },
   { id: 'routes', label: 'Routes', href: '/setup/routes' },
   { id: 'suppliers', label: 'Suppliers', href: '/setup/suppliers' },
@@ -37,11 +36,31 @@ function AddForm({ title, onSubmit, children, submitLabel = 'Add' }: { title: st
   );
 }
 
+function EditForm({ onSubmit, onCancel, children }: { onSubmit: (data: FormData) => void; onCancel: () => void; children: ReactNode }) {
+  return (
+    <form className="grid gap-3 rounded-lg bg-paper p-4 md:grid-cols-2" onSubmit={(e: FormEvent<HTMLFormElement>) => { e.preventDefault(); onSubmit(new FormData(e.currentTarget)); }}>
+      {children}
+      <div className="flex justify-end gap-2 md:col-span-2"><Button variant="secondary" onClick={onCancel}>Cancel</Button><Button type="submit">Save changes</Button></div>
+    </form>
+  );
+}
+
+function RowActions({ onEdit, onDelete, deleteDisabled, deleteHint }: { onEdit: () => void; onDelete: () => void; deleteDisabled?: boolean; deleteHint?: string }) {
+  return (
+    <div className="flex justify-end gap-1">
+      <Button variant="ghost" className="px-2" onClick={onEdit} title="Edit"><Pencil size={14} /><span className="sr-only">Edit</span></Button>
+      <Button variant="danger" className="px-2" onClick={onDelete} disabled={deleteDisabled} title={deleteDisabled ? deleteHint : 'Delete'}><Trash2 size={14} /><span className="sr-only">Delete</span></Button>
+    </div>
+  );
+}
+
 export default function SetupPage() {
   const { section } = useParams<{ section: string }>();
   const store = useStore();
   const [businessDetails, setBusinessDetails] = useState<BusinessDetails>(store.business);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const current = sections.find((s) => s.id === section) ?? sections[0];
+  if (section === 'paper-catalog') redirect('/setup/products');
 
   return (
     <>
@@ -73,10 +92,27 @@ export default function SetupPage() {
 
       {current.id === 'products' && (
         <Panel title="Products" subtitle="What the factory makes, and which route each product follows.">
-          <Table head={['Product', 'Batch prefix', 'Route', 'Recipe / status']}>
-            {store.products.map((p) => <tr key={p.id}><td className={td}>{p.name}</td><td className={td}>{p.prefix}-</td><td className={td}>{store.routes.find((r) => r.id === p.route)?.name}</td><td className={td}>{p.catalogOnly ? <Badge tone="neutral">Paper catalog · recipe pending</Badge> : p.recipeId ? store.recipes.find((r) => r.id === p.recipeId)?.name : <span className="text-faint">—</span>}</td></tr>)}
+          <Table head={['Product', 'Batch prefix', 'Route', 'Recipe / status', '']}>
+            {store.products.map((p) => {
+              const canDelete = !store.batches.some((b) => b.productId === p.id) && !store.recipes.some((r) => r.productId === p.id);
+              return <Fragment key={p.id}>
+                <tr key={p.id}>
+                  <td className={td}>{p.name}</td><td className={td}>{p.prefix}-</td><td className={td}>{store.routes.find((r) => r.id === p.route)?.name ?? <span className="text-faint">Route removed</span>}</td>
+                    <td className={td}>{p.recipeId ? store.recipes.find((r) => r.id === p.recipeId)?.name : p.route === 'chocolate' ? <Badge tone="neutral">Recipe pending</Badge> : <span className="text-faint">—</span>}</td>
+                  <td className={td}><RowActions onEdit={() => setEditingId(p.id)} onDelete={() => { if (canDelete && window.confirm(`Delete ${p.name}?`)) store.deleteProduct(p.id); }} deleteDisabled={!canDelete} deleteHint="Products used by recipes or batches cannot be deleted." /></td>
+                </tr>
+                {editingId === p.id && <tr key={`${p.id}-edit`}><td className={td} colSpan={5}>
+                  <EditForm onCancel={() => setEditingId(null)} onSubmit={(d) => { store.updateProduct(p.id, { name: String(d.get('name')).trim(), prefix: String(d.get('prefix')).trim().toUpperCase(), route: d.get('route') as RouteId, recipeId: String(d.get('recipe')) || undefined }); setEditingId(null); }}>
+                    <Field label="Name"><Input name="name" defaultValue={p.name} required /></Field>
+                    <Field label="Batch prefix"><Input name="prefix" defaultValue={p.prefix} required maxLength={3} /></Field>
+                    <Field label="Route"><Select name="route" defaultValue={p.route}>{store.routes.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</Select></Field>
+                    <Field label="Recipe"><Select name="recipe" defaultValue={p.recipeId ?? ''}><option value="">None</option>{store.recipes.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</Select></Field>
+                  </EditForm>
+                </td></tr>}
+              </Fragment>;
+            })}
           </Table>
-          <p className="section-note">Products marked “Paper catalog” were printed on the supplied form, but no recipe quantities were visible. They are kept out of the new-batch selector until a verified recipe is configured.</p>
+          <p className="section-note">Chocolate products without a recipe are marked “Recipe pending” and are kept out of the new-batch selector until a verified recipe is configured.</p>
           <AddForm title="Add product" onSubmit={(d) => store.addProduct({ name: String(d.get('name')), prefix: String(d.get('prefix')).toUpperCase(), route: d.get('route') as RouteId, recipeId: String(d.get('recipe')) || undefined })}>
             <Field label="Name"><Input name="name" required /></Field>
             <Field label="Batch prefix"><Input name="prefix" required maxLength={3} placeholder="CH" /></Field>
@@ -88,7 +124,15 @@ export default function SetupPage() {
 
       {current.id === 'pack-sizes' && (
         <Panel title="Pack sizes" subtitle="Used at packaging to work out accepted weight.">
-          <Table head={['Pack', 'Grams per unit']}>{store.packSizes.map((p) => <tr key={p.id}><td className={td}>{p.name}</td><td className={tdNum}>{p.grams} g</td></tr>)}</Table>
+          <Table head={['Pack', 'Grams per unit', '']}>
+            {store.packSizes.map((p) => {
+              const canDelete = !store.batches.some((b) => b.records.some((r) => r.packaging?.packSizeId === p.id));
+              return <Fragment key={p.id}>
+                <tr key={p.id}><td className={td}>{p.name}</td><td className={tdNum}>{p.grams} g</td><td className={td}><RowActions onEdit={() => setEditingId(p.id)} onDelete={() => { if (canDelete && window.confirm(`Delete ${p.name}?`)) store.deletePackSize(p.id); }} deleteDisabled={!canDelete} deleteHint="Pack sizes used by packaging records cannot be deleted." /></td></tr>
+                {editingId === p.id && <tr key={`${p.id}-edit`}><td className={td} colSpan={3}><EditForm onCancel={() => setEditingId(null)} onSubmit={(d) => { store.updatePackSize(p.id, { name: String(d.get('name')).trim(), grams: Number(d.get('grams')) }); setEditingId(null); }}><Field label="Name"><Input name="name" defaultValue={p.name} required /></Field><Field label="Grams per unit"><Input name="grams" type="number" min="1" defaultValue={p.grams} required /></Field></EditForm></td></tr>}
+              </Fragment>;
+            })}
+          </Table>
           <AddForm title="Add pack size" onSubmit={(d) => store.addPackSize({ name: String(d.get('name')), grams: Number(d.get('grams')) })}>
             <Field label="Name"><Input name="name" required placeholder="e.g. 60 g bar" /></Field>
             <Field label="Grams per unit"><Input name="grams" type="number" min="1" required /></Field>
@@ -96,52 +140,13 @@ export default function SetupPage() {
         </Panel>
       )}
 
-      {current.id === 'paper-catalog' && (
-        <>
-          <Notice tone="neutral">{store.paperCatalog.source} Blank quantity cells and unclear handwritten annotations were not imported as measurements.</Notice>
-
-          <Panel title="Paper product strengths" subtitle="Printed chocolate rows found on the Tempering and Production Summary forms.">
-            <div className="flex flex-wrap gap-2 p-5">{store.paperCatalog.chocolateStrengths.map((name) => <Badge key={name} tone="green">{name}</Badge>)}</div>
-          </Panel>
-
-          <Panel title="Production Summary rows" subtitle="The labels the paper form expects for daily ingredient usage and output.">
-            <div className="grid gap-5 p-5 md:grid-cols-3">
-              <div><h3 className="mb-2 text-[12px] font-bold uppercase tracking-wide text-faint">Usage</h3><div className="space-y-2">{store.paperCatalog.productionSummary.usage.map((row) => <div key={row} className="rounded-lg border border-line bg-paper px-3 py-2 text-[13px]">{row} <span className="float-right text-faint">kg</span></div>)}</div></div>
-              <div><h3 className="mb-2 text-[12px] font-bold uppercase tracking-wide text-faint">Chocolate output</h3><div className="space-y-2">{store.paperCatalog.productionSummary.productOutput.map((row) => <div key={row} className="rounded-lg border border-line bg-paper px-3 py-2 text-[13px]">{row} <span className="float-right text-faint">kg</span></div>)}</div></div>
-              <div><h3 className="mb-2 text-[12px] font-bold uppercase tracking-wide text-faint">Other output</h3><div className="space-y-2">{store.paperCatalog.productionSummary.specialOutput.map((row) => <div key={row} className="rounded-lg border border-line bg-paper px-3 py-2 text-[13px]">{row} <span className="float-right text-faint">kg</span></div>)}</div></div>
-            </div>
-          </Panel>
-
-          <Panel title="Bean Summary rows" subtitle="Input, sorting, nib usage, yields and derivatives transcribed from the bean sheet.">
-            <Table head={['Input & sorting', 'Usage / yield', 'Derivatives']}>
-              {Array.from({ length: Math.max(store.paperCatalog.beanSummary.inputAndSorting.length, store.paperCatalog.beanSummary.usage.length, store.paperCatalog.beanSummary.derivatives.length) }, (_, i) => <tr key={i}><td className={td}>{store.paperCatalog.beanSummary.inputAndSorting[i] ?? <span className="text-faint">—</span>}</td><td className={td}>{store.paperCatalog.beanSummary.usage[i] ?? <span className="text-faint">—</span>}</td><td className={td}>{store.paperCatalog.beanSummary.derivatives[i] ?? <span className="text-faint">—</span>}</td></tr>)}
-            </Table>
-          </Panel>
-
-          <Panel title="Tempering Summary rows" subtitle="The paper's product rows and columns. The live batch records remain the source of measured quantities.">
-            <Table head={['Product', ...store.paperCatalog.temperingSummary.columns.map((c) => `${c.label} (${c.unit})`)]}>
-              {store.paperCatalog.temperingSummary.products.map((row) => <tr key={row}><td className={td}>{row}</td>{store.paperCatalog.temperingSummary.columns.map((column) => <td key={column.label} className={`${tdNum} text-faint`}>—</td>)}</tr>)}
-            </Table>
-          </Panel>
-
-          <Panel title="Ready Products rows" subtitle="Printed daily stock-sheet rows grouped as they appear on the supplied form.">
-            <div className="grid gap-4 p-5 md:grid-cols-2">
-              {store.paperCatalog.readyProducts.map((group) => <div key={group.section} className="rounded-lg border border-line"><div className="border-b border-line bg-paper px-3 py-2 text-[12px] font-bold uppercase tracking-wide text-faint">{group.section}</div><div className="divide-y divide-line">{group.items.map((item) => <div key={item} className="px-3 py-2 text-[13px]">{item}<span className="float-right text-faint">—</span></div>)}</div></div>)}
-            </div>
-          </Panel>
-
-          <Panel title="Weekly usage rows" subtitle="The weekly sheet records these items in kilograms by day.">
-            <Table head={['Item', 'Unit']}>
-              {store.paperCatalog.weeklyUsage.map((item) => <tr key={item}><td className={td}>{item}</td><td className={`${td} text-muted`}>kg</td></tr>)}
-            </Table>
-          </Panel>
-        </>
-      )}
-
       {current.id === 'outputs' && (
         <Panel title="Output categories" subtitle="The rows workers weigh at each station. Useful output counts toward yield; waste and by-products are recorded separately; anything left is variance.">
-          <Table head={['Station', 'Output', 'Type']}>
-            {store.outputCategories.map((c, i) => <tr key={`${c.station}-${c.name}-${i}`}><td className={td}>{stationName(c.station)}</td><td className={td}>{c.name}{c.custom && <Badge tone="neutral">added</Badge>}</td><td className={td}><Badge tone={c.kind === 'useful' ? 'green' : c.kind === 'waste' ? 'warn' : 'neutral'}>{kindLabel[c.kind]}</Badge></td></tr>)}
+          <Table head={['Station', 'Output', 'Type', '']}>
+            {store.outputCategories.map((c, i) => <Fragment key={`${c.station}-${c.name}-${i}`}>
+              <tr key={`${c.station}-${c.name}-${i}`}><td className={td}>{stationName(c.station)}</td><td className={td}>{c.name}{c.custom && <Badge tone="neutral">added</Badge>}</td><td className={td}><Badge tone={c.kind === 'useful' ? 'green' : c.kind === 'waste' ? 'warn' : 'neutral'}>{kindLabel[c.kind]}</Badge></td><td className={td}><RowActions onEdit={() => setEditingId(`output-${i}`)} onDelete={() => { if (window.confirm(`Delete the ${c.name} output row?`)) store.deleteOutputCategory(i); }} /></td></tr>
+              {editingId === `output-${i}` && <tr key={`output-${i}-edit`}><td className={td} colSpan={4}><EditForm onCancel={() => setEditingId(null)} onSubmit={(d) => { store.updateOutputCategory(i, { station: d.get('station') as StationId, name: String(d.get('name')).trim(), kind: d.get('kind') as OutputKind }); setEditingId(null); }}><Field label="Station"><Select name="station" defaultValue={c.station}>{stations.filter((s) => s.form === 'weights').map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field><Field label="Output name"><Input name="name" defaultValue={c.name} required /></Field><Field label="Type"><Select name="kind" defaultValue={c.kind}><option value="useful">Useful output</option><option value="byproduct">By-product</option><option value="waste">Waste</option></Select></Field></EditForm></td></tr>}
+            </Fragment>) }
           </Table>
           <AddForm title="Add output row" onSubmit={(d) => store.addOutputCategory(d.get('station') as StationId, String(d.get('name')), d.get('kind') as OutputKind)}>
             <Field label="Station"><Select name="station">{stations.filter((s) => s.form === 'weights').map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
@@ -155,17 +160,27 @@ export default function SetupPage() {
         <Panel title="Routes" subtitle="The order of stations for each kind of batch. Destinations at each station decide the actual path.">
           {store.routes.map((r) => (
             <div key={r.id} className="border-b border-line px-5 py-3 text-[13px] last:border-b-0">
-              <div className="flex flex-wrap items-center gap-2"><strong>{r.name}</strong><span className="text-muted">starts with {r.startMaterial.toLowerCase()}</span></div>
+              <div className="flex flex-wrap items-center gap-2"><strong>{r.name}</strong><span className="text-muted">starts with {r.startMaterial.toLowerCase()}</span><span className="ml-auto"><RowActions onEdit={() => setEditingId(`route-${r.id}`)} onDelete={() => { const used = store.products.some((p) => p.route === r.id) || store.batches.some((b) => b.route === r.id); if (!used && window.confirm(`Delete ${r.name}?`)) store.deleteRoute(r.id); }} deleteDisabled={store.products.some((p) => p.route === r.id) || store.batches.some((b) => b.route === r.id)} deleteHint="Routes used by products or batches cannot be deleted." /></span></div>
               <div className="mt-1 flex flex-wrap items-center gap-1">{r.stations.map((s, i) => <span key={s} className="flex items-center gap-1"><Badge tone="green">{stationName(s)}</Badge>{i < r.stations.length - 1 && <span className="text-faint">→</span>}</span>)}</div>
               <div className="mt-1 text-muted">{r.note}</div>
+              {editingId === `route-${r.id}` && <div className="mt-3"><EditForm onCancel={() => setEditingId(null)} onSubmit={(d) => { store.updateRoute(r.id, { name: String(d.get('name')).trim(), startMaterial: String(d.get('startMaterial')).trim(), note: String(d.get('note')).trim() }); setEditingId(null); }}><Field label="Name"><Input name="name" defaultValue={r.name} required /></Field><Field label="Starting material"><Input name="startMaterial" defaultValue={r.startMaterial} required /></Field><Field label="Note" className="md:col-span-2"><Textarea name="note" defaultValue={r.note} rows={2} /></Field></EditForm></div>}
             </div>
           ))}
+          <p className="section-note">Route station order is structural and remains protected; names, starting material and notes can be edited. A route cannot be deleted while a product or batch still uses it.</p>
         </Panel>
       )}
 
       {current.id === 'suppliers' && (
         <Panel title="Suppliers">
-          <Table head={['Supplier', 'Supplies', 'Contact']}>{store.suppliers.map((s) => <tr key={s.id}><td className={td}>{s.name}</td><td className={td}>{s.supplies}</td><td className={td}>{s.contact}</td></tr>)}</Table>
+          <Table head={['Supplier', 'Supplies', 'Contact', '']}>
+            {store.suppliers.map((s) => {
+              const canDelete = !store.lots.some((lot) => lot.source.type === 'supplier' && lot.source.supplierId === s.id);
+              return <Fragment key={s.id}>
+                <tr key={s.id}><td className={td}>{s.name}</td><td className={td}>{s.supplies}</td><td className={td}>{s.contact}</td><td className={td}><RowActions onEdit={() => setEditingId(s.id)} onDelete={() => { if (canDelete && window.confirm(`Delete ${s.name}?`)) store.deleteSupplier(s.id); }} deleteDisabled={!canDelete} deleteHint="Suppliers referenced by material lots cannot be deleted." /></td></tr>
+                {editingId === s.id && <tr key={`${s.id}-edit`}><td className={td} colSpan={4}><EditForm onCancel={() => setEditingId(null)} onSubmit={(d) => { store.updateSupplier(s.id, { name: String(d.get('name')).trim(), supplies: String(d.get('supplies')).trim(), contact: String(d.get('contact')).trim() }); setEditingId(null); }}><Field label="Name"><Input name="name" defaultValue={s.name} required /></Field><Field label="Supplies"><Input name="supplies" defaultValue={s.supplies} required /></Field><Field label="Contact"><Input name="contact" defaultValue={s.contact} /></Field></EditForm></td></tr>}
+              </Fragment>;
+            })}
+          </Table>
           <AddForm title="Add supplier" onSubmit={(d) => store.addSupplier({ name: String(d.get('name')), supplies: String(d.get('supplies')), contact: String(d.get('contact')) })}>
             <Field label="Name"><Input name="name" required /></Field>
             <Field label="Supplies"><Input name="supplies" required /></Field>
@@ -176,8 +191,15 @@ export default function SetupPage() {
 
       {current.id === 'users' && (
         <Panel title="Users" subtitle="Staff accounts. Records are signed with the user chosen here; everyone signs in with their own email and password.">
-          <Table head={['Name', 'Role', 'Email', 'Recording as']}>
-            {store.users.map((u) => <tr key={u.id}><td className={td}>{u.name}</td><td className={td}>{u.role}</td><td className={td}>{u.email}</td><td className={td}>{u.id === store.currentUserId ? <Badge tone="green">Current user</Badge> : <button className="btn-text" onClick={() => store.setCurrentUser(u.id)}>Use {u.name.split(' ')[0]}</button>}</td></tr>)}
+          <Table head={['Name', 'Role', 'Email', 'Recording as', '']}>
+            {store.users.map((u) => {
+              const usedInAudit = store.batches.some((b) => b.records.some((r) => r.recordedBy === u.id) || b.holds.some((h) => h.placedBy === u.id) || b.corrections.some((c) => c.correctedBy === u.id));
+              const canDelete = u.id !== store.currentUserId && !usedInAudit;
+              return <Fragment key={u.id}>
+                <tr key={u.id}><td className={td}>{u.name}</td><td className={td}>{u.role}</td><td className={td}>{u.email}</td><td className={td}>{u.id === store.currentUserId ? <Badge tone="green">Current user</Badge> : <button className="btn-text" onClick={() => store.setCurrentUser(u.id)}>Use {u.name.split(' ')[0]}</button>}</td><td className={td}><RowActions onEdit={() => setEditingId(u.id)} onDelete={() => { if (canDelete && window.confirm(`Delete ${u.name}?`)) store.deleteUser(u.id); }} deleteDisabled={!canDelete} deleteHint="The current user or users referenced in audit history cannot be deleted." /></td></tr>
+                {editingId === u.id && <tr key={`${u.id}-edit`}><td className={td} colSpan={5}><EditForm onCancel={() => setEditingId(null)} onSubmit={(d) => { const password = String(d.get('password')); store.updateUser(u.id, { name: String(d.get('name')).trim(), role: String(d.get('role')).trim(), email: String(d.get('email')).trim(), password: password || u.password }); setEditingId(null); }}><Field label="Name"><Input name="name" defaultValue={u.name} required /></Field><Field label="Role"><Input name="role" defaultValue={u.role} required /></Field><Field label="Email"><Input name="email" type="email" defaultValue={u.email} required autoComplete="off" /></Field><Field label="New password" hint="Leave blank to keep the current password."><Input name="password" type="password" minLength={6} autoComplete="new-password" /></Field></EditForm></td></tr>}
+              </Fragment>;
+            })}
           </Table>
           <AddForm title="Add user" onSubmit={(d) => store.addUser({ name: String(d.get('name')), role: String(d.get('role')), email: String(d.get('email')).trim(), password: String(d.get('password')) })}>
             <Field label="Name"><Input name="name" required /></Field>
@@ -201,12 +223,6 @@ export default function SetupPage() {
             <div className="grid gap-4 p-5 md:grid-cols-2">
               <Field label="Waste limit at any station (%)"><Input type="number" step="0.1" min="0" value={store.thresholds.wastePct} onChange={(e) => store.setThresholds({ wastePct: Number(e.target.value) })} aria-label="Waste limit" /></Field>
               <Field label="Low stock warning for raw materials (kg)"><Input type="number" step="1" min="0" value={store.thresholds.lowStockKg} onChange={(e) => store.setThresholds({ lowStockKg: Number(e.target.value) })} aria-label="Low stock limit" /></Field>
-            </div>
-          </Panel>
-          <Panel title="Sample data">
-            <div className="flex flex-wrap items-center justify-between gap-3 p-5 text-[13px]">
-              <span className="text-muted">Data is kept in this browser. Reset to start again from the sample batches.</span>
-              <Button variant="danger" onClick={() => { if (window.confirm('Reset all data to the sample set?')) store.resetData(); }}>Reset sample data</Button>
             </div>
           </Panel>
         </>

@@ -1,10 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
-import { AlertTriangle, ArrowRight, Check, Circle, Pause, PenLine, Play } from 'lucide-react';
-import { Back, Badge, Button, Empty, Field, LinkButton, Notice, PageHeader, Panel, Select, Textarea, UnitInput } from '@/components/ui';
+import { AlertTriangle, ArrowRight, Check, Circle, Pause, PenLine, Pencil, Play, Trash2 } from 'lucide-react';
+import { Back, Badge, Button, Empty, Field, Input, LinkButton, Notice, PageHeader, Panel, Select, Textarea, UnitInput } from '@/components/ui';
 import { batchAlerts, batchById, batchDisplayName, nextInput, recordBalance, userName } from '@/lib/derive';
 import { dateTime, destinationLabel, kg, kindLabel, num, pct } from '@/lib/format';
 import { useStore } from '@/lib/store';
@@ -13,9 +13,11 @@ import type { StationId } from '@/lib/types';
 
 export default function BatchPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const store = useStore();
   const batch = batchById(store, id);
   const [panel, setPanel] = useState<'hold' | 'release' | 'correction' | null>(null);
+  const [editingDetails, setEditingDetails] = useState(false);
   const [reason, setReason] = useState('');
   const [correction, setCorrection] = useState({ recordId: '', output: '', weight: '' });
   if (!batch) return <Empty>Batch {id} was not found.</Empty>;
@@ -30,6 +32,7 @@ export default function BatchPage() {
   while (cursor && upcoming.length < 12) { upcoming.push(cursor); cursor = stationById[cursor].next[0]; }
 
   const correctable = batch.records.flatMap((r) => r.outputs.map((o) => ({ recordId: r.id, station: r.station, output: o.name, weight: o.weight })));
+  const canDelete = batch.records.length === 0 && batch.holds.length === 0 && batch.corrections.length === 0 && !store.lots.some((lot) => lot.source.type === 'batch' && lot.source.batchId === batch.id);
 
   function submitHold(event: FormEvent) {
     event.preventDefault();
@@ -52,10 +55,19 @@ export default function BatchPage() {
       <Back href="/production" label="Production line" />
       <PageHeader eyebrow={`Batch ${batch.id}`} title={`${batchDisplayName(batch)} · ${batch.product}`}
         subtitle={<span className="flex flex-wrap items-center gap-2">{statusBadge}<span>ID {batch.id}</span><span>Started {dateTime(batch.startedAt)}</span>{batch.recipeId && <span>· Recipe {batch.recipeId} v{batch.recipeVersion}</span>}</span>}
-        action={batch.status === 'active' && batch.nextStation ? <LinkButton href={`/production/batches/${batch.id}/record/${batch.nextStation}`}>{batch.nextStation === 'completion' ? 'Review & complete' : `Record ${stationName(batch.nextStation).toLowerCase()}`} <ArrowRight size={15} /></LinkButton> : undefined} />
+        action={<div className="flex flex-wrap justify-end gap-2"><Button variant="secondary" onClick={() => setEditingDetails((value) => !value)}><Pencil size={14} /> Edit details</Button><Button variant="danger" disabled={!canDelete} title={canDelete ? 'Delete blank batch' : 'Batches with history cannot be deleted.'} onClick={() => { if (canDelete && window.confirm(`Delete blank batch ${batch.id}?`)) { store.deleteBatch(batch.id); router.push('/production'); } }}><Trash2 size={14} /> Delete</Button>{batch.status === 'active' && batch.nextStation ? <LinkButton href={`/production/batches/${batch.id}/record/${batch.nextStation}`}>{batch.nextStation === 'completion' ? 'Review & complete' : `Record ${stationName(batch.nextStation).toLowerCase()}`} <ArrowRight size={15} /></LinkButton> : null}</div>} />
 
       {activeHold && <Notice tone="danger" icon={Pause}><strong>On hold</strong> since {dateTime(activeHold.placedAt)} by {userName(store, activeHold.placedBy)}: {activeHold.reason}</Notice>}
       {alerts.filter((a) => a.kind !== 'hold').map((a) => <Notice key={a.id} tone="warn" icon={AlertTriangle}>{a.message}</Notice>)}
+      {!canDelete && batch.records.length > 0 && <Notice tone="neutral">This batch has production history. Its identity and recorded history stay protected; use corrections for measured-output changes.</Notice>}
+
+      {editingDetails && <Panel title="Edit batch details" subtitle="These are descriptive fields only. Measurements, holds and corrections remain audit-protected.">
+        <form className="grid gap-4 p-5 md:grid-cols-2" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); store.updateBatchDetails(batch.id, { name: String(form.get('name')), note: String(form.get('note')) }); setEditingDetails(false); }}>
+          <Field label="Batch name"><Input name="name" defaultValue={batch.name ?? ''} placeholder={batch.id} /></Field>
+          <Field label="Note" className="md:col-span-2"><Textarea name="note" defaultValue={batch.note ?? ''} rows={2} placeholder="Optional production note" /></Field>
+          <div className="flex justify-end gap-2 md:col-span-2"><Button variant="secondary" onClick={() => setEditingDetails(false)}>Cancel</Button><Button type="submit">Save changes</Button></div>
+        </form>
+      </Panel>}
 
       <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
         <div>

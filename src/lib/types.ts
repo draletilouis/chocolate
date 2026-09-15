@@ -158,8 +158,6 @@ export interface Product {
   prefix: string;
   route: RouteId;
   recipeId?: string;
-  /** Printed on the paper form, but not ready to start until its recipe is configured. */
-  catalogOnly?: boolean;
 }
 
 export interface Route { id: RouteId; name: string; stations: StationId[]; startMaterial: string; note: string }
@@ -183,31 +181,6 @@ export interface Thresholds {
   wastePct: number;
   /** Minimum available kg before a raw-material lot is flagged */
   lowStockKg: number;
-}
-
-/** Printed row labels transcribed from the factory's paper summaries. */
-export interface PaperCatalog {
-  source: string;
-  chocolateStrengths: string[];
-  productionSummary: {
-    usage: string[];
-    productOutput: string[];
-    specialOutput: string[];
-  };
-  beanSummary: {
-    inputAndSorting: string[];
-    usage: string[];
-    derivatives: string[];
-  };
-  temperingSummary: {
-    products: string[];
-    columns: { label: string; unit: string }[];
-  };
-  readyProducts: {
-    section: string;
-    items: string[];
-  }[];
-  weeklyUsage: string[];
 }
 
 export interface Alert {

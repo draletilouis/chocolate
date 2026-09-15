@@ -7,7 +7,7 @@ import { seedState, type State } from './seed';
 import { stationById } from './stations';
 import type {
   Batch, Destination, Ingredient, Lot, LotCategory, OutputKind, PackSize, Product, RecipeIngredient, RecordedOutput,
-  StationId, StationRecord, Supplier, Thresholds, User, BusinessDetails,
+  Route, StationId, StationRecord, Supplier, Thresholds, User, BusinessDetails,
 } from './types';
 
 const STORAGE_KEY = 'cocoa-production-v1';
@@ -42,21 +42,38 @@ interface Actions {
   savePackaging: (batchId: string, inputWeight: number, packSizeId: string, totalUnits: number, rejectedUnits: number, note?: string) => string;
   saveDestinations: (batchId: string, recordId: string, destinations: Record<string, Destination>) => void;
   completeBatch: (batchId: string, note?: string) => void;
+  updateBatchDetails: (batchId: string, patch: { name?: string; note?: string }) => void;
+  deleteBatch: (batchId: string) => void;
   placeHold: (batchId: string, reason: string) => void;
   releaseHold: (batchId: string, note: string) => void;
   addCorrection: (batchId: string, recordId: string, output: string, corrected: number, reason: string) => void;
   receiveLot: (input: NewLotInput) => string;
+  updateLot: (lotId: string, patch: { material: string; category: LotCategory; supplierId?: string; reference?: string }) => void;
+  deleteLot: (lotId: string) => void;
   addRecipeVersion: (recipeId: string, ingredients: RecipeIngredient[], note: string) => void;
+  updateRecipe: (recipeId: string, patch: { name: string }) => void;
+  deleteRecipe: (recipeId: string) => void;
   addProduct: (product: Omit<Product, 'id'>) => void;
+  updateProduct: (productId: string, patch: Omit<Product, 'id'>) => void;
+  deleteProduct: (productId: string) => void;
   addPackSize: (pack: Omit<PackSize, 'id'>) => void;
+  updatePackSize: (packSizeId: string, patch: Omit<PackSize, 'id'>) => void;
+  deletePackSize: (packSizeId: string) => void;
   addSupplier: (supplier: Omit<Supplier, 'id'>) => void;
+  updateSupplier: (supplierId: string, patch: Omit<Supplier, 'id'>) => void;
+  deleteSupplier: (supplierId: string) => void;
   addUser: (user: Omit<User, 'id' | 'initials'>) => void;
+  updateUser: (userId: string, patch: Omit<User, 'id' | 'initials'>) => void;
+  deleteUser: (userId: string) => void;
+  updateRoute: (routeId: string, patch: Pick<Route, 'name' | 'startMaterial' | 'note'>) => void;
+  deleteRoute: (routeId: string) => void;
   setCurrentUser: (id: string) => void;
   setBusinessDetails: (patch: Partial<BusinessDetails>) => void;
   setThresholds: (patch: Partial<Thresholds>) => void;
   setStationVariance: (station: StationId, value: number) => void;
   addOutputCategory: (station: StationId, name: string, kind: OutputKind) => void;
-  resetData: () => void;
+  updateOutputCategory: (index: number, patch: { station: StationId; name: string; kind: OutputKind }) => void;
+  deleteOutputCategory: (index: number) => void;
   /** Signs in with a staff email and password; returns false when they do not match */
   signIn: (email: string, password: string) => boolean;
   signOut: () => void;
@@ -80,16 +97,17 @@ function migrate(stored: State): State {
       password: u.password || fromSeed?.password || 'cocoa123',
     };
   });
+  const business = { ...seed.business, ...(stored.business ?? {}) };
+  if (business.name === 'Cocoa Factory') business.name = seed.business.name;
+  const { paperCatalog: _legacyPaperCatalog, ...storedWithoutLegacyCatalog } = stored as State & { paperCatalog?: unknown };
   return {
     ...seed,
-    ...stored,
+    ...storedWithoutLegacyCatalog,
     users,
-    business: { ...seed.business, ...(stored.business ?? {}) },
-    // Keep user-created entries, while adding new paper-derived seed entries to an older browser profile.
-    products: [...seed.products, ...(stored.products ?? []).filter((item) => !seed.products.some((seedItem) => seedItem.id === item.id))],
-    // The old demo seeded 100 g and 250 g packs; the supplied forms use 7 g, 45 g, 80 g, 200 g and 1 kg.
+    business,
+    // Keep user-created entries while adding any new seed entries to an older browser profile.
+    products: [...seed.products, ...(stored.products ?? []).filter((item) => !['P-34', 'P-50', 'P-56', 'P-100'].includes(item.id) && !seed.products.some((seedItem) => seedItem.id === item.id))],
     packSizes: [...seed.packSizes, ...(stored.packSizes ?? []).filter((item) => !seed.packSizes.some((seedItem) => seedItem.id === item.id) && !['PK-100', 'PK-250'].includes(item.id))],
-    paperCatalog: stored.paperCatalog ?? seed.paperCatalog,
   };
 }
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
@@ -236,6 +254,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateBatch(batchId, (b) => ({ ...b, status: 'completed', nextStation: null, completedAt: now(), note: note || b.note }));
     },
 
+    updateBatchDetails(batchId, patch) {
+      updateBatch(batchId, (b) => ({
+        ...b,
+        name: patch.name?.trim() || undefined,
+        note: patch.note?.trim() || undefined,
+      }));
+    },
+
+    deleteBatch(batchId) {
+      setState((s) => {
+        const batch = s.batches.find((b) => b.id === batchId);
+        // A batch with production history is an audit record. A blank batch can be removed,
+        // including returning any starting lot quantities that it reserved.
+        if (!batch || batch.records.length || batch.holds.length || batch.corrections.length || s.lots.some((l) => l.source.type === 'batch' && l.source.batchId === batchId)) return s;
+        const lots = s.lots.map((lot) => {
+          const uses = lot.uses.filter((use) => use.batchId !== batchId);
+          const returned = lot.uses.filter((use) => use.batchId === batchId).reduce((sum, use) => sum + use.quantity, 0);
+          return uses.length === lot.uses.length ? lot : { ...lot, available: round2(lot.available + returned), uses };
+        });
+        return { ...s, batches: s.batches.filter((b) => b.id !== batchId), lots };
+      });
+    },
+
     placeHold(batchId, reason) {
       updateBatch(batchId, (b) => ({ ...b, status: 'hold', holds: [...b.holds, { id: `h-${Date.now()}`, reason, placedAt: now(), placedBy: state.currentUserId, station: b.nextStation }] }));
     },
@@ -270,6 +311,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return id;
     },
 
+    updateLot(lotId, patch) {
+      setState((s) => ({
+        ...s,
+        lots: s.lots.map((lot) => {
+          if (lot.id !== lotId || lot.source.type !== 'supplier') return lot;
+          return {
+            ...lot,
+            material: patch.material.trim() || lot.material,
+            category: patch.category,
+            source: {
+              ...lot.source,
+              supplierId: patch.supplierId || lot.source.supplierId,
+              reference: patch.reference?.trim() || undefined,
+            },
+          };
+        }),
+      }));
+    },
+
+    deleteLot(lotId) {
+      setState((s) => {
+        const lot = s.lots.find((item) => item.id === lotId);
+        const referenced = s.batches.some((batch) => batch.startInput.lotIds.includes(lotId) || batch.records.some((record) => record.inputLotIds.includes(lotId) || record.outputs.some((output) => output.lotId === lotId)));
+        if (!lot || lot.source.type !== 'supplier' || lot.uses.length || lot.available !== lot.received || referenced) return s;
+        return { ...s, lots: s.lots.filter((item) => item.id !== lotId) };
+      });
+    },
+
     addRecipeVersion(recipeId, ingredients, note) {
       setState((s) => ({
         ...s,
@@ -280,20 +349,81 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }),
       }));
     },
+    updateRecipe(recipeId, patch) {
+      setState((s) => ({ ...s, recipes: s.recipes.map((recipe) => recipe.id === recipeId ? { ...recipe, name: patch.name.trim() || recipe.name } : recipe) }));
+    },
+    deleteRecipe(recipeId) {
+      setState((s) => {
+        if (s.batches.some((batch) => batch.recipeId === recipeId)) return s;
+        return {
+          ...s,
+          recipes: s.recipes.filter((recipe) => recipe.id !== recipeId),
+          // Keep the product as a pending product; it must be configured with a recipe before batching.
+          products: s.products.map((product) => product.recipeId === recipeId ? { ...product, recipeId: undefined } : product),
+        };
+      });
+    },
 
     addProduct(product) { setState((s) => ({ ...s, products: [...s.products, { ...product, id: `P-${slug(product.name).toUpperCase()}` }] })); },
+    updateProduct(productId, patch) { setState((s) => ({ ...s, products: s.products.map((product) => (product.id === productId ? { ...patch, id: productId } : product)) })); },
+    deleteProduct(productId) {
+      setState((s) => {
+        if (s.batches.some((batch) => batch.productId === productId) || s.recipes.some((recipe) => recipe.productId === productId)) return s;
+        return { ...s, products: s.products.filter((product) => product.id !== productId) };
+      });
+    },
     addPackSize(pack) { setState((s) => ({ ...s, packSizes: [...s.packSizes, { ...pack, id: `PK-${pack.grams}-${s.packSizes.length}` }] })); },
+    updatePackSize(packSizeId, patch) { setState((s) => ({ ...s, packSizes: s.packSizes.map((pack) => (pack.id === packSizeId ? { ...patch, id: packSizeId } : pack)) })); },
+    deletePackSize(packSizeId) {
+      setState((s) => {
+        if (s.batches.some((batch) => batch.records.some((record) => record.packaging?.packSizeId === packSizeId))) return s;
+        return { ...s, packSizes: s.packSizes.filter((pack) => pack.id !== packSizeId) };
+      });
+    },
     addSupplier(supplier) { setState((s) => ({ ...s, suppliers: [...s.suppliers, { ...supplier, id: `S-${slug(supplier.name).toUpperCase()}` }] })); },
+    updateSupplier(supplierId, patch) { setState((s) => ({ ...s, suppliers: s.suppliers.map((supplier) => (supplier.id === supplierId ? { ...patch, id: supplierId } : supplier)) })); },
+    deleteSupplier(supplierId) {
+      setState((s) => {
+        if (s.lots.some((lot) => lot.source.type === 'supplier' && lot.source.supplierId === supplierId)) return s;
+        return { ...s, suppliers: s.suppliers.filter((supplier) => supplier.id !== supplierId) };
+      });
+    },
     addUser(user) {
       setState((s) => ({ ...s, users: [...s.users, { ...user, id: `U-${Date.now()}`, initials: user.name.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase() }] }));
+    },
+    updateUser(userId, patch) {
+      setState((s) => ({
+        ...s,
+        users: s.users.map((user) => user.id === userId
+          ? { ...patch, id: userId, initials: patch.name.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase() }
+          : user),
+      }));
+    },
+    deleteUser(userId) {
+      setState((s) => {
+        const usedInAudit = s.batches.some((batch) => batch.records.some((record) => record.recordedBy === userId) || batch.holds.some((hold) => hold.placedBy === userId) || batch.corrections.some((correction) => correction.correctedBy === userId));
+        if (s.currentUserId === userId || usedInAudit) return s;
+        return { ...s, users: s.users.filter((user) => user.id !== userId) };
+      });
+    },
+    updateRoute(routeId, patch) {
+      setState((s) => ({ ...s, routes: s.routes.map((route) => route.id === routeId ? { ...route, ...patch } : route) }));
+    },
+    deleteRoute(routeId) {
+      setState((s) => {
+        if (s.products.some((product) => product.route === routeId) || s.batches.some((batch) => batch.route === routeId)) return s;
+        return { ...s, routes: s.routes.filter((route) => route.id !== routeId) };
+      });
     },
     setCurrentUser(id) { setState((s) => ({ ...s, currentUserId: id })); },
     setBusinessDetails(patch) { setState((s) => ({ ...s, business: { ...s.business, ...patch } })); },
     setThresholds(patch) { setState((s) => ({ ...s, thresholds: { ...s.thresholds, ...patch } })); },
     setStationVariance(station, value) { setState((s) => ({ ...s, thresholds: { ...s.thresholds, variancePct: { ...s.thresholds.variancePct, [station]: value } } })); },
     addOutputCategory(station, name, kind) { setState((s) => ({ ...s, outputCategories: [...s.outputCategories, { station, name, kind, custom: true }] })); },
-    resetData() { setState(seedState()); },
-
+    updateOutputCategory(index, patch) {
+      setState((s) => ({ ...s, outputCategories: s.outputCategories.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item) }));
+    },
+    deleteOutputCategory(index) { setState((s) => ({ ...s, outputCategories: s.outputCategories.filter((_, itemIndex) => itemIndex !== index) })); },
     signIn(email, password) {
       const wanted = email.trim().toLowerCase();
       const user = state.users.find((u) => (u.email ?? '').toLowerCase() === wanted && u.password === password);

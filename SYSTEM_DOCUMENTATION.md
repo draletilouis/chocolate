@@ -1,10 +1,10 @@
-# Cocoa Factory system documentation
+# Chocolate Factory system documentation
 
-This document explains the current implementation of the Cocoa Factory production-recording system. It is written from the source code in this repository and describes the behavior users get when running the app locally.
+This document explains the current implementation of the Chocolate Factory production-recording system. It is written from the source code in this repository and describes the behavior users get when running the app locally.
 
 ## 1. What the system does
 
-Cocoa Factory records the movement of material through a chocolate-production line:
+Chocolate Factory records the movement of material through a chocolate-production line:
 
 1. A worker starts or selects a batch.
 2. The worker confirms the input at a station.
@@ -257,27 +257,26 @@ Alerts appear in the Overview, in the production navigation counts, on batch pag
 | `/production/batches/[id]/record/[station]` | Records input, outputs/counts, destinations, and completion. |
 | `/materials` | Filters and lists all material lots. |
 | `/materials/receive` | Records a supplier delivery and creates a lot. |
-| `/materials/[lot]` | Shows lot quantities and upstream/downstream traceability. |
+| `/materials/[lot]` | Shows lot quantities and upstream/downstream traceability; edits/deletes unused supplier lots only. |
 | `/recipes` | Lists recipes, current versions, and batch usage. |
-| `/recipes/[id]` | Shows versions, adds a new version, and compares expected versus actual ingredients by batch. |
+| `/recipes/[id]` | Edits recipe labels, adds immutable versions, deletes recipes unused by batches, and compares expected versus actual ingredients by batch. |
 | `/reports/losses` | Shows weight loss by batch/stage, follows one batch, and aggregates loss by process. |
 | `/reports/variance` | Filters station records and compares waste, by-products, variance, and limits. |
 | `/reports/batches` | Lists all batches and their routes/statuses/summary quantities. |
 | `/reports/corrections` | Audits all output corrections. |
 | `/reports/holds` | Audits all holds and releases. |
 | `/setup/business` | Edits the business name and contact details rendered on reports. |
-| `/setup/products` | Lists and adds products and route/recipe associations. |
-| `/setup/pack-sizes` | Lists and adds packaging sizes. |
-| `/setup/paper-catalog` | Shows the printed row labels transcribed from the supplied Tempering, Production, Bean, ready-product, packaging-item, and weekly-usage forms. |
-| `/setup/outputs` | Lists and adds station output rows. |
-| `/setup/routes` | Displays the configured route sequences. |
-| `/setup/suppliers` | Lists and adds suppliers. |
-| `/setup/users` | Lists staff accounts and changes the user used for recording. |
-| `/setup/alerts` | Edits thresholds and resets sample data. |
+| `/setup/products` | Lists, adds, edits, and guarded-deletes products and route/recipe associations. |
+| `/setup/pack-sizes` | Lists, adds, edits, and guarded-deletes packaging sizes. |
+| `/setup/outputs` | Lists, adds, edits, and deletes station output rows for future station forms. |
+| `/setup/routes` | Edits route names, starting material and notes; station order stays structural and route deletion is guarded. |
+| `/setup/suppliers` | Lists, adds, edits, and guarded-deletes suppliers. |
+| `/setup/users` | Lists, adds, edits, and guarded-deletes staff accounts; also changes the user used for recording. |
+| `/setup/alerts` | Edits thresholds. |
 
-`/reports` redirects to `/reports/losses`; `/setup` redirects to `/setup/products`.
+`/reports` redirects to `/reports/losses`; `/setup` redirects to `/setup/products`. The former `/setup/paper-catalog` URL redirects to `/setup/products`.
 
-All report sections support a duration filter for preset periods or a custom date range. Their export dialog defaults to an Excel-compatible CSV and also supports print/PDF output. Exported reports include the configured business details from `/setup/business`.
+All report sections support a duration filter for preset periods or a custom date range. Their export dialog defaults to a StockMaster-style Excel workbook (`.xlsx`) with a Summary sheet and separate filterable detail sheets; a flat CSV and print/PDF output are also available. Exported reports include the configured business details from `/setup/business`.
 
 ## 12. Setup data and configuration
 
@@ -289,8 +288,11 @@ The Setup screens mutate the same browser state used by production:
 - Users receive generated IDs and initials.
 - Recipe versions must total exactly 100% (within 0.01 percentage points) before saving.
 - Output categories are the rows shown on station recording forms and can be extended with custom rows.
+- Setup edits preserve entity IDs so existing references remain valid. Delete actions enforce dependency checks in the store as well as disabling unsafe UI actions.
+- Routes keep their station sequence fixed because station IDs are part of production and report logic; only route descriptive fields are editable.
+- Recipe version history, station measurements, holds, corrections, and production-created lots are audit data, not disposable setup rows.
 
-The seed configuration includes the bean and liquor products, seven paper-listed chocolate strengths (four marked catalog-only because no verified recipe quantities were visible), three recipes, the paper pack sizes (7 g, 45 g, 80 g, 200 g sachet, and 1 kg), three suppliers, five demo users, three routes, threshold values, sample lots, sample batches, and a `paperCatalog` containing the transcribed form rows. `resetData()` replaces the in-memory state with a fresh cloned seed state. Because the app is browser-local, the reset affects only the browser profile being used. Blank cells and unclear handwritten annotations from the photographs are intentionally not seeded as measurements.
+The seed configuration includes the bean and liquor products, three verified chocolate products/recipes, the paper pack sizes (7 g, 45 g, 80 g, 200 g sachet, and 1 kg), three suppliers, five demo users, three routes, threshold values, sample lots, and sample batches. The app remains browser-local; sample data is initialized for the current browser profile and there is no in-app reset action.
 
 ## 13. Navigation and visual system
 
@@ -333,6 +335,6 @@ The current app is a browser-local prototype/demo rather than a production deplo
 - IDs are generated from the current browser state and are not safe for concurrent multi-user creation.
 - Weights are recorded in kilograms and rounded to two decimals; Packaging also stores accepted units.
 - Setup changes apply immediately to the current browser's forms and reports.
-- The seeded data is intentionally representative sample data and can be reset from Setup → Alert thresholds.
+- The seeded data is intentionally representative sample data. A production deployment should replace it with server-backed tenant data.
 
 For a production rollout, the store actions would need to move behind an authenticated server/API, with database transactions for batch/lots, server-side validation, role-based permissions, and conflict-safe ID generation.

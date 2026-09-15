@@ -44,7 +44,7 @@ export function Shell({ children }: { children: ReactNode }) {
       <aside className="sidebar hidden md:flex">
         <Link href="/production" className="nav-brand">
           <span className="brand-logo-shell" aria-hidden="true">CF</span>
-          <span className="brand-app">Cocoa Factory</span>
+          <span className="brand-app">Chocolate Factory</span>
           <span className="brand-sub">Production records</span>
         </Link>
         <nav className="nav-menu" aria-label="Main navigation">
@@ -102,7 +102,7 @@ export function Shell({ children }: { children: ReactNode }) {
       <header className="mobile-header md:hidden">
         <Link href="/production" className="flex items-center gap-2.5">
           <span className="avatar is-small" style={{ background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', color: '#1A3862', border: '1px solid #cbd5e1' }}>CF</span>
-          <span className="text-[15px] font-extrabold tracking-tight">Cocoa Factory</span>
+          <span className="text-[15px] font-extrabold tracking-tight">Chocolate Factory</span>
         </Link>
         <span className="flex items-center gap-2">
           <span className="text-[13px] font-bold text-green">{active.label}</span>

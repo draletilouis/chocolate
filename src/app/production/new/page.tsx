@@ -23,7 +23,7 @@ export default function NewBatchPage() {
   const [ingredientLots, setIngredientLots] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
 
-  const batchableProducts = store.products.filter((p) => !p.catalogOnly);
+  const batchableProducts = store.products.filter((p) => p.route !== 'chocolate' || !!p.recipeId);
 
   const product = batchableProducts.find((p) => p.id === productId);
   const route = store.routes.find((r) => r.id === product?.route);

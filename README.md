@@ -2,7 +2,7 @@
 
 A simple recording system for a chocolate factory production line. Workers open a station, choose a batch, confirm the input, enter the weights they measured, and the system calculates the balance (measured output, useful output, waste, by-products, unaccounted variance, yield and percentages). Split outputs are assigned destinations separately; only what is carried forward becomes the input of the next station.
 
-Stack: Next.js (App Router), React, TypeScript, Tailwind CSS v4, Lucide icons. Data is sample data kept in the browser (`localStorage`); reset it from **Setup → Alert thresholds → Reset sample data**. The paper-form row labels are transcribed under **Setup → Paper catalog**.
+Stack: Next.js (App Router), React, TypeScript, Tailwind CSS v4, Lucide icons. Data is sample data kept in the browser (`localStorage`).
 
 The UI follows the StockMaster (Lefori) design system: Montserrat, navy primary with orange accent, a white 260px sidebar with an orange-edged active item, a fixed top bar with the page title, white sectioned cards, pill sub-navigation, uppercase slate table headers, pill status badges, and a bottom navigation bar on phones. The shared classes live in `src/app/globals.css` and are used through `src/components/ui.tsx` and `src/components/Shell.tsx`.
 
@@ -36,4 +36,4 @@ node browser-check.cjs   # needs the dev server running; uses Playwright with Mi
 - `src/app/production/**` – production line, station queues, batch timeline, station recording flow
 - `src/app/materials`, `recipes`, `reports`, `setup` – supporting screens
 
-For day-to-day instructions, see the [Cocoa Factory user guide](USER_GUIDE.md). For the data model, implementation details, calculations, routes, alerts, traceability, and current limitations, see [SYSTEM_DOCUMENTATION.md](SYSTEM_DOCUMENTATION.md).
+For day-to-day instructions, see the [Chocolate Factory user guide](USER_GUIDE.md). For the data model, implementation details, calculations, routes, alerts, traceability, and current limitations, see [SYSTEM_DOCUMENTATION.md](SYSTEM_DOCUMENTATION.md).

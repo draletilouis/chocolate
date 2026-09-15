@@ -1,4 +1,4 @@
-// End-to-end interaction audit for the local Cocoa Factory demo.
+// End-to-end interaction audit for the local Chocolate Factory demo.
 // Run with the dev server on http://127.0.0.1:3100:
 //   $env:AUDIT_PHASE='before'; node interaction-audit.cjs
 //   $env:AUDIT_PHASE='after';  node interaction-audit.cjs
@@ -341,7 +341,7 @@ async function navigationAndFilters(page) {
     const report = { phase, generatedAt: new Date().toISOString(), totalActions: records.length, errors, records };
     fs.writeFileSync(path.join(OUT, 'interaction-audit.json'), JSON.stringify(report, null, 2));
     const lines = [
-      `# Cocoa Factory interaction audit (${phase})`,
+      `# Chocolate Factory interaction audit (${phase})`,
       '',
       `Generated: ${report.generatedAt}`,
       `Recorded actions: ${report.totalActions}`,

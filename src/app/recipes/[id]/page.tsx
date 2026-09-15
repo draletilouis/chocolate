@@ -1,9 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
-import { Check, Plus } from 'lucide-react';
+import { Check, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Back, Badge, Button, Empty, Field, Input, LinkButton, Notice, PageHeader, Panel, Table, td, tdNum } from '@/components/ui';
 import { round2 } from '@/lib/balance';
 import { batchDisplayName } from '@/lib/derive';
@@ -12,15 +12,19 @@ import { useStore } from '@/lib/store';
 
 export default function RecipePage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const store = useStore();
   const recipe = store.recipes.find((r) => r.id === id);
   const [adding, setAdding] = useState(false);
+  const [editingName, setEditingName] = useState(false);
   const [draft, setDraft] = useState<{ name: string; percent: string }[]>([]);
   const [note, setNote] = useState('');
   if (!recipe) return <Empty>Recipe {id} was not found.</Empty>;
 
   const product = store.products.find((p) => p.id === recipe.productId);
+  const allRecipeBatches = store.batches.filter((b) => b.recipeId === recipe.id);
   const batches = store.batches.filter((b) => b.recipeId === recipe.id && b.ingredients);
+  const canDelete = allRecipeBatches.length === 0;
   const total = round2(draft.reduce((s, d) => s + (Number(d.percent) || 0), 0));
 
   function startDraft() {
@@ -39,7 +43,14 @@ export default function RecipePage() {
     <>
       <Back href="/recipes" label="Recipes" />
       <PageHeader eyebrow="Recipe" title={recipe.name} subtitle={`Product: ${product?.name ?? recipe.productId} · current version v${recipe.currentVersion}`}
-        action={<><LinkButton variant="secondary" href="/production/new">Start a batch</LinkButton>{!adding && <Button onClick={startDraft}><Plus size={15} /> New version</Button>}</>} />
+        action={<div className="flex flex-wrap justify-end gap-2"><LinkButton variant="secondary" href="/production/new">Start a batch</LinkButton><Button variant="secondary" onClick={() => setEditingName((value) => !value)}><Pencil size={14} /> Edit name</Button><Button variant="danger" disabled={!canDelete} title={canDelete ? 'Delete recipe' : 'Recipes used by batches cannot be deleted.'} onClick={() => { if (canDelete && window.confirm(`Delete recipe ${recipe.name}?`)) { store.deleteRecipe(recipe.id); router.push('/recipes'); } }}><Trash2 size={14} /> Delete</Button>{!adding && <Button onClick={startDraft}><Plus size={15} /> New version</Button>}</div>} />
+
+      {editingName && <Panel title="Edit recipe" subtitle="This changes the recipe label only. Existing version history remains unchanged.">
+        <form className="flex flex-wrap items-end gap-3 p-5" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); store.updateRecipe(recipe.id, { name: String(form.get('name')) }); setEditingName(false); }}>
+          <Field label="Recipe name" className="min-w-[240px] flex-1"><Input name="name" defaultValue={recipe.name} required /></Field>
+          <div className="flex gap-2"><Button variant="secondary" onClick={() => setEditingName(false)}>Cancel</Button><Button type="submit">Save changes</Button></div>
+        </form>
+      </Panel>}
 
       {adding && (
         <form onSubmit={submit}>
@@ -86,7 +97,7 @@ export default function RecipePage() {
           );
         })}
       </Panel>
-      {!adding && recipe.versions.length > 1 && <Notice tone="neutral">Older versions stay on record so past batches can still be compared with what they used.</Notice>}
+      {!adding && recipe.versions.length > 1 && <Notice tone="neutral">Older versions stay on record so past batches can still be compared with what they used. Versions cannot be edited or deleted after creation.</Notice>}
     </>
   );
 }

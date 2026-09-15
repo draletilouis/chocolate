@@ -1,6 +1,6 @@
-# Cocoa Factory user guide
+# Chocolate Factory user guide
 
-This guide explains how factory staff use Cocoa Factory to start batches, record production, manage materials, and review results.
+This guide explains how factory staff use Chocolate Factory to start batches, record production, manage materials, and review results.
 
 ## 1. Sign in
 
@@ -22,9 +22,7 @@ The main navigation is:
 - **Materials** — raw materials, intermediate products, by-products, rework, and finished-goods lots.
 - **Recipes** — recipe versions and ingredient comparisons.
 - **Reports** — losses, variance, batch history, corrections, and holds.
-- **Setup** — products, pack sizes, paper catalog, output rows, routes, suppliers, users, and thresholds.
-
-Use **Setup → Paper catalog** to review the printed row labels transcribed from the factory's paper forms. It is a reference catalog; blank cells and unclear handwritten annotations are not treated as production measurements.
+- **Setup** — products, pack sizes, output rows, routes, suppliers, users, and thresholds.
 
 On a phone, use the bottom navigation bar. On a desktop, use the sidebar. Numbers beside Production and Overview show active batches and alerts that need attention.
 
@@ -231,7 +229,7 @@ Open **Reports** and choose a section:
 - **Corrections** — see every changed weight, reason, time, and user.
 - **Holds** — see when holds were placed, why, by whom, and whether they were released.
 
-Use the duration filter on any report to select all time, today, this week, this month, this year, or a custom date range. Select **Export report** to download the selected report; the default **Excel spreadsheet (CSV)** format opens in Excel, and print/PDF is also available.
+Use the duration filter on any report to select all time, today, this week, this month, this year, or a custom date range. Select **Export report** to download the selected report; the default **Excel workbook (.xlsx)** contains a Summary sheet and separate filterable detail sheets. CSV and print/PDF options are also available.
 
 Use the Overview page for a quick view of active batches, alerts, completed batches, and recent station records.
 
@@ -253,7 +251,6 @@ Users with access to Setup can configure:
 - **Business details** — the business name and contact details shown on exported Excel and print/PDF reports.
 - **Products** — products, batch prefixes, routes, and recipes.
 - **Pack sizes** — grams per unit used in Packaging.
-- **Paper catalog** — the product, summary, ready-product, packaging-item, and weekly-usage rows transcribed from the paper forms.
 - **Output categories** — the standard rows workers see at each station.
 - **Routes** — the default station order for each batch type.
 - **Suppliers** — delivery sources and contact details.
@@ -261,6 +258,10 @@ Users with access to Setup can configure:
 - **Alert thresholds** — station variance limits, waste limit, and low-stock warning.
 
 Changes apply immediately in the current browser. Business details are saved with the browser data and are included in future reports.
+
+Setup rows can be edited with the pencil action and deleted with the trash action. Deletion is deliberately guarded: products used by recipes or batches, pack sizes used by packaging records, suppliers referenced by lots, routes used by products or batches, and users referenced by audit history cannot be deleted. Output rows can be removed, but this only changes the rows shown on future station forms; old records remain unchanged.
+
+Other editable areas follow the same traceability rule. Recipe names and batch names/notes can be changed; recipe versions, measured station records, holds, corrections, and production-created lots remain immutable history. Supplier lots can have their descriptive details corrected, and a lot can be deleted only when it is completely unused. A blank, unrecorded batch can be deleted; a batch with production history cannot.
 
 ## 15. Important operating notes
 
@@ -270,4 +271,3 @@ Changes apply immediately in the current browser. Business details are saved wit
 - Variance is reported separately from waste.
 - Save destinations after changing them; otherwise the batch cannot be completed.
 - The current demo stores data in this browser only. It is not shared between browsers or devices.
-- **Setup → Alert thresholds → Reset sample data** replaces the current browser data with the sample dataset.

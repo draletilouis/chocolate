@@ -3,7 +3,7 @@ import './globals.css';
 import { Shell } from '@/components/Shell';
 import { StoreProvider } from '@/lib/store';
 
-export const metadata = { title: 'Cocoa Factory · Production', description: 'Record what happens at every station of the chocolate production line' };
+export const metadata = { title: 'Chocolate Factory · Production', description: 'Record what happens at every station of the chocolate production line' };
 
 export default function Layout({ children }: { children: ReactNode }) {
   return (

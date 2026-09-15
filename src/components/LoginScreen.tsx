@@ -25,7 +25,7 @@ export function LoginScreen() {
         <div className="login-brand">
           <span className="login-brand-icon" aria-hidden="true">CF</span>
           <div>
-            <div className="login-brand-name">Cocoa Factory</div>
+            <div className="login-brand-name">Chocolate Factory</div>
             <div className="login-brand-sub">Production workspace</div>
           </div>
         </div>
@@ -47,7 +47,7 @@ export function LoginScreen() {
       <main className="login-right">
         <div className="login-form-area">
           <div className="login-form-card">
-            <div className="login-mobile-brand"><span className="login-brand-icon is-light" aria-hidden="true">CF</span><span className="login-mobile-wordmark">Cocoa Factory</span></div>
+            <div className="login-mobile-brand"><span className="login-brand-icon is-light" aria-hidden="true">CF</span><span className="login-mobile-wordmark">Chocolate Factory</span></div>
             <div className="login-form-header">
               <div className="login-form-eyebrow">Staff sign in</div>
               <h2 className="login-form-title">Enter your workspace</h2>

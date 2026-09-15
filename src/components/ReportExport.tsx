@@ -3,7 +3,7 @@
 import { Download, FileSpreadsheet, FileText, Printer, X } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Button, Field, Input, Select } from '@/components/ui';
-import { downloadReportCsv, openPrintableReport, type ReportExportSnapshot } from '@/lib/report-export';
+import { downloadReportCsv, downloadReportXlsx, openPrintableReport, type ReportExportSnapshot } from '@/lib/report-export';
 import type { BusinessDetails } from '@/lib/types';
 
 export type ProductionReportType = 'losses' | 'variance' | 'batches' | 'corrections' | 'holds';
@@ -27,7 +27,7 @@ const periodOptions: { id: ReportPeriod; label: string }[] = [
   { id: 'custom', label: 'Custom range' },
 ];
 
-type ExportFormat = 'csv' | 'pdf' | 'print';
+type ExportFormat = 'xlsx' | 'csv' | 'pdf' | 'print';
 
 interface ReportExportProps {
   current: ProductionReportType;
@@ -72,7 +72,7 @@ export function ReportExport({ current, business, buildSnapshot }: ReportExportP
   const [period, setPeriod] = useState<ReportPeriod>('all');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [format, setFormat] = useState<ExportFormat>('csv');
+  const [format, setFormat] = useState<ExportFormat>('xlsx');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -81,7 +81,7 @@ export function ReportExport({ current, business, buildSnapshot }: ReportExportP
       setPeriod('all');
       setFrom('');
       setTo('');
-      setFormat('csv');
+      setFormat('xlsx');
       setError('');
     }
   }, [current, open]);
@@ -95,7 +95,7 @@ export function ReportExport({ current, business, buildSnapshot }: ReportExportP
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [open]);
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const range = getReportRange(period, from, to);
 
@@ -105,9 +105,15 @@ export function ReportExport({ current, business, buildSnapshot }: ReportExportP
     }
 
     const snapshot = { ...buildSnapshot(reportType, range), business };
-    const opened = format === 'csv'
-      ? (downloadReportCsv(snapshot), true)
-      : openPrintableReport(snapshot, format === 'pdf');
+    let opened = true;
+    try {
+      if (format === 'xlsx') await downloadReportXlsx(snapshot);
+      else if (format === 'csv') downloadReportCsv(snapshot);
+      else opened = openPrintableReport(snapshot, format === 'pdf');
+    } catch {
+      setError('The report could not be generated. Please try again.');
+      return;
+    }
 
     if (!opened) {
       setError('The report window was blocked. Allow pop-ups for this app and try again.');
@@ -158,14 +164,16 @@ export function ReportExport({ current, business, buildSnapshot }: ReportExportP
 
               <Field label="Format">
                 <Select value={format} onChange={(event) => setFormat(event.target.value as ExportFormat)}>
-                  <option value="csv">Excel spreadsheet (CSV)</option>
+                  <option value="xlsx">Excel workbook (.xlsx)</option>
+                  <option value="csv">CSV spreadsheet</option>
                   <option value="pdf">PDF document (print dialog)</option>
                   <option value="print">Print view</option>
                 </Select>
               </Field>
 
               <p className="export-format-hint">
-                {format === 'csv' && <><FileSpreadsheet size={15} /> The Excel-compatible CSV includes each section of the selected report.</>}
+                {format === 'xlsx' && <><FileSpreadsheet size={15} /> A StockMaster-style workbook includes a Summary sheet and filterable detail sheets.</>}
+                {format === 'csv' && <><FileSpreadsheet size={15} /> A flat CSV includes each section of the selected report.</>}
                 {format === 'pdf' && <><FileText size={15} /> A print dialog opens; choose “Save as PDF” to download the document.</>}
                 {format === 'print' && <><Printer size={15} /> The report opens in a clean print view for paper or browser printing.</>}
               </p>
