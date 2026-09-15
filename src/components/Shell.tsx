@@ -34,7 +34,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const partSlug = pathname.startsWith('/production/parts/') ? pathname.split('/')[3] : undefined;
   const pageTitle = partSlug && groupBySlug(partSlug) ? `Production line · ${groupBySlug(partSlug)!.name}` : active.label;
 
-  // Stored data and the session are loaded after mount; wait so the sample data never flashes first.
+  // Stored data and the session are loaded after mount; wait so the initial setup never flashes first.
   if (!store.hydrated) return <p className="empty-state" aria-busy="true">Loading…</p>;
   if (!store.sessionUserId) return <LoginScreen />;
 

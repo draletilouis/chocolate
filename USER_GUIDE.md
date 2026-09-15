@@ -22,7 +22,7 @@ The main navigation is:
 - **Materials** — raw materials, intermediate products, by-products, rework, and finished-goods lots.
 - **Recipes** — recipe versions and ingredient comparisons.
 - **Reports** — losses, variance, batch history, corrections, and holds.
-- **Setup** — products, pack sizes, output rows, routes, suppliers, users, and thresholds.
+- **Setup** — products, pack sizes, paper catalog, output rows, routes, suppliers, users, and thresholds.
 
 Use **Setup → Paper catalog** to review the printed row labels transcribed from the factory's paper forms. It is a reference catalog; blank cells and unclear handwritten annotations are not treated as production measurements.
 
@@ -264,5 +264,5 @@ Changes apply immediately in the current browser.
 - By-products are tracked separately and are not counted as recorded waste.
 - Variance is reported separately from waste.
 - Save destinations after changing them; otherwise the batch cannot be completed.
-- The current demo stores data in this browser only. It is not shared between browsers or devices.
-- **Setup → Alert thresholds → Reset sample data** replaces the current browser data with the sample dataset.
+- The current system stores data in this browser only. It is not shared between browsers or devices.
+- **Setup → Alert thresholds → Reset to empty factory** clears recorded batches and material lots but keeps the setup and paper forms.
