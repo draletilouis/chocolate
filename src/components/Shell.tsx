@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BarChart3, ClipboardList, FlaskConical, LayoutDashboard, LogOut, Package, Settings2, type LucideIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { BarChart3, ChevronDown, ClipboardList, FlaskConical, LayoutDashboard, LogOut, Package, Settings2, type LucideIcon } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { activeBatches, allAlerts, stationQueue } from '@/lib/derive';
 import { useStore } from '@/lib/store';
 import { groupBySlug, stationGroups, stations } from '@/lib/stations';
@@ -26,6 +26,10 @@ export function Shell({ children }: { children: ReactNode }) {
   const counts = { alerts: allAlerts(store).length, batches: activeBatches(store).length };
   const user = store.users.find((u) => u.id === store.currentUserId);
   const active = navItems.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)) ?? navItems[1];
+  const [productionOpen, setProductionOpen] = useState(() => pathname.startsWith('/production'));
+  useEffect(() => {
+    if (pathname.startsWith('/production')) setProductionOpen(true);
+  }, [pathname]);
   // Each part of the line is its own sidebar entry under Production line.
   const parts = stationGroups.map((g) => ({
     href: `/production/parts/${g.slug}`, label: g.name,
@@ -44,31 +48,48 @@ export function Shell({ children }: { children: ReactNode }) {
       <aside className="sidebar hidden md:flex">
         <Link href="/production" className="nav-brand">
           <span className="brand-logo-shell" aria-hidden="true">CF</span>
-          <span className="brand-app">Chocolate Factory</span>
-          <span className="brand-sub">Production records</span>
+          <span className="brand-copy">
+            <span className="brand-app">Chocolate Factory</span>
+            <span className="brand-sub">Production records</span>
+          </span>
         </Link>
         <nav className="nav-menu" aria-label="Main navigation">
-          <div className="nav-section-label">Factory</div>
+          <div className="nav-section-label">Operations</div>
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = item === active;
             const count = item.count ? counts[item.count] : 0;
+            const countTone = item.count === 'alerts' ? 'is-alert' : item.count === 'batches' ? 'is-work' : '';
             return (
-              <div key={item.href}>
-                <Link href={item.href} aria-current={isActive ? 'page' : undefined} className={`nav-btn ${isActive ? 'active' : ''}`}>
-                  <Icon size={20} className="nav-icon" />
-                  <span className="nav-text">{item.label}</span>
-                  {count > 0 && <span className={`nav-count ${item.count === 'alerts' ? 'is-alert' : ''}`} aria-label={`${count} ${item.count}`}>{count}</span>}
-                </Link>
+              <div key={item.href} className={item.href === '/setup' ? 'nav-item-manage' : undefined}>
+                {item.href === '/setup' && <div className="nav-section-label nav-section-label-secondary">Manage</div>}
+                {item.href === '/production' ? (
+                  <div className={`nav-parent-row ${isActive ? 'active' : ''}`}>
+                    <Link href={item.href} aria-current={isActive ? 'page' : undefined} className="nav-btn nav-parent-link" aria-label={`${item.label}${count > 0 ? `, ${count} active batches` : ''}`}>
+                      <Icon size={20} className="nav-icon" />
+                      <span className="nav-text">{item.label}</span>
+                      {count > 0 && <span className={`nav-count ${countTone}`} aria-hidden="true">{count}</span>}
+                    </Link>
+                    <button type="button" className="nav-expand-button" aria-label={`${productionOpen ? 'Collapse' : 'Expand'} production line parts`} aria-expanded={productionOpen} aria-controls="production-sidebar-subnav" onClick={() => setProductionOpen((open) => !open)}>
+                      <ChevronDown size={16} aria-hidden="true" />
+                    </button>
+                  </div>
+                ) : (
+                  <Link href={item.href} aria-current={isActive ? 'page' : undefined} className={`nav-btn ${isActive ? 'active' : ''}`} aria-label={`${item.label}${count > 0 ? `, ${count} alerts` : ''}`}>
+                    <Icon size={20} className="nav-icon" />
+                    <span className="nav-text">{item.label}</span>
+                    {count > 0 && <span className={`nav-count ${countTone}`} aria-hidden="true">{count}</span>}
+                  </Link>
+                )}
                 {item.href === '/production' && (
-                  <div className="nav-sub" aria-label="Parts of the production line" role="group">
+                  <div id="production-sidebar-subnav" className={`nav-sub ${productionOpen ? '' : 'is-collapsed'}`} aria-label="Parts of the production line" role="group">
                     {parts.map((p, i) => {
                       const partActive = pathname === p.href;
                       return (
-                        <Link key={p.href} href={p.href} aria-current={partActive ? 'page' : undefined} className={`nav-sub-btn ${partActive ? 'active' : ''}`}>
+                        <Link key={p.href} href={p.href} aria-current={partActive ? 'page' : undefined} className={`nav-sub-btn ${partActive ? 'active' : ''}`} aria-label={`${p.label}${p.waiting > 0 ? `, ${p.waiting} waiting` : ''}`}>
                           <span className="nav-sub-index">{i + 1}</span>
                           <span className="nav-text">{p.label}</span>
-                          {p.waiting > 0 && <span className="nav-count" aria-label={`${p.waiting} waiting`}>{p.waiting}</span>}
+                          {p.waiting > 0 && <span className="nav-count is-queue" aria-hidden="true">{p.waiting}</span>}
                         </Link>
                       );
                     })}
@@ -79,7 +100,7 @@ export function Shell({ children }: { children: ReactNode }) {
           })}
         </nav>
         <div className="nav-footer flex items-center justify-between gap-2">
-          <Link href="/setup/users" className="app-topbar-profile min-w-0" style={{ padding: 4 }}>
+          <Link href="/setup/users" className="nav-profile min-w-0" title="Open user settings">
             <span className="avatar is-small">{user?.initials}</span>
             <span className="min-w-0"><span className="profile-name block truncate">{user?.name}</span><span className="profile-role block truncate">{user?.role}</span></span>
           </Link>
@@ -87,15 +108,10 @@ export function Shell({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      {/* Desktop top bar: page title + who is recording */}
+      {/* Desktop top bar: page title */}
       <header className="app-topbar hidden md:flex">
         <div className="app-topbar-page-title">{pageTitle}</div>
         <div className="app-topbar-spacer" />
-        <Link href="/setup/users" className="app-topbar-profile" title="Signed in as">
-          <span className="avatar">{user?.initials}</span>
-          <span className="hidden lg:block"><span className="profile-name block">{user?.name}</span><span className="profile-role">{user?.role}</span></span>
-        </Link>
-        <button type="button" className="btn btn-secondary" onClick={store.signOut} aria-label="Sign out" title="Sign out"><LogOut size={16} /> <span className="hidden lg:inline">Sign out</span></button>
       </header>
 
       {/* Mobile header */}
@@ -121,11 +137,12 @@ export function Shell({ children }: { children: ReactNode }) {
             const Icon = item.icon;
             const isActive = item === active;
             const count = item.count ? counts[item.count] : 0;
+            const countTone = item.count === 'alerts' ? 'is-alert' : item.count === 'batches' ? 'is-work' : '';
             return (
-              <Link key={item.href} href={item.href} aria-current={isActive ? 'page' : undefined} className={`bottom-nav-btn ${isActive ? 'active' : ''}`}>
+              <Link key={item.href} href={item.href} aria-current={isActive ? 'page' : undefined} className={`bottom-nav-btn ${isActive ? 'active' : ''}`} aria-label={`${item.label}${count > 0 ? `, ${count} ${item.count === 'alerts' ? 'alerts' : 'active batches'}` : ''}`}>
                 <Icon size={22} strokeWidth={1.8} />
                 <span>{item.short ?? item.label}</span>
-                {count > 0 && <span className={`bottom-nav-badge ${item.count === 'alerts' ? 'is-alert' : ''}`}>{count}</span>}
+                {count > 0 && <span className={`bottom-nav-badge ${countTone}`} aria-hidden="true">{count}</span>}
               </Link>
             );
           })}

@@ -132,13 +132,17 @@ Each `StationRecord` stores:
 
 Re-entering a station updates its existing record rather than adding a duplicate station record. Existing destinations for outputs with the same name are retained while new weights are entered. The record is marked `destinationsSaved: false` until its destinations are saved again.
 
+The batch page also exposes a process-by-process weight view. Every process record is keyed by the batch and station, so multiple batches can carry independent weights at the same station. A process may be entered out of order from this view when a scale log is available; the entry stores its explicit input weight and does not change `nextStation` or the normal production sequence.
+
 ## 6. Recording a station
 
 The route `/production/batches/[id]/record/[station]` implements a four-step station flow:
 
 ### Step 1: Confirm input
 
-`nextInput()` looks for the most recent settled record and selects outputs whose destination is `continue:<current station>`. Their names are joined and their weights are summed. If no station has been recorded, the batch's `startInput` is used.
+`nextInput()` finds the recorded output(s) whose destination is `continue:<current station>`. Their names are joined and their weights are summed. If the batch is at its first route station, or no station has been recorded, the batch's `startInput` is used.
+
+For an independent entry, the operator enters the input weight for that process directly. `nextInput()` resolves the normal workflow input by the output that explicitly targets `nextStation`, so out-of-order records do not replace the material waiting at the active step.
 
 The worker can accept the carried-forward weight or enable a reweigh adjustment. If no material was carried forward, the worker must enter a positive starting weight manually.
 
@@ -253,7 +257,7 @@ Alerts appear in the Overview, in the production navigation counts, on batch pag
 | `/production/new` | Starts a bean, pressing, or chocolate batch. |
 | `/production/parts/[part]` | Shows batches waiting in one line part and lists its stations. |
 | `/production/stations/[station]` | Shows a station's ready, held, and recently recorded queues. |
-| `/production/batches/[id]` | Shows the batch timeline, actions, recipe comparison, holds, corrections, and alerts. |
+| `/production/batches/[id]` | Shows process-by-process weights and statuses, the batch timeline, actions, recipe comparison, holds, corrections, and alerts. |
 | `/production/batches/[id]/record/[station]` | Records input, outputs/counts, destinations, and completion. |
 | `/materials` | Filters and lists all material lots. |
 | `/materials/receive` | Records a supplier delivery and creates a lot. |

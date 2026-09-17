@@ -15,6 +15,14 @@ const SESSION_KEY = 'cocoa-session';
 
 export interface MeasuredOutput { name: string; kind: OutputKind; weight: number }
 
+/** Optional controls used when a process is recorded from the batch view. */
+export interface RecordOptions {
+  /** Keep the batch's normal next station unchanged for an out-of-order entry. */
+  advanceWorkflow?: boolean;
+  /** Explicit material label for an independently entered process. */
+  inputMaterial?: string;
+}
+
 export interface NewBatchInput {
   productId: string;
   name?: string;
@@ -38,9 +46,9 @@ export interface NewLotInput {
 
 interface Actions {
   createBatch: (input: NewBatchInput) => string;
-  saveMeasurements: (batchId: string, station: StationId, inputWeight: number, outputs: MeasuredOutput[], note?: string) => string;
-  savePackaging: (batchId: string, inputWeight: number, packSizeId: string, totalUnits: number, rejectedUnits: number, note?: string) => string;
-  saveDestinations: (batchId: string, recordId: string, destinations: Record<string, Destination>) => void;
+  saveMeasurements: (batchId: string, station: StationId, inputWeight: number, outputs: MeasuredOutput[], note?: string, options?: RecordOptions) => string;
+  savePackaging: (batchId: string, inputWeight: number, packSizeId: string, totalUnits: number, rejectedUnits: number, note?: string, options?: RecordOptions) => string;
+  saveDestinations: (batchId: string, recordId: string, destinations: Record<string, Destination>, options?: RecordOptions) => void;
   completeBatch: (batchId: string, note?: string) => void;
   updateBatchDetails: (batchId: string, patch: { name?: string; note?: string }) => void;
   deleteBatch: (batchId: string) => void;
@@ -176,7 +184,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return id;
     },
 
-    saveMeasurements(batchId, station, inputWeight, outputs, note) {
+    saveMeasurements(batchId, station, inputWeight, outputs, note, options) {
       const recordId = `${station}-${now()}`;
       updateBatch(batchId, (b) => {
         const existing = b.records.find((r) => r.station === station);
@@ -187,8 +195,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             destination: existing?.outputs.find((e) => e.name === o.name)?.destination ?? defaultDestination(station, o.kind, i),
           }));
         const record: StationRecord = {
-          id: existing?.id ?? recordId, station, inputMaterial: existing?.inputMaterial ?? (b.records.length ? b.records.at(-1)!.outputs.filter((o) => o.destination === `continue:${station}`).map((o) => o.name).join(' + ') || stationById[station].input : b.startInput.material),
-          inputWeight: round2(inputWeight), inputLotIds: existing?.inputLotIds ?? (b.records.length ? [] : b.startInput.lotIds),
+          id: existing?.id ?? recordId, station, inputMaterial: existing?.inputMaterial ?? options?.inputMaterial ?? (b.records.length ? b.records.at(-1)!.outputs.filter((o) => o.destination === `continue:${station}`).map((o) => o.name).join(' + ') || stationById[station].input : b.startInput.material),
+          inputWeight: round2(inputWeight), inputLotIds: existing?.inputLotIds ?? (options?.inputMaterial ? [] : b.records.length ? [] : b.startInput.lotIds),
           outputs: recorded, recordedAt: now(), recordedBy: state.currentUserId, note, destinationsSaved: false,
         };
         const records = existing ? b.records.map((r) => (r.station === station ? record : r)) : [...b.records, record];
@@ -197,7 +205,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return recordId;
     },
 
-    savePackaging(batchId, inputWeight, packSizeId, totalUnits, rejectedUnits, note) {
+    savePackaging(batchId, inputWeight, packSizeId, totalUnits, rejectedUnits, note, options) {
       const recordId = `packaging-${now()}`;
       updateBatch(batchId, (b, s) => {
         const pack = s.packSizes.find((p) => p.id === packSizeId)!;
@@ -209,7 +217,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ];
         const outputs = all.filter((o) => o.weight > 0 || o.name === 'Accepted units');
         const record: StationRecord = {
-          id: existing?.id ?? recordId, station: 'packaging', inputMaterial: 'Finished chocolate', inputWeight: round2(inputWeight), inputLotIds: [],
+          id: existing?.id ?? recordId, station: 'packaging', inputMaterial: existing?.inputMaterial ?? options?.inputMaterial ?? 'Finished chocolate', inputWeight: round2(inputWeight), inputLotIds: [],
           outputs, packaging: { packSizeId, packGrams: pack.grams, totalUnits, rejectedUnits, acceptedUnits, acceptedWeight },
           recordedAt: now(), recordedBy: state.currentUserId, note, destinationsSaved: false,
         };
@@ -218,7 +226,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return recordId;
     },
 
-    saveDestinations(batchId, recordId, destinations) {
+    saveDestinations(batchId, recordId, destinations, options) {
       const stamp = now();
       updateBatch(batchId, (b) => {
         const record = b.records.find((r) => r.id === recordId);
@@ -226,7 +234,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const outputs = record.outputs.map((o) => ({ ...o, destination: destinations[o.name] ?? o.destination, lotId: undefined }));
         const continued = outputs.map((o) => o.destination).find((d): d is `continue:${StationId}` => d.startsWith('continue:'));
         const nextStation: StationId = continued ? (continued.slice(9) as StationId) : 'completion';
-        return { ...b, nextStation, records: b.records.map((r) => (r.id === recordId ? { ...r, outputs, destinationsSaved: true } : r)) };
+        return { ...b, ...(options?.advanceWorkflow === false ? {} : { nextStation }), records: b.records.map((r) => (r.id === recordId ? { ...r, outputs, destinationsSaved: true } : r)) };
       }, (s, batch) => {
         const record = batch.records.find((r) => r.id === recordId)!;
         // Replace lots this record created before, then create lots for outputs stored or sent to rework.

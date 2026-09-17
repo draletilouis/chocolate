@@ -1,6 +1,6 @@
 import { calculateBalance } from './balance';
 import { stationById, stationName } from './stations';
-import type { State } from './seed';
+import { routes, type State } from './seed';
 import type { Alert, Batch, Lot, StationId, StationRecord } from './types';
 
 export const recordBalance = (r: StationRecord) => calculateBalance(r.inputWeight, r.outputs);
@@ -15,11 +15,14 @@ export const currentStation = (batch: Batch): StationId | null => lastRecord(bat
 
 /** Material and weight that will be the input of the batch's next station */
 export function nextInput(batch: Batch): { material: string; weight: number; lotIds: string[] } {
-  // While a station's destinations are still unsaved, that record is not the previous step yet.
-  const settled = batch.records.filter((r) => r.station !== batch.nextStation);
-  const last = settled.at(-1);
-  if (!last) return batch.startInput;
-  const carried = last.outputs.filter((o) => o.destination === `continue:${batch.nextStation}`);
+  if (!batch.nextStation) return { material: 'No material carried forward', weight: 0, lotIds: [] };
+
+  // Find the record that explicitly feeds the next station. This stays correct when a
+  // batch has a later process entered independently from its batch view.
+  const carriedFrom = batch.records.filter((r) => r.outputs.some((o) => o.destination === `continue:${batch.nextStation}`)).at(-1);
+  const firstStation = routes.find((route) => route.id === batch.route)?.stations[0];
+  if (!carriedFrom && (batch.records.length === 0 || firstStation === batch.nextStation)) return batch.startInput;
+  const carried = carriedFrom?.outputs.filter((o) => o.destination === `continue:${batch.nextStation}`) ?? [];
   if (carried.length === 0) return { material: 'No material carried forward', weight: 0, lotIds: [] };
   return {
     material: carried.map((o) => o.name).join(' + '),

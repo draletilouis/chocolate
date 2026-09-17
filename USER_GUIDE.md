@@ -102,6 +102,8 @@ After saving, you can:
 - record the next station; or
 - review and complete the batch when all stations are finished.
 
+From a batch page, the **Process weights** panel shows every process for that batch with its own status, input weight, measured output and variance. Use **Record weights** for the next process in the normal flow. Use **Enter independently** when a later process's scale log is available before the batch reaches it; this saves that process against the selected batch without changing the batch's next step.
+
 ## 5. Understand the calculated balance
 
 The balance is based on the confirmed input and the measured outputs:

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { AlertTriangle, ArrowRight, Check, CheckCircle2, Plus, Trash2 } from 'lucide-react';
 import { Back, Badge, Button, Empty, Field, LinkButton, Notice, PageHeader, Panel, Select, UnitInput, inputClass } from '@/components/ui';
@@ -17,6 +17,8 @@ interface Row { name: string; kind: OutputKind; weight: string; custom: boolean 
 
 export default function RecordPage() {
   const { id, station: stationParam } = useParams<{ id: string; station: string }>();
+  const searchParams = useSearchParams();
+  const independent = searchParams.get('mode') === 'independent';
   const store = useStore();
   const batch = batchById(store, id);
   if (!batch) return <Empty>Batch {id} was not found.</Empty>;
@@ -37,7 +39,7 @@ export default function RecordPage() {
   if (batch.status === 'completed' && station.form !== 'completion' && !record) {
     return <><Back href={`/production/batches/${batch.id}`} label={`Batch ${batchDisplayName(batch)}`} /><Notice tone="neutral">{batchDisplayName(batch)} is completed. Nothing more can be recorded.</Notice></>;
   }
-  if (!record && batch.nextStation !== station.id) {
+  if (!record && batch.nextStation !== station.id && !independent) {
     return (
       <>
         <Back href={`/production/stations/${station.id}`} label={station.name} />
@@ -48,19 +50,29 @@ export default function RecordPage() {
   }
 
   if (station.form === 'completion') return <CompletionScreen batch={batch} />;
-  return <StationForm key={`${batch.id}-${station.id}`} batch={batch} station={station} record={record} />;
+  return <StationForm key={`${batch.id}-${station.id}-${independent ? 'independent' : 'flow'}`} batch={batch} station={station} record={record} independent={independent} />;
 }
 
-function StationForm({ batch, station, record }: { batch: Batch; station: Station; record?: StationRecord }) {
+function StationForm({ batch, station, record, independent }: { batch: Batch; station: Station; record?: StationRecord; independent: boolean }) {
   const store = useStore();
   const router = useRouter();
   const ready = nextInput(batch);
   const [step, setStep] = useState<Step>(record ? (record.destinationsSaved ? 'done' : 'destinations') : 'input');
-  const [inputWeight, setInputWeight] = useState(String(record?.inputWeight ?? ready.weight));
+  const [inputWeight, setInputWeight] = useState(String(record?.inputWeight ?? (independent ? '' : ready.weight)));
   const [adjusting, setAdjusting] = useState(false);
-  const [rows, setRows] = useState<Row[]>(() => store.outputCategories.filter((c) => c.station === station.id).map((c) => ({ name: c.name, kind: c.kind, weight: '', custom: false })));
-  const [pack, setPack] = useState({ packSizeId: store.packSizes[0]?.id ?? '', totalUnits: '', rejectedUnits: '0' });
-  const [note, setNote] = useState('');
+  const [rows, setRows] = useState<Row[]>(() => {
+    const configured = store.outputCategories.filter((c) => c.station === station.id);
+    const existing = new Map((record?.outputs ?? []).map((output) => [output.name, output]));
+    const configuredNames = new Set(configured.map((category) => category.name));
+    return [
+      ...configured.map((category) => ({ name: category.name, kind: category.kind, weight: existing.get(category.name) ? String(existing.get(category.name)!.weight) : '', custom: false })),
+      ...(record?.outputs ?? []).filter((output) => !configuredNames.has(output.name)).map((output) => ({ name: output.name, kind: output.kind, weight: String(output.weight), custom: true })),
+    ];
+  });
+  const [pack, setPack] = useState(() => record?.packaging
+    ? { packSizeId: record.packaging.packSizeId, totalUnits: String(record.packaging.totalUnits), rejectedUnits: String(record.packaging.rejectedUnits) }
+    : { packSizeId: store.packSizes[0]?.id ?? '', totalUnits: '', rejectedUnits: '0' });
+  const [note, setNote] = useState(record?.note ?? '');
   const [destinations, setDestinations] = useState<Record<string, Destination>>({});
   const [error, setError] = useState('');
 
@@ -81,11 +93,11 @@ function StationForm({ batch, station, record }: { batch: Batch; station: Statio
       const total = Number(pack.totalUnits), rejected = Number(pack.rejectedUnits) || 0;
       if (!(total > 0)) return setError('Enter the total units made.');
       if (rejected > total) return setError('Rejected units cannot be more than the total made.');
-      store.savePackaging(batch.id, input, pack.packSizeId, total, rejected, note || undefined);
+      store.savePackaging(batch.id, input, pack.packSizeId, total, rejected, note || undefined, independent ? { advanceWorkflow: false, inputMaterial: station.input } : undefined);
     } else {
       const outputs = rows.filter((r) => Number(r.weight) > 0).map((r) => ({ name: r.name.trim() || 'Other output', kind: r.kind, weight: Number(r.weight) }));
       if (outputs.length === 0) return setError('Enter at least one measured weight.');
-      store.saveMeasurements(batch.id, station.id, input, outputs, note || undefined);
+      store.saveMeasurements(batch.id, station.id, input, outputs, note || undefined, independent ? { advanceWorkflow: false, inputMaterial: station.input } : undefined);
     }
     setStep('destinations');
     window.scrollTo({ top: 0 });
@@ -93,7 +105,7 @@ function StationForm({ batch, station, record }: { batch: Batch; station: Statio
 
   function saveDestinations() {
     if (!record) return;
-    store.saveDestinations(batch.id, record.id, destinations);
+    store.saveDestinations(batch.id, record.id, destinations, independent ? { advanceWorkflow: false } : undefined);
     setStep('done');
     window.scrollTo({ top: 0 });
   }
@@ -101,28 +113,29 @@ function StationForm({ batch, station, record }: { batch: Batch; station: Statio
   const summary = (
     <div className="grid gap-x-6 gap-y-2 rounded-xl border border-line bg-white px-5 py-4 text-[14px] sm:grid-cols-3">
       <div><span className="block text-[11px] font-bold tracking-wide text-faint uppercase">Batch</span><strong>{batchDisplayName(batch)}</strong>{batch.name && <span className="ml-2 text-[11px] text-muted">ID {batch.id}</span>} <span className="text-muted">{batch.product}</span></div>
-      <div><span className="block text-[11px] font-bold tracking-wide text-faint uppercase">Input material</span>{record?.inputMaterial ?? ready.material}</div>
+      <div><span className="block text-[11px] font-bold tracking-wide text-faint uppercase">Input material</span>{record?.inputMaterial ?? (independent ? station.input : ready.material)}</div>
       <div><span className="block text-[11px] font-bold tracking-wide text-faint uppercase">Input weight</span><strong className="tabular-nums">{kg(record?.inputWeight ?? input)}</strong></div>
     </div>
   );
 
   return (
     <>
-      <Back href={`/production/stations/${station.id}`} label={`${station.name} queue`} />
-      <PageHeader eyebrow={`Step ${['input', 'outputs', 'destinations', 'done'].indexOf(step) + 1} of 4 · ${station.group}`} title={`${station.name} · ${batchDisplayName(batch)}`} subtitle={<>{station.help} · ID {batch.id}</>} />
+      <Back href={independent ? `/production/batches/${batch.id}` : `/production/stations/${station.id}`} label={independent ? `Batch ${batchDisplayName(batch)}` : `${station.name} queue`} />
+      <PageHeader eyebrow={`${independent ? 'Independent entry · ' : ''}Step ${['input', 'outputs', 'destinations', 'done'].indexOf(step) + 1} of 4 · ${station.group}`} title={`${station.name} · ${batchDisplayName(batch)}`} subtitle={<>{station.help} · ID {batch.id}</>} />
 
       {step === 'input' && (
         <>
           <div className="mb-4">{summary}</div>
-          {ready.weight <= 0 && <Notice tone="warn" icon={AlertTriangle}>No material was carried forward to this station. Enter the weight you are starting with.</Notice>}
-          <Panel title="Confirm the input" subtitle="This is what the previous station sent here. Adjust it only if you reweighed it.">
+          {independent && <Notice tone="neutral">This process will be saved against {batchDisplayName(batch)} without changing its current next step. Enter the scale reading from this process, even if another process is still waiting.</Notice>}
+          {!independent && ready.weight <= 0 && <Notice tone="warn" icon={AlertTriangle}>No material was carried forward to this station. Enter the weight you are starting with.</Notice>}
+          <Panel title={independent ? 'Enter the input for this process' : 'Confirm the input'} subtitle={independent ? 'Keep this process input separate from the batch’s current workflow position.' : 'This is what the previous station sent here. Adjust it only if you reweighed it.'}>
             <div className="flex flex-wrap items-end gap-3 p-5">
-              {(adjusting || ready.weight <= 0) ? (
-                <Field label="Input weight (reweighed)" className="w-full max-w-xs"><UnitInput unit="kg" value={inputWeight} onChange={(e) => setInputWeight(e.target.value)} aria-label="Input weight" autoFocus /></Field>
+              {(independent || adjusting || ready.weight <= 0) ? (
+                <Field label={independent ? 'Process input weight' : 'Input weight (reweighed)'} className="w-full max-w-xs"><UnitInput unit="kg" value={inputWeight} onChange={(e) => setInputWeight(e.target.value)} aria-label="Input weight" autoFocus /></Field>
               ) : (
                 <Button variant="secondary" onClick={() => setAdjusting(true)}>Adjust weight</Button>
               )}
-              <Button onClick={() => { if (input > 0) { setStep('outputs'); setError(''); } else setError('Enter the input weight.'); }}>Confirm input <ArrowRight size={15} /></Button>
+              <Button onClick={() => { if (input > 0) { setStep('outputs'); setError(''); } else setError('Enter the input weight.'); }}>{independent ? 'Continue to outputs' : 'Confirm input'} <ArrowRight size={15} /></Button>
             </div>
             {error && <div className="px-5 pb-4"><Notice tone="danger">{error}</Notice></div>}
           </Panel>
@@ -187,7 +200,7 @@ function StationForm({ batch, station, record }: { batch: Batch; station: Statio
 
       {(step === 'destinations' || step === 'done') && record && (
         <>
-          <SavedNotice batch={batch} station={station} record={record} done={step === 'done'} />
+          <SavedNotice batch={batch} station={station} record={record} done={step === 'done'} independent={independent} />
           {record.packaging && (
             <Panel title="Packaging result">
               <div className="grid gap-2 p-5 text-[13px] sm:grid-cols-2">
@@ -199,7 +212,7 @@ function StationForm({ batch, station, record }: { batch: Batch; station: Statio
             </Panel>
           )}
           <BalancePanel balance={recordBalance(record)} limit={limit} />
-          <Panel title="Where does each output go?" subtitle={step === 'done' ? 'Destinations saved. Split outputs stay separate; only what you continue becomes the next input.' : 'Split outputs stay separate. Only what you continue becomes the input of the next station.'}>
+          <Panel title="Where does each output go?" subtitle={step === 'done' && independent ? 'Destinations saved. This independent entry does not move the batch workflow.' : step === 'done' ? 'Destinations saved. Split outputs stay separate; only what you continue becomes the next input.' : 'Split outputs stay separate. Only what you continue becomes the input of the next station.'}>
             {record.outputs.map((o) => (
               <div key={o.name} className="grid grid-cols-1 items-center gap-2 border-b border-line px-5 py-3 last:border-b-0 sm:grid-cols-[1fr_260px]">
                 <span><strong>{o.name}</strong> <span className="text-muted tabular-nums">{kg(o.weight)}</span> <span className="ml-1 text-[11px] text-faint">{kindLabel[o.kind]}</span></span>
@@ -231,14 +244,14 @@ function availableText(record: StationRecord, next: StationId | null) {
   return `${carried.map((o) => `${kg(o.weight)} ${o.name.toLowerCase()}`).join(' and ')} available.`;
 }
 
-function SavedNotice({ batch, station, record, done }: { batch: Batch; station: Station; record: StationRecord; done: boolean }) {
+function SavedNotice({ batch, station, record, done, independent }: { batch: Batch; station: Station; record: StationRecord; done: boolean; independent: boolean }) {
   const store = useStore();
   const fresh = batchById(store, batch.id) ?? batch;
   const next = fresh.nextStation;
   const nextText = next === 'completion' ? 'Complete the batch.' : next ? `Record ${stationName(next).toLowerCase()}.` : '';
   return (
     <Notice tone="green" icon={CheckCircle2}>
-      <strong>{station.name} saved.</strong> {done ? `${availableText(record, next)} ${nextText}` : 'Check the balance, then choose where each output goes.'}
+      <strong>{station.name} saved{independent ? ' independently' : ''}.</strong> {done ? independent ? `The batch remains ready for ${next ? stationName(next).toLowerCase() : 'its next step'}. ${nextText}` : `${availableText(record, next)} ${nextText}` : 'Check the balance, then choose where each output goes.'}
     </Notice>
   );
 }

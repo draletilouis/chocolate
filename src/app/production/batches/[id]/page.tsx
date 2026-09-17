@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { AlertTriangle, ArrowRight, Check, Circle, Pause, PenLine, Pencil, Play, Trash2 } from 'lucide-react';
 import { Back, Badge, Button, Empty, Field, Input, LinkButton, Notice, PageHeader, Panel, Select, Textarea, UnitInput } from '@/components/ui';
-import { batchAlerts, batchById, batchDisplayName, nextInput, recordBalance, userName } from '@/lib/derive';
+import { batchAlerts, batchById, batchDisplayName, nextInput, recordBalance, recordFor, userName } from '@/lib/derive';
 import { dateTime, destinationLabel, kg, kindLabel, num, pct } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { stationById, stationName } from '@/lib/stations';
@@ -68,6 +68,8 @@ export default function BatchPage() {
           <div className="flex justify-end gap-2 md:col-span-2"><Button variant="secondary" onClick={() => setEditingDetails(false)}>Cancel</Button><Button type="submit">Save changes</Button></div>
         </form>
       </Panel>}
+
+      <ProcessWeights batch={batch} />
 
       <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
         <div>
@@ -184,5 +186,57 @@ export default function BatchPage() {
         </div>
       </div>
     </>
+  );
+}
+
+function ProcessWeights({ batch }: { batch: NonNullable<ReturnType<typeof batchById>> }) {
+  const store = useStore();
+  const route = store.routes.find((item) => item.id === batch.route);
+  const routeStations = route?.stations.filter((station) => station !== 'completion') ?? [];
+  const processIds = [...routeStations, ...batch.records.map((record) => record.station), batch.nextStation]
+    .filter((station): station is StationId => Boolean(station) && station !== 'completion')
+    .filter((station, index, all) => all.indexOf(station) === index);
+  const recorded = processIds.filter((station) => Boolean(batch.records.find((record) => record.station === station))).length;
+
+  return (
+    <Panel title="Process weights" subtitle="Each process is saved separately against this batch. Use independent entry when a scale reading is available before the normal next step." action={<span className="text-[12px] font-semibold text-muted">{recorded} of {processIds.length} recorded</span>}>
+      <div className="divide-y divide-line">
+        {processIds.map((stationId, index) => {
+          const station = stationById[stationId];
+          const record = recordFor(batch, stationId);
+          const balance = record ? recordBalance(record) : undefined;
+          const isNext = batch.nextStation === stationId;
+          const ready = isNext ? nextInput(batch) : undefined;
+          const canEnter = !record && batch.status === 'active';
+          const href = `/production/batches/${batch.id}/record/${stationId}${isNext ? '' : '?mode=independent'}`;
+
+          return (
+            <div key={stationId} className="flex flex-wrap items-center gap-3 px-5 py-3.5">
+              <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full ${record ? 'bg-green text-white' : isNext ? 'border-2 border-green text-green' : 'border border-line text-faint'}`}>
+                {record ? <Check size={13} /> : <span className="text-[11px] font-bold">{index + 1}</span>}
+              </span>
+              <div className="min-w-[180px] flex-1">
+                <div className="flex flex-wrap items-center gap-2 text-[14px]">
+                  <strong>{station.name}</strong>
+                  {record ? <Badge tone={record.destinationsSaved ? 'green' : 'warn'}>{record.destinationsSaved ? 'Recorded' : 'Finish entry'}</Badge> : isNext ? <Badge tone={batch.status === 'hold' ? 'danger' : 'green'}>{batch.status === 'hold' ? 'On hold' : 'Next step'}</Badge> : <Badge>Not entered</Badge>}
+                </div>
+                <div className="text-[12px] text-muted">
+                  {record && balance ? <>Input {kg(balance.input)} · measured {kg(balance.measured)} · variance {kg(balance.variance)}</> : isNext && ready ? <>Input ready: {kg(ready.weight)} {ready.material.toLowerCase()}</> : <>No weight recorded yet</>}
+                </div>
+              </div>
+              <div className="ml-auto">
+                {record ? (
+                  <LinkButton variant="secondary" href={href} aria-label={`Open ${station.name} weights for ${batchDisplayName(batch)}`}>Open record</LinkButton>
+                ) : canEnter ? (
+                  <LinkButton href={href} aria-label={isNext ? `Record ${station.name} weights for ${batchDisplayName(batch)}` : `Enter ${station.name} weights independently for ${batchDisplayName(batch)}`}>{isNext ? 'Record weights' : 'Enter independently'} <ArrowRight size={14} /></LinkButton>
+                ) : (
+                  <span className="text-[12px] font-semibold text-faint">{batch.status === 'hold' ? 'On hold' : batch.status === 'completed' ? 'Not recorded' : 'Waiting'}</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Panel>
   );
 }

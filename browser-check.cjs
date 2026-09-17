@@ -167,6 +167,11 @@ async function expectText(page, text) {
   await expectText(page, 'Completed');
   ok('batch timeline, correction, hold/release, completion');
 
+  // Batch-first process list exposes later stations for independent entry.
+  await page.goto(`${BASE}/production/batches/CH-018`);
+  await expectText(page, 'Process weights');
+  await page.getByRole('link', { name: /Enter Packaging weights independently for CH-018/ }).waitFor();
+
   // Chocolate finishing: moulding → packaging → completion.
   await page.goto(`${BASE}/production/stations/moulding`);
   await page.getByRole('link', { name: /CH-018/ }).click();
