@@ -16,4 +16,5 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=builder /app ./
 EXPOSE 3100
-CMD ["node", "node_modules/next/dist/bin/next", "start", "--hostname", "0.0.0.0", "--port", "3100"]
+# Hosts such as Railway pass the port in $PORT. Migrations and the first admin are applied before the server starts.
+CMD ["sh", "-c", "node scripts/init-db.mjs && exec node node_modules/next/dist/bin/next start --hostname 0.0.0.0 --port ${PORT:-3100}"]

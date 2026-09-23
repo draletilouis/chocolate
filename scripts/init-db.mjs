@@ -24,8 +24,10 @@ const env = process.env;
 const rounds = Number.parseInt(env.BCRYPT_ROUNDS ?? '10', 10) || 10;
 const schema = env.POSTGRES_SCHEMA && env.POSTGRES_SCHEMA !== 'public' ? env.POSTGRES_SCHEMA : null;
 const pool = new Pool({
-  host: env.POSTGRES_HOST || '127.0.0.1', port: Number(env.POSTGRES_PORT || 5432), database: env.POSTGRES_DB || 'cocoa_production',
-  user: env.POSTGRES_USER || 'postgres', password: env.POSTGRES_PASSWORD || '', ssl: env.POSTGRES_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
+  ...(env.DATABASE_URL
+    ? { connectionString: env.DATABASE_URL }
+    : { host: env.POSTGRES_HOST || '127.0.0.1', port: Number(env.POSTGRES_PORT || 5432), database: env.POSTGRES_DB || 'cocoa_production', user: env.POSTGRES_USER || 'postgres', password: env.POSTGRES_PASSWORD || '' }),
+  ssl: env.POSTGRES_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
   ...(schema ? { options: `-c search_path=${schema},public` } : {}),
 });
 

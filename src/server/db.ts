@@ -8,11 +8,9 @@ const globalForPg = globalThis as unknown as { cocoaPool?: Pool; cocoaSchemaRead
 export function getPool(): Pool {
   if (!globalForPg.cocoaPool) {
     globalForPg.cocoaPool = new Pool({
-      host: env.postgres.host,
-      port: env.postgres.port,
-      database: env.postgres.database,
-      user: env.postgres.user,
-      password: env.postgres.password,
+      ...(env.postgres.url
+        ? { connectionString: env.postgres.url }
+        : { host: env.postgres.host, port: env.postgres.port, database: env.postgres.database, user: env.postgres.user, password: env.postgres.password }),
       ssl: env.postgres.ssl ? { rejectUnauthorized: false } : undefined,
       max: env.postgres.poolMax,
       idleTimeoutMillis: 30_000,

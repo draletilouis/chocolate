@@ -4,11 +4,13 @@
  * BCRYPT_ROUNDS and rate-limit windows. Production refuses to start without secrets.
  */
 const isProduction = process.env.NODE_ENV === 'production';
+/** `next build` loads server modules to collect page data; secrets are only needed once the server runs. */
+const isBuild = process.env.NEXT_PHASE === 'phase-production-build';
 
 function required(name: string, fallback?: string): string {
   const value = process.env[name] ?? fallback;
   if (value === undefined || value === '') {
-    if (isProduction) throw new Error(`Required environment variable missing: ${name}`);
+    if (isProduction && !isBuild) throw new Error(`Required environment variable missing: ${name}`);
     return '';
   }
   return value;
@@ -20,11 +22,13 @@ const int = (name: string, fallback: number) => {
 };
 
 const sessionSecret = required('SESSION_SECRET', isProduction ? undefined : 'dev-secret-only-change-me-please-0123456789');
-if (isProduction && sessionSecret.length < 32) throw new Error('SESSION_SECRET must be at least 32 characters in production');
+if (isProduction && !isBuild && sessionSecret.length < 32) throw new Error('SESSION_SECRET must be at least 32 characters in production');
 
 export const env = {
   isProduction,
   postgres: {
+    /** A full connection string (as Railway and most hosts provide) takes precedence over the separate POSTGRES_* settings */
+    url: process.env.DATABASE_URL || '',
     host: required('POSTGRES_HOST', '127.0.0.1'),
     port: int('POSTGRES_PORT', 5432),
     database: required('POSTGRES_DB', 'cocoa_production'),
