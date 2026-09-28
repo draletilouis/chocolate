@@ -1,6 +1,6 @@
 import { stations } from './stations';
 import type {
-  Batch, Destination, Lot, OutputCategory, OutputKind, PackSize, Product, Recipe, RecordedOutput, Route,
+  Batch, Container, Destination, Lot, OutputCategory, OutputKind, PackSize, Product, Recipe, RecordedOutput, Route,
   StationId, StationRecord, Supplier, Thresholds, User, BusinessDetails,
 } from './types';
 
@@ -13,10 +13,13 @@ export interface State {
   packSizes: PackSize[];
   suppliers: Supplier[];
   users: User[];
-  currentUserId: string;
   thresholds: Thresholds;
   outputCategories: OutputCategory[];
   business: BusinessDetails;
+  /** Containers with their empty weight, subtracted from scale readings */
+  containers: Container[];
+  /** Minutes without activity before a shared device returns to the sign-in screen (0 = never) */
+  idleMinutes: number;
   /** Version of the line layout the stored rows and routes were made for */
   workflowVersion: number;
 }
@@ -79,13 +82,26 @@ export const suppliers: Supplier[] = [
   { id: 'S-GOLDEN', name: 'Golden Butter Co', supplies: 'Cocoa butter, lecithin, milk powder', contact: 'sales@goldenbutter.example' },
 ];
 
-/** Demo accounts. Every sample user signs in with the password "cocoa123". */
+/** Demo accounts, only created in demo mode. Every one signs in with the password "cocoa123" or the PIN "1234". */
 export const users: User[] = [
-  { id: 'U-AM', name: 'Alex Morgan', role: 'Production manager', initials: 'AM', email: 'alex.morgan@cocoafactory.example', password: 'cocoa123' },
-  { id: 'U-AB', name: 'Ama Boateng', role: 'Roasting operator', initials: 'AB', email: 'ama.boateng@cocoafactory.example', password: 'cocoa123' },
-  { id: 'U-KM', name: 'Kwame Mensah', role: 'Chocolate maker', initials: 'KM', email: 'kwame.mensah@cocoafactory.example', password: 'cocoa123' },
-  { id: 'U-LF', name: 'Lena Fischer', role: 'Packaging lead', initials: 'LF', email: 'lena.fischer@cocoafactory.example', password: 'cocoa123' },
-  { id: 'U-SO', name: 'Sam Osei', role: 'Quality', initials: 'SO', email: 'sam.osei@cocoafactory.example', password: 'cocoa123' },
+  { id: 'U-AM', name: 'Alex Morgan', role: 'Production manager', initials: 'AM', email: 'alex.morgan@cocoafactory.example', access: 'manager', stations: [] },
+  { id: 'U-AB', name: 'Ama Boateng', role: 'Bean processing operator', initials: 'AB', email: 'ama.boateng@cocoafactory.example', access: 'operator', stations: ['receiving', 'sorting', 'roasting', 'winnowing'] },
+  { id: 'U-KM', name: 'Kwame Mensah', role: 'Butter, liquor & chocolate maker', initials: 'KM', email: 'kwame.mensah@cocoafactory.example', access: 'operator', stations: ['pressing', 'sieving', 'filtering', 'powder-roasting', 'powder-crushing', 'grinding', 'mixing', 'refining', 'conching', 'tempering'] },
+  { id: 'U-LF', name: 'Lena Fischer', role: 'Packaging lead', initials: 'LF', email: 'lena.fischer@cocoafactory.example', access: 'operator', stations: ['moulding', 'packaging', 'completion'] },
+  { id: 'U-SO', name: 'Sam Osei', role: 'Quality', initials: 'SO', email: 'sam.osei@cocoafactory.example', access: 'manager', stations: [] },
+];
+
+export const demoCredentials = { password: 'cocoa123', pin: '1234' };
+
+/** Common containers on the line and their empty weight in kg */
+export const containers: Container[] = [
+  { id: 'C-SACK', name: 'Jute sack', tare: 0.5 },
+  { id: 'C-CRATE', name: 'Bean crate', tare: 2.4 },
+  { id: 'C-HUSK', name: 'Husk bin', tare: 2.3 },
+  { id: 'C-BUCKET', name: 'Nib bucket', tare: 1.2 },
+  { id: 'C-TUB', name: 'Butter tub', tare: 0.8 },
+  { id: 'C-TRAY', name: 'Powder tray', tare: 1.5 },
+  { id: 'C-PAIL', name: 'Liquor pail', tare: 1.6 },
 ];
 
 export const packSizes: PackSize[] = [
@@ -105,7 +121,9 @@ export const thresholds: Thresholds = {
   lowStockKg: 50,
 };
 
-export const outputCategories: OutputCategory[] = stations.flatMap((s) => s.rows.map((row) => ({ ...row, station: s.id })));
+const slugOf = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+export const outputCategories: OutputCategory[] = stations.flatMap((s) => s.rows.map((row) => ({ ...row, id: `${s.id}:${slugOf(row.name)}`, station: s.id })));
 
 const batches: Batch[] = [
   {
@@ -215,9 +233,15 @@ const business: BusinessDetails = {
   email: 'production@cocoafactory.example',
 };
 
+/** The demo factory: sample batches, lots, suppliers and staff */
 export function seedState(): State {
   return structuredClone({
     batches, lots, recipes, products, routes, packSizes, suppliers, users,
-    currentUserId: 'U-AM', thresholds, outputCategories, business, workflowVersion: WORKFLOW_VERSION,
+    thresholds, outputCategories, business, containers, idleMinutes: 10, workflowVersion: WORKFLOW_VERSION,
   });
+}
+
+/** A real factory's first start: the line configuration only. People, suppliers, contact details and records are added by the factory. */
+export function configState(): State {
+  return { ...seedState(), batches: [], lots: [], suppliers: [], users: [], business: { name: business.name, address: '', phone: '', email: '' } };
 }
