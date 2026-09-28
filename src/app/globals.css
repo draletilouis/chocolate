@@ -263,6 +263,7 @@
   .login-link.is-muted { color: #5a7080; font-weight: 400; }
   .login-link.is-muted strong { color: #0d2137; font-weight: 600; }
   .login-help { margin: 12px 0 0; font-size: 13px; color: #5a7080; }
+  .login-notice { margin: 0 0 18px; padding: 10px 12px; border-radius: 8px; background: #fffbeb; color: #92400e; border: 1px solid #fde68a; font-size: 13px; }
   @media (max-width: 900px) {
     .login-layout { grid-template-columns: 1fr; }
     .login-left { display: none; }

@@ -1,11 +1,11 @@
 'use client';
 
 import { redirect, useParams } from 'next/navigation';
-import { Fragment, useState, type FormEvent, type ReactNode } from 'react';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
-import { Badge, Button, Field, Input, Notice, PageHeader, Panel, Select, SubNav, Table, Textarea, td, tdNum } from '@/components/ui';
-import { kindLabel } from '@/lib/format';
-import { useStore } from '@/lib/store';
+import { Fragment, useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { Check, Pencil, Plus, Trash2, Upload } from 'lucide-react';
+import { Badge, Button, Empty, Field, Input, Notice, PageHeader, Panel, Select, SubNav, Table, Textarea, td, tdNum } from '@/components/ui';
+import { dateTime, kindLabel } from '@/lib/format';
+import { useStore, type DeviceInfo } from '@/lib/store';
 import { stationName, stations } from '@/lib/stations';
 import type { Access, BusinessDetails, OutputKind, RouteId, StationId, User } from '@/lib/types';
 
@@ -21,14 +21,14 @@ const sections = [
   { id: 'alerts', label: 'Alert thresholds', href: '/setup/alerts' },
 ];
 
-function AddForm({ title, onSubmit, children, submitLabel = 'Add' }: { title: string; onSubmit: (data: FormData) => void; children: ReactNode; submitLabel?: string }) {
+function AddForm({ title, onSubmit, children, submitLabel = 'Add' }: { title: string; onSubmit: (data: FormData) => void | Promise<boolean | void>; children: ReactNode; submitLabel?: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="border-t border-line">
       {!open ? (
         <button className="flex w-full items-center gap-2 px-5 py-3 text-[13px] font-semibold text-green hover:bg-moss/60" onClick={() => setOpen(true)}><Plus size={15} /> {title}</button>
       ) : (
-        <form className="grid gap-3 p-5 md:grid-cols-2" onSubmit={(e: FormEvent<HTMLFormElement>) => { e.preventDefault(); onSubmit(new FormData(e.currentTarget)); setOpen(false); }}>
+        <form className="grid gap-3 p-5 md:grid-cols-2" onSubmit={async (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); if ((await onSubmit(new FormData(e.currentTarget))) !== false) setOpen(false); }}>
           {children}
           <div className="flex justify-end gap-2 md:col-span-2"><Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit">{submitLabel}</Button></div>
         </form>
@@ -37,7 +37,7 @@ function AddForm({ title, onSubmit, children, submitLabel = 'Add' }: { title: st
   );
 }
 
-function EditForm({ onSubmit, onCancel, children }: { onSubmit: (data: FormData) => void; onCancel: () => void; children: ReactNode }) {
+function EditForm({ onSubmit, onCancel, children }: { onSubmit: (data: FormData) => void | Promise<void>; onCancel: () => void; children: ReactNode }) {
   return (
     <form className="grid gap-3 rounded-lg bg-paper p-4 md:grid-cols-2" onSubmit={(e: FormEvent<HTMLFormElement>) => { e.preventDefault(); onSubmit(new FormData(e.currentTarget)); }}>
       {children}
@@ -59,7 +59,7 @@ function RowActions({ onEdit, onDelete, deleteDisabled, deleteHint }: { onEdit: 
 function UserFields({ user }: { user?: User }) {
   return (
     <>
-      <Field label="PIN (4 digits)" hint="Used for quick sign-in on shared devices."><Input name="pin" inputMode="numeric" pattern="\d{4}" maxLength={4} defaultValue={user?.pin ?? ''} required autoComplete="off" /></Field>
+      <Field label={user ? 'New PIN (4 digits)' : 'PIN (4 digits)'} hint={user ? 'Leave blank to keep the current PIN.' : 'Used for quick sign-in on shared devices.'}><Input name="pin" type="password" inputMode="numeric" pattern="\d{4}" maxLength={4} required={!user} autoComplete="new-password" /></Field>
       <Field label="Access" hint="Operators see My work and the production line. Managers also see reports, recipes and setup.">
         <Select name="access" defaultValue={user?.access ?? 'operator'}><option value="operator">Operator</option><option value="manager">Manager</option></Select>
       </Field>
@@ -75,8 +75,98 @@ function UserFields({ user }: { user?: User }) {
   );
 }
 
+/** A number saved to the server when the field is left or Enter is pressed, not on every keystroke */
+function NumberSetting({ value, onSave, label, step = '1' }: { value: number; onSave: (value: number) => Promise<boolean>; label: string; step?: string }) {
+  const [text, setText] = useState(String(value));
+  const [saved, setSaved] = useState(false);
+  useEffect(() => { setText(String(value)); }, [value]);
+  async function commit() {
+    const next = Number(text);
+    if (text.trim() === '' || !Number.isFinite(next) || next < 0) return setText(String(value));
+    if (next === value) return;
+    if (await onSave(next)) { setSaved(true); window.setTimeout(() => setSaved(false), 1500); } else setText(String(value));
+  }
+  return (
+    <span className="flex max-w-[200px] items-center gap-2">
+      <Input type="number" step={step} min="0" value={text} onChange={(e) => setText(e.target.value)} onBlur={() => void commit()} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }} aria-label={label} />
+      {saved && <Check size={16} className="shrink-0 text-green" aria-label="Saved" />}
+    </span>
+  );
+}
+
+/** Devices set up for quick PIN sign-in, and setting up this one */
+function DevicesPanel() {
+  const store = useStore();
+  const { listDevices, trustThisDevice, removeDevice } = store;
+  const [devices, setDevices] = useState<DeviceInfo[] | null>(null);
+  const [name, setName] = useState('');
+  const load = useCallback(async () => setDevices((await listDevices()) ?? []), [listDevices]);
+  useEffect(() => { void load(); }, [load]);
+  const current = devices?.find((d) => d.current);
+  return (
+    <Panel title="Devices set up for quick sign-in" subtitle="On these devices staff tap their name and enter a PIN. Remove a lost or replaced device: it can no longer use PINs and anyone signed in on it is signed out.">
+      {store.demo && <div className="px-5 pt-4"><Notice tone="neutral">In the demo, every device can use quick sign-in.</Notice></div>}
+      {devices === null ? <Empty>Loading…</Empty> : devices.length === 0 ? <Empty>No devices are set up yet.</Empty> : (
+        <Table head={['Device', 'Set up by', 'Set up', 'Last used', '']}>
+          {devices.map((d) => (
+            <tr key={d.id}>
+              <td className={td}>{d.name}{d.current && <> <Badge tone="green">This device</Badge></>}</td>
+              <td className={td}>{store.users.find((u) => u.id === d.trustedBy)?.name ?? d.trustedBy}</td>
+              <td className={td}>{dateTime(d.createdAt)}</td><td className={td}>{dateTime(d.lastSeen)}</td>
+              <td className={td}><Button variant="danger" className="px-3" onClick={async () => { if (window.confirm(`Remove ${d.name}? Quick sign-in stops working on it.`) && await removeDevice(d.id)) await load(); }}><Trash2 size={14} /> Remove</Button></td>
+            </tr>
+          ))}
+        </Table>
+      )}
+      {devices !== null && !current && (
+        <form className="flex flex-wrap items-end gap-3 border-t border-line p-5" onSubmit={async (e) => { e.preventDefault(); if (await trustThisDevice(name.trim() || 'Shared device')) { setName(''); await load(); } }}>
+          <Field label="Set up this device" hint="Name it after where it is used, for example Roasting tablet." className="min-w-[240px] flex-1"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Roasting tablet" maxLength={80} aria-label="Name for this device" /></Field>
+          <Button type="submit">Set up this device</Button>
+        </form>
+      )}
+    </Panel>
+  );
+}
+
+/** Records a browser kept before the app moved to the server, uploaded once */
+function BrowserDataPanel() {
+  const store = useStore();
+  const [legacy, setLegacy] = useState<{ raw: Record<string, unknown>; batches: number; lots: number } | null>(null);
+  const [done, setDone] = useState<{ people: number; needSecrets: number } | null>(null);
+  useEffect(() => {
+    try {
+      const text = window.localStorage.getItem('cocoa-production-v1');
+      if (!text) return;
+      const raw = JSON.parse(text) as Record<string, unknown>;
+      setLegacy({ raw, batches: Array.isArray(raw.batches) ? raw.batches.length : 0, lots: Array.isArray(raw.lots) ? raw.lots.length : 0 });
+    } catch { /* nothing to upload */ }
+  }, []);
+  if (done) return (
+    <Notice tone="green">
+      The records from this browser are now on the server.
+      {done.needSecrets > 0 && ` ${done.needSecrets} of the ${done.people} people added from it had no password or PIN, or still had the sample one: give them one in Setup → Users before they sign in.`}
+    </Notice>
+  );
+  if (!legacy) return null;
+  return (
+    <Panel title="Records saved in this browser" subtitle="Before the move to the server, this browser kept its own copy of the records.">
+      <div className="grid gap-3 p-5 text-[13px]">
+        <p>This browser holds <strong>{legacy.batches} batches</strong> and <strong>{legacy.lots} lots</strong>. Uploading replaces the batches, lots and settings on the server with them. People already on the server are kept; people from this browser are added with their PINs and passwords, except the sample ones.</p>
+        <div><Button onClick={async () => {
+          if (!window.confirm('Replace the batches, lots and settings on the server with the records from this browser?')) return;
+          const summary = await store.importBrowserData(legacy.raw);
+          if (summary) {
+            try { window.localStorage.setItem('cocoa-production-v1-uploaded', JSON.stringify(legacy.raw)); window.localStorage.removeItem('cocoa-production-v1'); } catch { /* ignore */ }
+            setDone(summary);
+          }
+        }}><Upload size={15} /> Upload to the server</Button></div>
+      </div>
+    </Panel>
+  );
+}
+
 const userPatch = (d: FormData) => ({
-  pin: String(d.get('pin')).trim(),
+  pin: String(d.get('pin') ?? '').trim() || undefined,
   access: (d.get('access') as Access) || 'operator',
   stations: d.getAll('stations').map(String) as StationId[],
 });
@@ -86,7 +176,6 @@ export default function SetupPage() {
   const store = useStore();
   const [businessDetails, setBusinessDetails] = useState<BusinessDetails>(store.business);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [userError, setUserError] = useState('');
   const current = sections.find((s) => s.id === section) ?? sections[0];
   if (section === 'paper-catalog') redirect('/setup/products');
 
@@ -97,7 +186,7 @@ export default function SetupPage() {
 
       {current.id === 'business' && (
         <Panel title="Business details" subtitle="These details appear in the header of exported Excel and print/PDF reports.">
-          <form className="grid gap-4 p-5 md:grid-cols-2" onSubmit={(event) => { event.preventDefault(); store.setBusinessDetails(businessDetails); }}>
+          <form className="grid gap-4 p-5 md:grid-cols-2" onSubmit={(event) => { event.preventDefault(); void store.setBusinessDetails(businessDetails); }}>
             <Field label="Business name">
               <Input value={businessDetails.name} onChange={(event) => setBusinessDetails({ ...businessDetails, name: event.target.value })} required maxLength={100} />
             </Field>
@@ -114,7 +203,13 @@ export default function SetupPage() {
               <Button type="submit">Save business details</Button>
             </div>
           </form>
-          <p className="section-note">These values are saved in this browser and are included whenever a report is generated.</p>
+          <p className="section-note">These details are saved on the server and are included whenever a report is generated.</p>
+        </Panel>
+      )}
+      {current.id === 'business' && <BrowserDataPanel />}
+      {current.id === 'business' && store.demo && (
+        <Panel title="Demo data" subtitle="This is a demo: the sample factory can be put back at any time.">
+          <div className="p-5"><Button variant="danger" onClick={async () => { if (window.confirm('Put the sample factory back? All changes made in the demo are lost and everyone is signed out.')) await store.resetDemo(); }}>Reset demo data</Button></div>
         </Panel>
       )}
 
@@ -171,9 +266,9 @@ export default function SetupPage() {
       {current.id === 'outputs' && (
         <Panel title="Output categories" subtitle="The rows workers weigh at each station. Useful output counts toward yield; waste and by-products are recorded separately; anything left is variance.">
           <Table head={['Station', 'Output', 'Type', '']}>
-            {store.outputCategories.map((c, i) => <Fragment key={`${c.station}-${c.name}-${i}`}>
-              <tr key={`${c.station}-${c.name}-${i}`}><td className={td}>{stationName(c.station)}</td><td className={td}>{c.name}{c.custom && <Badge tone="neutral">added</Badge>}</td><td className={td}><Badge tone={c.kind === 'useful' ? 'green' : c.kind === 'waste' ? 'warn' : 'neutral'}>{kindLabel[c.kind]}</Badge></td><td className={td}><RowActions onEdit={() => setEditingId(`output-${i}`)} onDelete={() => { if (window.confirm(`Delete the ${c.name} output row?`)) store.deleteOutputCategory(i); }} /></td></tr>
-              {editingId === `output-${i}` && <tr key={`output-${i}-edit`}><td className={td} colSpan={4}><EditForm onCancel={() => setEditingId(null)} onSubmit={(d) => { store.updateOutputCategory(i, { station: d.get('station') as StationId, name: String(d.get('name')).trim(), kind: d.get('kind') as OutputKind }); setEditingId(null); }}><Field label="Station"><Select name="station" defaultValue={c.station}>{stations.filter((s) => s.form === 'weights').map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field><Field label="Output name"><Input name="name" defaultValue={c.name} required /></Field><Field label="Type"><Select name="kind" defaultValue={c.kind}><option value="useful">Useful output</option><option value="byproduct">By-product</option><option value="waste">Waste</option></Select></Field></EditForm></td></tr>}
+            {store.outputCategories.map((c) => <Fragment key={c.id}>
+              <tr key={c.id}><td className={td}>{stationName(c.station)}</td><td className={td}>{c.name}{c.custom && <Badge tone="neutral">added</Badge>}</td><td className={td}><Badge tone={c.kind === 'useful' ? 'green' : c.kind === 'waste' ? 'warn' : 'neutral'}>{kindLabel[c.kind]}</Badge></td><td className={td}><RowActions onEdit={() => setEditingId(`output-${c.id}`)} onDelete={() => { if (window.confirm(`Delete the ${c.name} output row?`)) void store.deleteOutputCategory(c.id); }} /></td></tr>
+              {editingId === `output-${c.id}` && <tr key={`output-${c.id}-edit`}><td className={td} colSpan={4}><EditForm onCancel={() => setEditingId(null)} onSubmit={async (d) => { if (await store.updateOutputCategory(c.id, { station: d.get('station') as StationId, name: String(d.get('name')).trim(), kind: d.get('kind') as OutputKind })) setEditingId(null); }}><Field label="Station"><Select name="station" defaultValue={c.station}>{stations.filter((s) => s.form === 'weights').map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field><Field label="Output name"><Input name="name" defaultValue={c.name} required /></Field><Field label="Type"><Select name="kind" defaultValue={c.kind}><option value="useful">Useful output</option><option value="byproduct">By-product</option><option value="waste">Waste</option></Select></Field></EditForm></td></tr>}
             </Fragment>) }
           </Table>
           <AddForm title="Add output row" onSubmit={(d) => store.addOutputCategory(d.get('station') as StationId, String(d.get('name')), d.get('kind') as OutputKind)}>
@@ -218,37 +313,34 @@ export default function SetupPage() {
       )}
 
       {current.id === 'users' && (
-        <Panel title="Users" subtitle="Staff accounts. Everyone signs in by tapping their name and entering their PIN; email and password also work. Records are signed with the person who is signed in.">
+        <Panel title="Users" subtitle="Staff accounts. On devices set up for quick sign-in (below), people tap their name and enter their PIN; on any other device they use their email and password. Records are signed with the person who is signed in.">
           <Table head={['Name', 'Role', 'Access', 'Stations', 'Recording as', '']}>
             {store.users.map((u) => {
               const usedInAudit = store.batches.some((b) => b.records.some((r) => r.recordedBy === u.id) || b.holds.some((h) => h.placedBy === u.id) || b.corrections.some((c) => c.correctedBy === u.id));
               const lastManager = u.access === 'manager' && store.users.filter((x) => x.access === 'manager').length === 1;
-              const canDelete = u.id !== store.currentUserId && !usedInAudit && !lastManager;
+              const canDelete = u.id !== store.sessionUserId && !usedInAudit && !lastManager;
               return <Fragment key={u.id}>
                 <tr key={u.id}>
                   <td className={td}>{u.name}<span className="block text-[11px] text-muted">{u.email}</span></td><td className={td}>{u.role}</td>
                   <td className={td}><Badge tone={u.access === 'manager' ? 'info' : 'neutral'}>{u.access === 'manager' ? 'Manager' : 'Operator'}</Badge></td>
                   <td className={td}>{u.stations.length ? u.stations.map((sid) => stationName(sid)).join(', ') : <span className="text-faint">All (no own stations)</span>}</td>
-                  <td className={td}>{u.id === store.currentUserId ? <Badge tone="green">Current user</Badge> : <button className="btn-text" onClick={() => store.setCurrentUser(u.id)}>Use {u.name.split(' ')[0]}</button>}</td>
-                  <td className={td}><RowActions onEdit={() => { setEditingId(u.id); setUserError(''); }} onDelete={() => { if (canDelete && window.confirm(`Delete ${u.name}?`)) store.deleteUser(u.id); }} deleteDisabled={!canDelete} deleteHint="The current user, the last manager, and users in the audit history cannot be deleted." /></td>
+                  <td className={td}>{u.id === store.currentUserId ? <Badge tone="green">Current user</Badge> : <button className="btn-text" onClick={() => void store.setCurrentUser(u.id)}>Use {u.name.split(' ')[0]}</button>}</td>
+                  <td className={td}><RowActions onEdit={() => setEditingId(u.id)} onDelete={() => { if (canDelete && window.confirm(`Delete ${u.name}?`)) void store.deleteUser(u.id); }} deleteDisabled={!canDelete} deleteHint="The current user, the last manager, and users in the audit history cannot be deleted." /></td>
                 </tr>
                 {editingId === u.id && <tr key={`${u.id}-edit`}><td className={td} colSpan={6}>
-                  <EditForm onCancel={() => setEditingId(null)} onSubmit={(d) => {
-                    const password = String(d.get('password'));
-                    const ok = store.updateUser(u.id, { name: String(d.get('name')).trim(), role: String(d.get('role')).trim(), email: String(d.get('email')).trim(), password: password || u.password, ...userPatch(d) });
-                    if (!ok) return setUserError('At least one person must keep manager access.');
-                    setUserError(''); setEditingId(null);
+                  <EditForm onCancel={() => setEditingId(null)} onSubmit={async (d) => {
+                    const password = String(d.get('password') ?? '');
+                    if (await store.updateUser(u.id, { name: String(d.get('name')).trim(), role: String(d.get('role')).trim(), email: String(d.get('email')).trim(), password: password || undefined, ...userPatch(d) })) setEditingId(null);
                   }}>
                     <Field label="Name"><Input name="name" defaultValue={u.name} required /></Field><Field label="Role"><Input name="role" defaultValue={u.role} required /></Field>
                     <Field label="Email"><Input name="email" type="email" defaultValue={u.email} required autoComplete="off" /></Field><Field label="New password" hint="Leave blank to keep the current password."><Input name="password" type="password" minLength={6} autoComplete="new-password" /></Field>
                     <UserFields user={u} />
-                    {userError && <div className="md:col-span-2"><Notice tone="danger">{userError}</Notice></div>}
                   </EditForm>
                 </td></tr>}
               </Fragment>;
             })}
           </Table>
-          <AddForm title="Add user" onSubmit={(d) => store.addUser({ name: String(d.get('name')), role: String(d.get('role')), email: String(d.get('email')).trim(), password: String(d.get('password')), ...userPatch(d) })}>
+          <AddForm title="Add user" onSubmit={(d) => store.addUser({ name: String(d.get('name')), role: String(d.get('role')), email: String(d.get('email')).trim(), password: String(d.get('password')), ...userPatch(d), pin: String(d.get('pin') ?? '').trim() })}>
             <Field label="Name"><Input name="name" required /></Field>
             <Field label="Role"><Input name="role" required placeholder="e.g. Winnowing operator" /></Field>
             <Field label="Email"><Input name="email" type="email" required autoComplete="off" /></Field>
@@ -256,10 +348,12 @@ export default function SetupPage() {
             <UserFields />
           </AddForm>
           <div className="grid gap-2 border-t border-line p-5 md:grid-cols-[320px_1fr] md:items-end">
-            <Field label="Shared devices: sign out after (minutes without use)" hint="0 keeps people signed in."><Input type="number" min="0" step="1" value={store.idleMinutes} onChange={(e) => store.setIdleMinutes(Number(e.target.value))} aria-label="Idle sign-out minutes" /></Field>
+            <Field label="Sign out after (minutes without use)" hint="Applies to every device. 0 keeps people signed in (up to 7 days)."><NumberSetting value={store.idleMinutes} onSave={store.setIdleMinutes} label="Idle sign-out minutes" /></Field>
           </div>
         </Panel>
       )}
+
+      {current.id === 'users' && <DevicesPanel />}
 
       {current.id === 'containers' && (
         <Panel title="Containers" subtitle="Bins, buckets and tubs weighed together with the material. Operators pick the container and its empty weight is taken off the scale reading.">
@@ -281,19 +375,19 @@ export default function SetupPage() {
           <Panel title="Variance limit per station" subtitle="An alert is raised when unaccounted variance is above this share of the station input.">
             <Table head={['Station', 'Allowed variance']}>
               {stations.filter((s) => s.form !== 'completion').map((s) => (
-                <tr key={s.id}><td className={td}>{s.name}</td><td className={td}><span className="flex max-w-[160px] items-center gap-2"><Input type="number" step="0.1" min="0" value={store.thresholds.variancePct[s.id]} onChange={(e) => store.setStationVariance(s.id, Number(e.target.value))} aria-label={`${s.name} variance limit`} /><span className="text-muted">%</span></span></td></tr>
+                <tr key={s.id}><td className={td}>{s.name}</td><td className={td}><span className="flex items-center gap-2"><NumberSetting value={store.thresholds.variancePct[s.id] ?? 0} step="0.1" onSave={(v) => store.setStationVariance(s.id, v)} label={`${s.name} variance limit`} /><span className="text-muted">%</span></span></td></tr>
               ))}
             </Table>
           </Panel>
           <Panel title="Other limits">
             <div className="grid gap-4 p-5 md:grid-cols-2">
-              <Field label="Waste limit at any station (%)"><Input type="number" step="0.1" min="0" value={store.thresholds.wastePct} onChange={(e) => store.setThresholds({ wastePct: Number(e.target.value) })} aria-label="Waste limit" /></Field>
-              <Field label="Low stock warning for raw materials (kg)"><Input type="number" step="1" min="0" value={store.thresholds.lowStockKg} onChange={(e) => store.setThresholds({ lowStockKg: Number(e.target.value) })} aria-label="Low stock limit" /></Field>
+              <Field label="Waste limit at any station (%)"><NumberSetting value={store.thresholds.wastePct} step="0.1" onSave={(v) => store.setThresholds({ wastePct: v })} label="Waste limit" /></Field>
+              <Field label="Low stock warning for raw materials (kg)"><NumberSetting value={store.thresholds.lowStockKg} onSave={(v) => store.setThresholds({ lowStockKg: v })} label="Low stock limit" /></Field>
             </div>
           </Panel>
         </>
       )}
-      <Notice tone="neutral">Changes here apply immediately to the stations and forms.</Notice>
+      <Notice tone="neutral">Changes here are saved on the server and reach every device within a few seconds.</Notice>
     </>
   );
 }

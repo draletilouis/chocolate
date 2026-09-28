@@ -25,10 +25,24 @@ async function expectText(page, text) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  // The check enters a wrong PIN and a wrong password on purpose; the browser logs the server's two refusals.
+  let expectedRefusals = 2;
+  page.on('console', (m) => {
+    if (m.type() !== 'error') return;
+    if (expectedRefusals > 0 && m.text().includes('status of 401') && m.location().url.endsWith('/api/session')) { expectedRefusals -= 1; return; }
+    errors.push(m.text());
+  });
 
-  await page.goto(BASE);
-  await page.evaluate(() => localStorage.clear());
+  // Start from the sample factory: the data lives on the server now, so reset the demo there (this signs everyone out).
+  await page.goto(`${BASE}/production`);
+  const reset = await page.evaluate(async () => {
+    const signIn = await fetch('/api/session', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ method: 'password', email: 'alex.morgan@cocoafactory.example', password: 'cocoa123' }) });
+    if (!signIn.ok) return `sign-in answered ${signIn.status}`;
+    const res = await fetch('/api/demo/reset', { method: 'POST' });
+    return res.ok ? 'ok' : `reset answered ${res.status}`;
+  });
+  if (reset !== 'ok') throw new Error(`Run this check against a demo instance (DEMO_MODE=true): ${reset}`);
+  await page.context().clearCookies();
   await page.goto(`${BASE}/production`);
 
   // Login: quick sign-in (tap your name, enter a PIN) with email + password as the fallback.
@@ -265,6 +279,8 @@ async function expectText(page, text) {
   await page.getByRole('button', { name: 'Use Ama' }).click();
   await page.goto(`${BASE}/setup/alerts`);
   await page.getByLabel('Winnowing variance limit').fill('0.1');
+  await page.getByLabel('Winnowing variance limit').press('Enter');
+  await page.getByLabel('Saved').first().waitFor(); // saved on the server
   await page.goto(`${BASE}/overview`);
   await page.getByRole('heading', { name: 'How production is doing' }).waitFor();
   await expectText(page, 'Alerts');

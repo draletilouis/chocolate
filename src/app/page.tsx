@@ -8,8 +8,8 @@ import { useStore } from '@/lib/store';
 export default function Home() {
   const store = useStore();
   const router = useRouter();
-  const user = store.users.find((u) => u.id === store.currentUserId);
-  const home = user?.access === 'operator' || (user?.stations.length ?? 0) > 0 ? '/work' : '/production';
+  const recording = store.users.find((u) => u.id === store.currentUserId);
+  const home = store.signedInUser?.access === 'operator' || (recording?.stations.length ?? 0) > 0 ? '/work' : '/production';
   useEffect(() => { router.replace(home); }, [home, router]);
   return <p className="empty-state" aria-busy="true">Opening…</p>;
 }

@@ -29,11 +29,10 @@ export default function BatchPage() {
   const suppliers = batchSuppliers(store, batch);
   const canDelete = batch.records.length === 0 && batch.holds.length === 0 && batch.corrections.length === 0 && !store.lots.some((lot) => lot.source.type === 'batch' && lot.source.batchId === batch.id);
 
-  function submitHold(event: FormEvent) {
+  async function submitHold(event: FormEvent) {
     event.preventDefault();
-    if (panel === 'hold') store.placeHold(batch!.id, reason);
-    if (panel === 'release') store.releaseHold(batch!.id, reason);
-    setPanel(null); setReason('');
+    const saved = panel === 'hold' ? await store.placeHold(batch!.id, reason) : await store.releaseHold(batch!.id, reason);
+    if (saved) { setPanel(null); setReason(''); }
   }
 
   const statusBadge = batch.status === 'completed' ? <Badge tone="green">Completed</Badge> : batch.status === 'hold' ? <Badge tone="danger">On hold</Badge> : <Badge tone="green">In progress</Badge>;
@@ -48,7 +47,7 @@ export default function BatchPage() {
             {batch.status === 'active' && firstWaiting && <LinkButton href={`/production/batches/${batch.id}/record/${firstWaiting}`}>{firstWaiting === 'completion' ? 'Review & complete' : `Record ${stationName(firstWaiting).toLowerCase()}`} <ArrowRight size={15} /></LinkButton>}
             <PrintLabelButton batch={batch} material={batch.product} quantity={kg(batch.startInput.weight)} madeAt={batch.startedAt}>Print batch card</PrintLabelButton>
             <Button variant="secondary" onClick={() => setEditingDetails((value) => !value)}><Pencil size={14} /> Edit details</Button>
-            {canDelete && <Button variant="danger" onClick={() => { if (window.confirm(`Delete blank batch ${batch.id}?`)) { store.deleteBatch(batch.id); router.push('/production'); } }}><Trash2 size={14} /> Delete</Button>}
+            {canDelete && <Button variant="danger" onClick={async () => { if (window.confirm(`Delete blank batch ${batch.id}?`) && await store.deleteBatch(batch.id)) router.push('/production'); }}><Trash2 size={14} /> Delete</Button>}
           </div>
         )} />
 
@@ -56,7 +55,7 @@ export default function BatchPage() {
       {alerts.filter((a) => a.kind !== 'hold').map((a) => <Notice key={a.id} tone="warn" icon={AlertTriangle}>{a.message}</Notice>)}
 
       {editingDetails && <Panel title="Edit batch details" subtitle="The name is printed on labels. Weights, holds and corrections stay as recorded.">
-        <form className="grid gap-4 p-5 md:grid-cols-2" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); store.updateBatchDetails(batch.id, { name: String(form.get('name')), note: String(form.get('note')) }); setEditingDetails(false); }}>
+        <form className="grid gap-4 p-5 md:grid-cols-2" onSubmit={async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); if (await store.updateBatchDetails(batch.id, { name: String(form.get('name')), note: String(form.get('note')) })) setEditingDetails(false); }}>
           <Field label="Batch name"><Input name="name" defaultValue={batch.name ?? ''} placeholder={batch.id} /></Field>
           <Field label="Note" className="md:col-span-2"><Textarea name="note" defaultValue={batch.note ?? ''} rows={2} placeholder="Optional production note" /></Field>
           <div className="flex justify-end gap-2 md:col-span-2"><Button variant="secondary" onClick={() => setEditingDetails(false)}>Cancel</Button><Button type="submit">Save changes</Button></div>
@@ -70,7 +69,8 @@ export default function BatchPage() {
           <Panel title="Actions">
             <div className="flex flex-wrap gap-2 p-4">
               {batch.status === 'active' && <Button variant="secondary" onClick={() => setPanel(panel === 'hold' ? null : 'hold')}><Pause size={14} /> Put on hold</Button>}
-              {batch.status === 'hold' && <Button variant="secondary" onClick={() => setPanel(panel === 'release' ? null : 'release')}><Play size={14} /> Release hold</Button>}
+              {batch.status === 'hold' && store.signedInUser?.access === 'manager' && <Button variant="secondary" onClick={() => setPanel(panel === 'release' ? null : 'release')}><Play size={14} /> Release hold</Button>}
+              {batch.status === 'hold' && store.signedInUser?.access !== 'manager' && <span className="text-[13px] text-muted">A manager releases the hold.</span>}
               {batch.status === 'completed' && <span className="text-[13px] text-muted">Completed. Weights can still be corrected from the steps.</span>}
             </div>
             {(panel === 'hold' || panel === 'release') && (
@@ -117,11 +117,10 @@ function Steps({ batch }: { batch: Batch }) {
   const [fixing, setFixing] = useState<{ recordId: string; output: string } | null>(null);
   const [fix, setFix] = useState({ weight: '', reason: '' });
 
-  function saveFix(event: FormEvent) {
+  async function saveFix(event: FormEvent) {
     event.preventDefault();
     if (!fixing || !(Number(fix.weight) >= 0) || !fix.reason.trim()) return;
-    store.addCorrection(batch.id, fixing.recordId, fixing.output, Number(fix.weight), fix.reason.trim());
-    setFixing(null); setFix({ weight: '', reason: '' });
+    if (await store.addCorrection(batch.id, fixing.recordId, fixing.output, Number(fix.weight), fix.reason.trim())) { setFixing(null); setFix({ weight: '', reason: '' }); }
   }
 
   return (

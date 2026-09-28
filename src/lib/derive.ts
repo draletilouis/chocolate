@@ -1,7 +1,7 @@
 import { calculateBalance } from './balance';
 import { stationById, stationName, stations } from './stations';
 import { routes, type State } from './seed';
-import type { Alert, Batch, Lot, StationId, StationRecord } from './types';
+import type { Alert, Batch, Destination, Lot, OutputKind, StationId, StationRecord } from './types';
 
 export const recordBalance = (r: StationRecord) => calculateBalance(r.inputWeight, r.outputs);
 
@@ -44,6 +44,17 @@ export function nextInput(batch: Batch, station: StationId | null = batch.nextSt
 }
 
 export const recordFor = (batch: Batch, station: StationId) => batch.records.find((r) => r.station === station);
+
+/**
+ * Identifies one saved state of a station's record, or null when there is none yet. It changes when
+ * anyone saves the station again or corrects one of its weights, so a form can tell whether the
+ * record it was opened on is still the latest.
+ */
+export function recordStamp(batch: Batch, station: StationId): string | null {
+  const record = recordFor(batch, station);
+  if (!record) return null;
+  return `${record.id}@${record.rev ?? record.recordedAt}#${batch.corrections.filter((c) => c.recordId === record.id).length}`;
+}
 
 export const activeBatches = (state: State) => state.batches.filter((b) => b.status !== 'completed');
 
@@ -186,4 +197,14 @@ export function scanTarget(state: State, code: string): string | null {
   }
   const lot = state.lots.find((l) => l.id.toUpperCase() === id);
   return lot ? `/materials/${lot.id}` : null;
+}
+
+/** Suggested destination for an output: the row's own default, else by kind */
+export function defaultDestination(station: StationId, name: string, kind: OutputKind, index: number): Destination {
+  const suggested = stationById[station].rows.find((row) => row.name === name)?.to;
+  if (suggested) return suggested;
+  const next = stationById[station].next[0];
+  if (kind === 'waste') return 'waste';
+  if (kind === 'byproduct') return 'stock';
+  return index === 0 && next ? `continue:${next}` : 'stock';
 }

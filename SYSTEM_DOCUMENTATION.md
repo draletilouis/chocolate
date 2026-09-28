@@ -1,6 +1,6 @@
 # Chocolate Factory system documentation
 
-This document explains the current implementation of the Chocolate Factory production-recording system. It is written from the source code in this repository and describes the behavior users get when running the app locally.
+This document explains the current implementation of the Chocolate Factory production-recording system. It is written from the source code in this repository and describes the behavior of the web app: one server with a PostgreSQL database that every phone, tablet and computer in the factory uses.
 
 ## 1. What the system does
 
@@ -16,61 +16,125 @@ The app also provides material-lot traceability, recipe versioning, alerts, hold
 
 ## 2. Runtime architecture
 
-The application is a Next.js App Router project using React, TypeScript, Tailwind CSS v4, and Lucide icons. There is no API route, database, server action, or external authentication service in the current implementation.
+The application is a Next.js App Router project (React, TypeScript, Tailwind CSS v4, Lucide icons) that runs as one web server. Phones, tablets and computers open it in a browser and talk to the server's JSON API. The server keeps everything in a PostgreSQL database, so every device sees the same batches, lots, people and settings.
+
+```
+browser (any device)                    server (Next.js API routes)                 PostgreSQL
+StoreProvider ── POST /api/commands ──▶ check origin, session, access          ──▶ app_items, app_meta,
+  useStore()  ◀─ result + changes ───── validate, apply rules in a transaction      app_commands,
+              ── GET /api/sync?since ─▶ what changed since that version            app_credentials,
+              ◀─ changed items ──────── (every 5 s while the app is open)          app_sessions, app_devices
+```
 
 The main runtime layers are:
 
 | Layer | Location | Responsibility |
 | --- | --- | --- |
-| App shell | `src/app/layout.tsx`, `src/components/Shell.tsx` | Loads global styles, mounts the store, gates the app behind sign-in, and renders navigation. |
+| App shell | `src/app/layout.tsx`, `src/components/Shell.tsx` | Loads global styles, mounts the store, gates the app behind sign-in, shows connection and save problems, and renders navigation. |
+| Sign-in | `src/components/LoginScreen.tsx` | First-start setup, quick sign-in with a PIN on set-up devices, and email and password. |
 | Shared UI | `src/components/ui.tsx` | Reusable headers, panels, buttons, fields, tables, badges, notices, stats, and navigation tabs. |
 | Weighing UI | `src/components/weighing.tsx` | Weight field with container tare, destination tags, the live balance bar and the one-line saved verdict. |
 | Labels | `src/components/BatchLabel.tsx` | Printable batch cards and material labels with a QR code that opens the record (`/scan/<id>`). |
 | Domain configuration | `src/lib/stations.ts` | Defines the seventeen stations, five line parts, station inputs/outputs, output rows with default destinations, and allowed next stations. |
-| Domain types and state | `src/lib/types.ts`, `src/lib/seed.ts` | Defines the data model and supplies the initial sample data. |
+| Domain types and state | `src/lib/types.ts`, `src/lib/seed.ts` | Defines the data model, the sample factory (`seedState()`) and the configuration a real factory starts with (`configState()`). |
 | Business calculations | `src/lib/balance.ts` | Calculates station balances, percentages, rounding, and packaging quantities. |
 | Derived workflow logic | `src/lib/derive.ts` | Builds queues, finds next inputs, creates alerts, resolves names, follows traceability, and generates IDs. |
-| State mutations | `src/lib/store.tsx` | Owns browser state and implements every create/update action. |
+| Commands | `src/lib/commands.ts` | Every change anyone can make, as a named command with its validation schema, and which commands operators may run. |
+| Business rules | `src/server/reduce.ts` | `applyCommand()`: applies one command to the state and refuses it with a readable message when a rule is broken. |
+| Storage and sync | `src/server/db.ts`, `src/server/state.ts`, `src/lib/sync.ts` | Database connection and schema, versioned items, the in-memory copy, what changed since a version, the audit log. |
+| Authentication | `src/server/auth.ts`, `src/server/crypto.ts`, `src/server/http.ts` | Sessions, PIN and password checks with lockouts, set-up devices, cookies, same-origin checks, error answers. |
+| API | `src/app/api/**` | The HTTP endpoints listed in section 11. |
+| Client store | `src/lib/store.tsx` | Loads the state from the server, sends commands, polls for changes and exposes everything through `useStore()`. |
 | Screens | `src/app/**` | Renders production, materials, recipes, reports, and setup workflows. |
 
-All feature screens read and mutate state through `useStore()` from `src/lib/store.tsx`; feature pages do not maintain a second data source.
+All feature screens read state and make changes through `useStore()`; feature pages do not keep a second data source. Every action returns a promise that resolves once the server has accepted the change (or with `false`/`undefined` when it was refused).
+
+### Where the data lives
+
+- **`DATABASE_URL` set:** PostgreSQL. This is the production setup; on Railway it is the project's PostgreSQL service.
+- **No `DATABASE_URL`:** an embedded PostgreSQL (PGlite) in the folder `DATA_DIR` (default `.data/`), for running on one computer. On Railway without a database, the server refuses to start recording and says to add PostgreSQL, because a container's disk is wiped on every deploy (a mounted volume is accepted instead).
+
+The schema is created on first start (`createSchema()` in `src/server/db.ts`):
+
+| Table | Holds |
+| --- | --- |
+| `app_meta` | The data version. Every saved change increases it by one. |
+| `app_items` | One row per batch, lot, recipe, product, pack size, supplier, person, route, output row and container, and one per setting (limits, business details, idle minutes, workflow version), with the version at which it last changed. Deleted items stay as tombstones so other devices learn about the deletion. |
+| `app_commands` | The audit log: every change with its version, time, the command, who was signed in (`user_id`) and, when a manager recorded on someone's behalf, whose name the records carry (`recorded_as`). Passwords and PINs are never logged. |
+| `app_credentials` | Password and PIN hashes (scrypt with a random salt) and failed-attempt counters. |
+| `app_sessions` | Signed-in sessions: a SHA-256 hash of the cookie token, the person, last activity, device and recording-as. |
+| `app_devices` | Devices a manager set up for quick sign-in (a hash of the device cookie token), who set them up and when they were last used. |
+
+A new database is seeded once (`seedInto()`, under an advisory lock): in demo mode with the sample factory, otherwise with the line configuration only (products, recipes, routes, pack sizes, containers, output rows and limits) and no batches, lots, suppliers or people.
+
+### Saving a change
+
+Every change is a named command, for example `saveRecord`, `receiveDelivery`, `placeHold`, `addUser` or `setThresholds`. The browser sends it to `POST /api/commands`, and the server:
+
+1. refuses requests from other websites (the `Origin` must be the app's own) and requests without a valid session;
+2. validates the command with its zod schema: known IDs and stations, finite weights within range, text length limits, 4-digit PINs, passwords of at least 6 characters;
+3. checks access: operators may run only production commands (start a batch, receive a delivery, save a station or packaging, complete a batch, edit a batch name or note, delete a blank batch, place a hold, correct a weight); everything else needs manager access;
+4. in one database transaction, locks the data version, applies the command to the latest data with `applyCommand()`, writes only the items that changed with the new version, stores new password and PIN hashes, and logs the command; and
+5. answers with the command's result (such as a new batch ID) and everything that changed since the browser's version.
+
+Nothing changes in the browser until the server has accepted a change. A refusal or a lost connection is shown in a banner at the top of the screen, and the form keeps what was typed so it can be saved again.
+
+Batch and lot numbers are generated inside the transaction, so two devices saving at the same moment cannot get the same number. Times on records use the factory's time zone (`FACTORY_TIMEZONE`, default `Africa/Kampala`).
+
+**Two people saving the same station.** A station form remembers the saved state it was opened on: `recordStamp()` in `src/lib/derive.ts` combines the record's ID, a revision that is new on every save (`rev`) and the number of corrections to it, or is `null` for a station not yet recorded. The form sends it as `expectRecord`, and the server refuses the save when the station's current stamp differs, whether someone else recorded it first, saved it again or corrected one of its weights. Because other devices' saves reach the form within about five seconds, it also shows the warning straight away, turns **Save** off and offers **See the saved weights**. Weights are never silently overwritten.
+
+### Staying in step with other devices
+
+After sign-in the browser loads the whole state (`GET /api/sync?since=0`). While the app is visible it then asks every 5 seconds, and whenever it comes back to the foreground, for what changed since its version; only the changed items travel. Other people's saves therefore appear within about five seconds without reloading. When the connection drops, a banner says so and the app catches up once the server answers again.
+
+The server keeps an in-memory copy of the state and compares it with the database version on every request, so several server instances stay correct.
+
+### Configuration
+
+| Variable | Meaning |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL connection string. Required for production. On Railway, reference the PostgreSQL service's `DATABASE_URL`. Add `?sslmode=require` if your provider needs SSL. |
+| `DEMO_MODE` | `true` seeds the sample factory and allows **Reset demo data**; `false` starts a real factory. Default: on without `DATABASE_URL`, off with it. |
+| `DATA_DIR` | Folder for the embedded database when there is no `DATABASE_URL` (default `.data`). |
+| `FACTORY_TIMEZONE` | IANA time zone used for record times (default `Africa/Kampala`). |
+| `DATABASE_POOL_SIZE` | PostgreSQL connections per server instance (default 5). |
 
 ## 3. Startup and sign-in
 
-The root layout mounts `StoreProvider` and then `Shell`. `src/app/page.tsx` sends operators, and managers who have their own stations, to `/work`; other managers go to `/production`.
+The root layout mounts `StoreProvider` and then `Shell`. On start the store asks `GET /api/session` who is signed in on this device. When nobody is, `LoginScreen` shows one of three things:
 
-On the first client render, the provider starts with `seedState()` and then hydrates from browser storage:
+- **Set up your factory** – only while the database has no people, on the first start of a real factory. The first person enters their name, email, password and PIN, becomes the first manager, is signed in, and the device is set up for quick sign-in.
+- **Who is recording?** – on a device set up for quick sign-in (every device in demo mode): tap your name and enter your 4-digit PIN (digits can also be typed).
+- **Email and password** – on any other device, such as a personal phone. The names are not shown there. A manager signing in can tick **Set up this device for quick sign-in** and name the device.
 
-- Data key: `cocoa-production-v1`
-- Session key: `cocoa-session`
-- Last activity: `cocoa-last-active`
+`src/app/page.tsx` then sends operators, and managers who have their own stations, to `/work`; other managers go to `/production`.
 
-The shell waits for hydration so the seed data does not briefly flash, then shows `LoginScreen` when there is no session user.
+**Sessions:**
 
-**Quick sign-in** is the default. The screen lists every user; tapping a name opens a 4-digit PIN keypad (digits can also be typed). `signInWithPin()` compares the PIN with the in-browser `users` array. **Sign in with email and password** stays available through `signIn()`.
+- Signing in sets an HTTP-only cookie, `cf_session`, valid for at most 7 days. The server keeps only a hash of its token. Cookies are marked `Secure` when the site is reached over HTTPS.
+- A session ends after `idleMinutes` without use (Setup → Users; 10 by default, 0 = never). Only real use counts: the browser tells the server when someone touched the screen or typed since its last check, so a tablet left open still signs out. The server ends idle sessions itself, and the next check returns the device to the sign-in screen.
+- Signing out ends the session on the server and returns to `/`, so the next person lands on their own home page.
+- When a session ends while the app is open, the device returns to the sign-in screen with a short note saying so; if it ended as someone pressed Save, the note says that nothing was saved.
 
-A successful sign-in stores the user ID in `cocoa-session`, resets the last-activity time, and sets `currentUserId`, which is written onto new measurements, holds and corrections.
+**Devices set up for quick sign-in:**
 
-**Sign-out and idle sign-out:**
+- A manager sets up a device by ticking the box when signing in with email and password, or under **Setup → Users → Devices set up for quick sign-in**. The device receives a long-lived HTTP-only cookie, `cf_device` (one year).
+- PINs are accepted only on these devices (on every device in demo mode), so a 4-digit PIN cannot be tried from anywhere on the internet.
+- Removing a device (a lost or replaced tablet) stops PINs on it and signs out anyone using it.
 
-- Signing out returns to `/`, so the next person lands on their own home page.
-- Shared devices sign out after `idleMinutes` without pointer, touch or key activity (10 by default, 0 = never).
-- The last activity is kept in storage, so a stale session also ends when the page is reloaded. In that case the URL is kept, so a scanned link still opens after signing in.
+**Wrong attempts:** five wrong PINs lock that person's PIN sign-in for 15 minutes; email and password still work. Ten wrong passwords lock password sign-in for 15 minutes. Giving the person a new PIN or password in Setup → Users clears the lock.
 
 **Access and "recording as":**
 
 - Each user has `access` (`operator` or `manager`) and `stations`.
-- Menu access follows the signed-in user.
-- A manager may choose another person under **Setup → Users** to record on their behalf; `currentUserId` changes but the menu does not.
-- Operators who open `/overview`, `/recipes`, `/reports` or `/setup` are sent to `/work`.
+- The server enforces access: operators get "Only managers can make this change" for manager commands, and cannot manage devices or record on someone's behalf. Only managers release holds.
+- Menus follow the signed-in person, and operators who open `/overview`, `/recipes`, `/reports` or `/setup` are sent to `/work`.
+- A manager may choose **Use <name>** under Setup → Users to record on someone's behalf. New records carry that person's name, the audit log keeps the manager's, and the menus stay the manager's.
+- The last manager cannot be deleted or demoted, nobody can delete themselves, and deleting a person signs them out everywhere.
 
-Sample users are defined in `src/lib/seed.ts`; all seeded accounts use the PIN `1234` and the password `cocoa123`.
+**Demo mode.** With `DEMO_MODE=true` (the default when there is no `DATABASE_URL`), the sample factory from `src/lib/seed.ts` is loaded with five staff who all use the PIN `1234` and the password `cocoa123`, every device can use PINs, and **Setup → Business details → Reset demo data** puts the sample factory back and signs everyone out.
 
-The `migrate()` function in `src/lib/store.tsx` upgrades data saved by earlier versions:
-
-- **Users:** fills missing email, password, PIN, access and stations from the matching seed user. Unknown users default to PIN `1234` and manager access, so nobody is locked out.
-- **Line layout:** when stored data predates the current layout (`workflowVersion`), it replaces the built-in output rows and seeded route station lists with the current ones, and keeps output rows the user added.
-- **Limits and settings:** fills variance limits for new stations. It also adds the seeded containers and idle setting when they are missing.
+**Records kept in a browser by earlier versions.** Before the move to a server, each browser kept its own copy of the records in `localStorage` (`cocoa-production-v1`). When a manager opens **Setup → Business details** in such a browser, a panel offers to upload it. `migrateLegacy()` in `src/server/reduce.ts` upgrades the old data (line layout, output rows, limits, containers). The upload replaces the server's batches, lots and settings, keeps the people already on the server, and adds the browser's other people with their passwords and PINs, except the sample `cocoa123` and `1234`, which are public: those people need a new password or PIN from a manager before they can sign in.
 
 ## 4. Production line model
 
@@ -210,11 +274,20 @@ Defaults come from each output row's `to` in `src/lib/stations.ts`. Custom rows 
 
 ### Saving
 
-`saveRecord()` (or `savePackaging()`) builds the record and hands it to `commitRecord()`, which:
+**Save** sends a `saveRecord` (or `savePackaging`) command to the server (section 2). There, `saveRecord()` in `src/server/reduce.ts` first checks that:
+
+- nobody saved this station of this batch since the form was opened;
+- the batch is not completed, and is not on hold unless an existing record is being edited;
+- the batch is waiting at this station, unless it is an early entry;
+- the input and at least one weight are positive, output names are unique, and each continued output goes to a station allowed after this one.
+
+It then builds the record, signed with the person recording and the factory time, and hands it to `commitRecord()`, which:
 
 1. creates or updates a lot for every output sent to `stock`, `sale` or `rework`, reusing the lot IDs this station created before;
 2. replaces the station's record on the batch; and
 3. unless it is an early entry, sets `nextStation` to the first station in line order with continued material waiting (`pendingStations()`), or Completion when none is waiting.
+
+The button reads **Saving…** until the server answers. When the save is refused, the reason appears in the banner at the top and the form keeps the typed weights.
 
 ### Saved view
 
@@ -274,11 +347,12 @@ Lot IDs are generated in `nextLotId()` using material-specific prefixes such as 
 
 ## 9. Holds and corrections
 
-From a batch page, an operator can:
+From a batch page, anyone signed in can:
 
-- place an active batch on hold with a reason and the current next station;
-- release all unreleased holds with a release note; and
+- place an active batch on hold with a reason and the current next station; and
 - add a correction to a previously recorded output.
+
+Only a manager can release the holds, with a release note; operators see "A manager releases the hold." The server refuses the release from anyone else.
 
 Corrections are made from the batch page: open a step's **Details** and select **Correct** next to the weight. They update the output weight and append an audit entry containing the old value, new value, reason, timestamp, and correcting user. If the corrected output created a lot, the associated lot quantity is adjusted by the correction delta.
 
@@ -308,7 +382,7 @@ Alerts appear in the Overview, in the production navigation counts, on batch pag
 
 | Route | Purpose |
 | --- | --- |
-| `/` | Redirects to Production. |
+| `/` | Home: My work for operators and for managers with their own stations, the production line for other managers. Shows the sign-in screen when nobody is signed in. |
 | `/overview` | Active-batch count, alert count, completed-today count, aggregate variance, alerts, and recent records. |
 | `/work` | My work: batches waiting at the signed-in person's stations (all stations for people without their own), with one button to record each, search, and **Receive a delivery**. |
 | `/search?q=` | Finds batches (name, ID, product, supplier) and lots (ID, material, supplier). |
@@ -329,23 +403,39 @@ Alerts appear in the Overview, in the production navigation counts, on batch pag
 | `/reports/batches` | Lists all batches and their routes/statuses/summary quantities. |
 | `/reports/corrections` | Audits all output corrections. |
 | `/reports/holds` | Audits all holds and releases. |
-| `/setup/business` | Edits the business name and contact details rendered on reports. |
+| `/setup/business` | Edits the business name and contact details rendered on reports; uploads records an older version kept in this browser; in demo mode, resets the demo data. |
 | `/setup/products` | Lists, adds, edits, and guarded-deletes products and route/recipe associations. |
 | `/setup/pack-sizes` | Lists, adds, edits, and guarded-deletes packaging sizes. |
 | `/setup/containers` | Lists, adds, edits and deletes containers and their empty weights. |
 | `/setup/outputs` | Lists, adds, edits, and deletes station output rows for future station forms. |
 | `/setup/routes` | Edits route names, starting material and notes; station order stays structural and route deletion is guarded. |
 | `/setup/suppliers` | Lists, adds, edits, and guarded-deletes suppliers. |
-| `/setup/users` | Lists, adds, edits and guarded-deletes staff accounts with PIN, access and stations; sets the idle sign-out time; also changes the user used for recording. The last manager cannot be removed or demoted. |
+| `/setup/users` | Lists, adds, edits and guarded-deletes staff accounts with PIN, password, access and stations; sets the idle sign-out time; changes the user used for recording; lists, sets up and removes devices for quick sign-in. The last manager cannot be removed or demoted. |
 | `/setup/alerts` | Edits thresholds. |
 
 `/reports` redirects to `/reports/losses`; `/setup` redirects to `/setup/products`. The former `/setup/paper-catalog` URL redirects to `/setup/products`.
+
+The server's JSON API, used by the pages (all answers are JSON; errors come as `{ "error": "…" }` with a readable message):
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/session` | Who is signed in on this device, or, when nobody is: whether this is the first start, whether the device is set up for quick sign-in, whether this is the demo, and the names to show (set-up devices only). |
+| `POST /api/session` | Sign in with `{ method: "pin", userId, pin }` (set-up devices only) or `{ method: "password", email, password, trustDevice?, deviceName? }`. |
+| `PATCH /api/session` | Managers: `{ recordingAs }` records on someone's behalf (`null` or their own ID to stop). |
+| `DELETE /api/session` | Sign out. |
+| `POST /api/setup` | First start of a real factory: creates the first manager and sets up this device. Refused once anyone exists. |
+| `GET /api/sync?since=<version>` | The whole state (`since=0`) or the items changed since that version; `active=1` tells the server the person used the app since the last check. |
+| `POST /api/commands` | `{ command, since }`: applies one change and answers with its result and the changes since `since`. |
+| `GET/POST/DELETE /api/devices` | Managers: list the devices set up for quick sign-in, set up this one, remove one (`?id=`). |
+| `POST /api/demo/reset` | Demo mode only, managers: puts the sample factory back. |
+
+Requests that change something must come from the app's own pages (same `Origin`). Status codes: 400 for a refused change or invalid input, 401 when the session has ended, 403 for missing access or another site, 429 while a sign-in lock is active, 503 when no database is configured.
 
 All report sections support a duration filter for preset periods or a custom date range. Their export dialog defaults to a StockMaster-style Excel workbook (`.xlsx`) with a Summary sheet and separate filterable detail sheets; a flat CSV and print/PDF output are also available. Exported reports include the configured business details from `/setup/business`.
 
 ## 12. Setup data and configuration
 
-The Setup screens mutate the same browser state used by production:
+The Setup screens send commands to the server like the production screens, so a change reaches every device within a few seconds:
 
 - Products receive generated IDs based on their names.
 - Pack sizes receive generated IDs based on grams and list position.
@@ -353,11 +443,12 @@ The Setup screens mutate the same browser state used by production:
 - Users receive generated IDs and initials.
 - Recipe versions must total exactly 100% (within 0.01 percentage points) before saving.
 - Output categories are the rows shown on station recording forms and can be extended with custom rows.
-- Setup edits preserve entity IDs so existing references remain valid. Delete actions enforce dependency checks in the store as well as disabling unsafe UI actions.
+- Setup edits preserve entity IDs so existing references remain valid. Delete actions are checked on the server (a supplier with lots, a product with batches, a person in the audit history and so on cannot be deleted) as well as disabled in the screens.
+- Passwords and PINs are sent once and stored only as hashes; the forms never show them. Leaving **New PIN** or **New password** blank keeps the current one.
 - Routes keep their station sequence fixed because station IDs are part of production and report logic; only route descriptive fields are editable.
 - Recipe version history, station measurements, holds, corrections, and production-created lots are audit data, not disposable setup rows.
 
-The seed configuration includes the bean and liquor products, three verified chocolate products/recipes, the paper pack sizes (7 g, 45 g, 80 g, 200 g sachet, and 1 kg), three suppliers, five demo users, three routes, threshold values, sample lots, and sample batches. The app remains browser-local; sample data is initialized for the current browser profile and there is no in-app reset action.
+A real factory starts with the line configuration from `configState()`: the bean and liquor products, three verified chocolate products and recipes, the paper pack sizes (7 g, 45 g, 80 g, 200 g sachet, and 1 kg), three routes, the containers, output rows and threshold values. It has no batches, lots, suppliers or people until they are entered, and its contact details in Setup → Business details start blank. The demo (`seedState()`) adds three suppliers, five staff, sample lots and sample batches.
 
 ## 13. Navigation and visual system
 
@@ -382,27 +473,32 @@ npm install
 npm run dev
 ```
 
-The dev server is configured for `http://127.0.0.1:3100`.
+The dev server is configured for `http://127.0.0.1:3100`. Without `DATABASE_URL` it keeps the data in an embedded PostgreSQL under `.data/` and runs as the demo. To run against PostgreSQL:
+
+```bash
+DATABASE_URL=postgres://user:password@localhost:5432/cocoa npm run dev                  # a real factory
+DATABASE_URL=postgres://user:password@localhost:5432/cocoa DEMO_MODE=true npm run dev   # the demo on PostgreSQL
+```
+
+For production, `npm run build` and then `npm start` (Next.js listens on `PORT`).
 
 Available checks are:
 
 ```bash
 npm run typecheck
 node browser-check.cjs
+node interaction-audit.cjs
 ```
 
-The browser check expects the app to already be running and uses Microsoft Edge/Playwright. It covers PIN and email sign-in, all 17 station queues, one-screen recording with the live check, the nib split, labels, receiving a delivery in one form, the batch steps with inline corrections, holds, completion, reports, setup, the phone layout and operator menus. `interaction-audit.cjs` clicks through the same flows, saving before/after screenshots and a report under its configured output directory.
+Both browser scripts expect a demo instance to be running on port 3100: they sign in as the sample manager and reset the demo data first. They use Playwright with Microsoft Edge. The browser check covers PIN and email sign-in, all 17 station queues, one-screen recording with the live check, the nib split, labels, receiving a delivery in one form, the batch steps with inline corrections, holds, completion, reports, setup, the phone layout and operator menus. `interaction-audit.cjs` clicks through the same flows, saving before/after screenshots and a report under its configured output directory.
 
 ## 15. Current scope and limitations
 
-The current app is a browser-local prototype/demo rather than a production deployment:
-
-- Data is stored as JSON in `localStorage`; there is no shared server database or synchronization between users/devices.
-- Authentication is a client-side comparison of PINs and passwords stored in the browser state, so it is not a security boundary for real factory access. The operator/manager menu is a convenience, not access control.
-- QR codes open records only on a device that holds the data. Until data is shared through a server, a label scanned on another phone finds nothing.
-- IDs are generated from the current browser state and are not safe for concurrent multi-user creation.
+- One installation serves one factory. The whole state is loaded into each signed-in browser, which suits one factory's records but not many factories on one server.
+- Changes from other devices arrive by polling every 5 seconds, not instantly.
+- Recording needs a connection to the server. Without one, saving fails with a message and the typed weights stay on the screen; nothing is queued offline.
+- There is no emailed password reset: a manager sets a new password or PIN in Setup → Users.
+- The audit log (`app_commands`) is kept in the database but not yet shown in the app; holds and corrections have their own reports.
+- On a new real factory, the first person to open the app creates the first manager. Open it and set it up right after deploying.
+- Back up the PostgreSQL database with your provider's backup feature or regular exports (`pg_dump`). The embedded database is a folder on one computer and is meant for local use.
 - Weights are recorded in kilograms and rounded to two decimals; Packaging also stores accepted units.
-- Setup changes apply immediately to the current browser's forms and reports.
-- The seeded data is intentionally representative sample data. A production deployment should replace it with server-backed tenant data.
-
-For a production rollout, the store actions would need to move behind an authenticated server/API, with database transactions for batch/lots, server-side validation, role-based permissions, and conflict-safe ID generation.

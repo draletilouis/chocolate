@@ -2,13 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { BarChart3, ChevronDown, ClipboardCheck, ClipboardList, FlaskConical, LayoutDashboard, LogOut, Package, Search, Settings2, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, BarChart3, ChevronDown, ClipboardCheck, ClipboardList, FlaskConical, LayoutDashboard, LogOut, Package, Search, Settings2, WifiOff, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { activeBatches, allAlerts, stationQueue } from '@/lib/derive';
-import { ACTIVE_KEY, useStore } from '@/lib/store';
+import { useStore } from '@/lib/store';
 import { groupBySlug, stationGroups, stations } from '@/lib/stations';
 import { LoginScreen } from './LoginScreen';
-import { Notice } from './ui';
+import { Button, Notice } from './ui';
 
 interface NavItem { href: string; label: string; short?: string; icon: LucideIcon; count?: 'alerts' | 'batches' | 'work'; managers?: boolean }
 
@@ -30,8 +30,8 @@ export function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   // `user` is who records (a manager can record on someone's behalf); access follows whoever signed in.
-  const user = store.users.find((u) => u.id === store.currentUserId);
-  const signedIn = store.users.find((u) => u.id === store.sessionUserId) ?? user;
+  const user = store.users.find((u) => u.id === store.currentUserId) ?? store.signedInUser ?? undefined;
+  const signedIn = store.signedInUser ?? user;
   const isManager = signedIn?.access !== 'operator';
   const myStations = user?.stations ?? [];
   // Operators get My work and the production line; managers get everything, plus My work when they have stations.
@@ -48,26 +48,11 @@ export function Shell({ children }: { children: ReactNode }) {
     if (pathname.startsWith('/production')) setProductionOpen(true);
   }, [pathname]);
 
-  // Shared devices return to the sign-in screen after a while without use, even across reloads.
-  const { sessionUserId, idleMinutes, signOut } = store;
+  // The server ends idle sessions; when that happens with the app open, the next person starts from the beginning.
+  const { endedWhileOpen, signOut } = store;
   useEffect(() => {
-    if (!sessionUserId || !idleMinutes) return;
-    const limit = idleMinutes * 60_000;
-    const read = () => { try { return Number(window.localStorage.getItem(ACTIVE_KEY)) || Date.now(); } catch { return Date.now(); } };
-    let last = read();
-    if (Date.now() - last > limit) { signOut(); return; }
-    let written = 0;
-    const bump = () => {
-      last = Date.now();
-      if (last - written > 10_000) { written = last; try { window.localStorage.setItem(ACTIVE_KEY, String(last)); } catch { /* ignore */ } }
-    };
-    bump();
-    const events = ['pointerdown', 'keydown', 'touchstart', 'wheel'] as const;
-    events.forEach((e) => window.addEventListener(e, bump, { passive: true }));
-    // Left idle on a page: hand the device back at the start. (A stale session found on load keeps its URL, so a scanned link still opens.)
-    const timer = window.setInterval(() => { if (Date.now() - last > limit) { signOut(); router.push('/'); } }, 15_000);
-    return () => { events.forEach((e) => window.removeEventListener(e, bump)); window.clearInterval(timer); };
-  }, [sessionUserId, idleMinutes, signOut, router]);
+    if (endedWhileOpen) router.push('/');
+  }, [endedWhileOpen, router]);
 
   const parts = stationGroups.map((g) => ({
     href: `/production/parts/${g.slug}`, label: g.name,
@@ -78,11 +63,12 @@ export function Shell({ children }: { children: ReactNode }) {
   const home = !isManager || myStations.length > 0 ? '/work' : '/production';
   const blocked = !isManager && managerOnly.some((p) => pathname === p || pathname.startsWith(`${p}/`));
   // Operators who open a manager page (an old link, a shared device) go straight to their own work.
+  const { sessionUserId } = store;
   useEffect(() => { if (sessionUserId && blocked) router.replace('/work'); }, [sessionUserId, blocked, router]);
 
   // Signing out hands the device to the next person, who should land on their own home page.
-  function switchUser() {
-    signOut();
+  async function switchUser() {
+    await signOut();
     router.push('/');
   }
 
@@ -91,7 +77,19 @@ export function Shell({ children }: { children: ReactNode }) {
     if (query.trim()) router.push(`/search?q=${encodeURIComponent(query.trim())}`);
   }
 
-  // Stored data and the session are loaded after mount; wait so the sample data never flashes first.
+  // The session and data come from the server after the page opens.
+  if (store.loadError) {
+    return (
+      <div className="grid min-h-screen place-items-center p-6">
+        <div className="max-w-sm text-center">
+          <WifiOff size={28} className="mx-auto text-muted" />
+          <h1 className="mt-3 text-[20px] font-extrabold">Cannot reach the server</h1>
+          <p className="mt-1 text-[14px] text-muted">{store.notice ?? 'Check the connection, then try again.'}</p>
+          <Button className="mt-4" onClick={store.retry}>Try again</Button>
+        </div>
+      </div>
+    );
+  }
   if (!store.hydrated) return <p className="empty-state" aria-busy="true">Loading…</p>;
   if (!store.sessionUserId) return <LoginScreen />;
 
@@ -184,6 +182,14 @@ export function Shell({ children }: { children: ReactNode }) {
 
       <main className="main-content md:ml-[260px] md:pt-[68px] pb-24 md:pb-0">
         <div className="tab-content">
+          {!store.online && <div className="notice notice-warn" role="status"><WifiOff size={16} className="mt-0.5 shrink-0" /><div>Offline: trying to reach the server. Changes cannot be saved until it is back.</div></div>}
+          {store.notice && (
+            <div className="notice notice-danger" role="alert">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              <div className="flex-1">{store.notice}</div>
+              <button type="button" className="-my-1 grid min-h-[36px] min-w-[36px] place-items-center rounded-md hover:bg-white/60" onClick={store.dismissNotice} aria-label="Dismiss message"><X size={16} /></button>
+            </div>
+          )}
           {blocked ? <Notice tone="neutral">This page is for managers. Opening <Link href="/work" className="font-semibold text-green">My work</Link>…</Notice> : children}
         </div>
       </main>

@@ -8,9 +8,9 @@ import { Back, Button, Empty, Field, LinkButton, Notice, PageHeader, Panel, Sele
 import { BatchLabel } from '@/components/BatchLabel';
 import { BalanceVerdict, DestinationSelect, LiveBalance, WeightField, emptyWeight, netWeight, weightFrom, type WeightValue } from '@/components/weighing';
 import { calculateBalance, calculatePackaging, round2 } from '@/lib/balance';
-import { batchById, batchDisplayName, isReadyAt, lastContainerId, nextInput, recordBalance, recordFor, userName, waitingAt } from '@/lib/derive';
+import { batchById, batchDisplayName, defaultDestination, isReadyAt, lastContainerId, nextInput, recordBalance, recordFor, recordStamp, userName, waitingAt } from '@/lib/derive';
 import { dateTime, destinationLabel, kg, pct } from '@/lib/format';
-import { defaultDestination, useStore } from '@/lib/store';
+import { useStore } from '@/lib/store';
 import { isStationId, stationById, stationName } from '@/lib/stations';
 import type { Batch, Destination, OutputKind, Station, StationId, StationRecord } from '@/lib/types';
 
@@ -68,13 +68,18 @@ function StationScreen({ batch, station, record, independent, justCreated }: { b
   return (
     <StationForm batch={batch} station={station} record={record} independent={independent}
       onSaved={() => { setEditing(false); setJustSaved(true); window.scrollTo({ top: 0 }); }}
+      onShowSaved={() => { setEditing(false); setJustSaved(false); window.scrollTo({ top: 0 }); }}
       onCancel={record?.destinationsSaved ? () => setEditing(false) : undefined} />
   );
 }
 
 /** One screen per station: confirm the input, weigh each output (with where it goes), save once */
-function StationForm({ batch, station, record, independent, onSaved, onCancel }: { batch: Batch; station: Station; record?: StationRecord; independent: boolean; onSaved: () => void; onCancel?: () => void }) {
+function StationForm({ batch, station, record, independent, onSaved, onShowSaved, onCancel }: { batch: Batch; station: Station; record?: StationRecord; independent: boolean; onSaved: () => void; onShowSaved: () => void; onCancel?: () => void }) {
   const store = useStore();
+  // The saved state this form was opened on. Other devices' saves arrive while it is open; the server
+  // refuses to overwrite them, and the form says so as soon as it sees one.
+  const [startedFrom] = useState(() => recordStamp(batch, station.id));
+  const changedElsewhere = recordStamp(batch, station.id) !== startedFrom;
   const containers = store.containers;
   const ready = nextInput(batch, station.id);
   const [input, setInput] = useState<WeightValue>(() => record ? weightFrom(record.inputWeight, record.inputContainer, containers) : !independent && ready.weight > 0 ? { reading: String(ready.weight), containerId: '' } : emptyWeight);
@@ -101,6 +106,7 @@ function StationForm({ batch, station, record, independent, onSaved, onCancel }:
   const [note, setNote] = useState(record?.note ?? '');
   const [showNote, setShowNote] = useState(Boolean(record?.note));
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const inputNet = netWeight(input, containers);
   const nets = rows.map((r) => netWeight(r.weight, containers));
@@ -109,22 +115,29 @@ function StationForm({ batch, station, record, independent, onSaved, onCancel }:
   const limit = store.thresholds.variancePct[station.id] ?? 0;
   const update = (index: number, patch: Partial<Row>) => setRows(rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
 
-  function save(event: FormEvent) {
+  async function save(event: FormEvent) {
     event.preventDefault();
+    if (saving || changedElsewhere) return;
     setError('');
     if (!(inputNet.net > 0)) { setChangingInput(true); return setError('Enter the input weight.'); }
     const options = independent ? { advanceWorkflow: false, inputMaterial: station.input } : undefined;
+    let saved: boolean;
     if (station.form === 'packaging') {
       const total = Number(pack.totalUnits), rejected = Number(pack.rejectedUnits) || 0;
       if (!(total > 0)) return setError('Enter the total units made.');
       if (rejected > total) return setError('Rejected units cannot be more than the total made.');
-      store.savePackaging(batch.id, inputNet.net, pack.packSizeId, total, rejected, note || undefined, options);
+      setSaving(true);
+      saved = await store.savePackaging(batch.id, inputNet.net, pack.packSizeId, total, rejected, note || undefined, options, startedFrom);
     } else {
       const outputs = rows.map((r, i) => ({ name: r.name.trim() || 'Other output', kind: r.kind, weight: nets[i].net, destination: r.destination, container: nets[i].container })).filter((o) => o.weight > 0);
       if (outputs.length === 0) return setError('Enter at least one weight.');
-      store.saveRecord(batch.id, station.id, { weight: inputNet.net, container: inputNet.container }, outputs, note || undefined, options);
+      setSaving(true);
+      saved = await store.saveRecord(batch.id, station.id, { weight: inputNet.net, container: inputNet.container }, outputs, note || undefined, options, startedFrom);
     }
-    onSaved();
+    setSaving(false);
+    // On failure the weights stay on screen; the reason is shown at the top.
+    if (saved) onSaved();
+    else window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   return (
@@ -197,10 +210,16 @@ function StationForm({ batch, station, record, independent, onSaved, onCancel }:
         {station.form === 'packaging'
           ? <div className="live-balance is-neutral" role="status"><strong>{packCalc.acceptedUnits} accepted units</strong><span className="live-balance-total">{kg(packCalc.acceptedWeight)} nominal</span></div>
           : <LiveBalance balance={balance} limit={limit} wasteLimit={store.thresholds.wastePct} />}
-        {error && <div className="save-bar-error" role="alert">{error}</div>}
+        {error && !changedElsewhere && <div className="save-bar-error" role="alert">{error}</div>}
+        {changedElsewhere && (
+          <div className="save-bar-error" role="alert">
+            {station.name} for {batchDisplayName(batch)} was just saved on another device while you were entering weights. Yours are not saved.{' '}
+            <button type="button" className="btn-text" onClick={onShowSaved}>See the saved weights</button>
+          </div>
+        )}
         <div className="flex gap-2">
-          {onCancel && <Button variant="secondary" onClick={onCancel}>Cancel</Button>}
-          <Button type="submit" className="flex-1"><Check size={16} /> Save {station.name.toLowerCase()}</Button>
+          {onCancel && !changedElsewhere && <Button variant="secondary" onClick={onCancel}>Cancel</Button>}
+          <Button type="submit" className="flex-1" disabled={saving || changedElsewhere}><Check size={16} /> {saving ? 'Saving…' : `Save ${station.name.toLowerCase()}`}</Button>
         </div>
       </div>
     </form>
@@ -277,6 +296,7 @@ function CompletionScreen({ batch }: { batch: Batch }) {
   const store = useStore();
   const router = useRouter();
   const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
   const packaging = batch.records.find((r) => r.packaging)?.packaging;
   const lots = store.lots.filter((l) => l.source.type === 'batch' && l.source.batchId === batch.id);
   const totalMissing = round2(batch.records.reduce((sum, r) => sum + recordBalance(r).variance, 0));
@@ -322,7 +342,7 @@ function CompletionScreen({ batch }: { batch: Batch }) {
           <Panel title="Closing note (optional)"><div className="p-5"><input className={inputClass} value={note} onChange={(e) => setNote(e.target.value)} aria-label="Closing note" placeholder="Anything to remember about this batch?" /></div></Panel>
           <div className="flex flex-wrap justify-between gap-2">
             <LinkButton variant="secondary" href={`/production/batches/${batch.id}`}>Back to batch</LinkButton>
-            <Button disabled={pending.length > 0 || batch.status === 'hold'} onClick={() => { store.completeBatch(batch.id, note); router.push(`/production/batches/${batch.id}`); }}><Check size={15} /> Complete batch</Button>
+            <Button disabled={pending.length > 0 || batch.status === 'hold' || saving} onClick={async () => { setSaving(true); const ok = await store.completeBatch(batch.id, note); setSaving(false); if (ok) router.push(`/production/batches/${batch.id}`); }}><Check size={15} /> {saving ? 'Completing…' : 'Complete batch'}</Button>
           </div>
         </>
       )}

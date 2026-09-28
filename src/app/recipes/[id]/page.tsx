@@ -32,21 +32,21 @@ export default function RecipePage() {
     setDraft(current.ingredients.map((i) => ({ name: i.name, percent: String(i.percent) })));
     setAdding(true);
   }
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
     if (Math.abs(total - 100) > 0.01) return;
-    store.addRecipeVersion(recipe!.id, draft.filter((d) => d.name.trim()).map((d) => ({ name: d.name.trim(), percent: Number(d.percent) || 0 })), note);
-    setAdding(false); setNote('');
+    const saved = await store.addRecipeVersion(recipe!.id, draft.filter((d) => d.name.trim()).map((d) => ({ name: d.name.trim(), percent: Number(d.percent) || 0 })), note);
+    if (saved) { setAdding(false); setNote(''); }
   }
 
   return (
     <>
       <Back href="/recipes" label="Recipes" />
       <PageHeader eyebrow="Recipe" title={recipe.name} subtitle={`Product: ${product?.name ?? recipe.productId} · current version v${recipe.currentVersion}`}
-        action={<div className="flex flex-wrap justify-end gap-2"><LinkButton variant="secondary" href="/production/new">Start a batch</LinkButton><Button variant="secondary" onClick={() => setEditingName((value) => !value)}><Pencil size={14} /> Edit name</Button><Button variant="danger" disabled={!canDelete} title={canDelete ? 'Delete recipe' : 'Recipes used by batches cannot be deleted.'} onClick={() => { if (canDelete && window.confirm(`Delete recipe ${recipe.name}?`)) { store.deleteRecipe(recipe.id); router.push('/recipes'); } }}><Trash2 size={14} /> Delete</Button>{!adding && <Button onClick={startDraft}><Plus size={15} /> New version</Button>}</div>} />
+        action={<div className="flex flex-wrap justify-end gap-2"><LinkButton variant="secondary" href="/production/new">Start a batch</LinkButton><Button variant="secondary" onClick={() => setEditingName((value) => !value)}><Pencil size={14} /> Edit name</Button><Button variant="danger" disabled={!canDelete} title={canDelete ? 'Delete recipe' : 'Recipes used by batches cannot be deleted.'} onClick={async () => { if (canDelete && window.confirm(`Delete recipe ${recipe.name}?`) && await store.deleteRecipe(recipe.id)) router.push('/recipes'); }}><Trash2 size={14} /> Delete</Button>{!adding && <Button onClick={startDraft}><Plus size={15} /> New version</Button>}</div>} />
 
       {editingName && <Panel title="Edit recipe" subtitle="This changes the recipe label only. Existing version history remains unchanged.">
-        <form className="flex flex-wrap items-end gap-3 p-5" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); store.updateRecipe(recipe.id, { name: String(form.get('name')) }); setEditingName(false); }}>
+        <form className="flex flex-wrap items-end gap-3 p-5" onSubmit={async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); if (await store.updateRecipe(recipe.id, { name: String(form.get('name')) })) setEditingName(false); }}>
           <Field label="Recipe name" className="min-w-[240px] flex-1"><Input name="name" defaultValue={recipe.name} required /></Field>
           <div className="flex gap-2"><Button variant="secondary" onClick={() => setEditingName(false)}>Cancel</Button><Button type="submit">Save changes</Button></div>
         </form>

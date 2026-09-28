@@ -6,9 +6,9 @@ import { ArrowRight, Check } from 'lucide-react';
 import { Back, Button, Field, Input, LinkButton, Notice, PageHeader, Panel, Select, Textarea, UnitInput } from '@/components/ui';
 import { DestinationSelect, LiveBalance, WeightField, emptyWeight, netWeight, type WeightValue } from '@/components/weighing';
 import { calculateBalance, round2 } from '@/lib/balance';
-import { suggestBatchName } from '@/lib/derive';
+import { defaultDestination, suggestBatchName } from '@/lib/derive';
 import { kg } from '@/lib/format';
-import { defaultDestination, useStore } from '@/lib/store';
+import { useStore } from '@/lib/store';
 import { stationById, stationName } from '@/lib/stations';
 import type { Destination, OutputKind } from '@/lib/types';
 
@@ -37,6 +37,7 @@ function NewBatch() {
   const [actuals, setActuals] = useState<Record<string, string>>({});
   const [ingredientLots, setIngredientLots] = useState<Record<string, string>>(() => (startLot ? { [startLot.material]: startLot.id } : {}));
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const product = batchableProducts.find((p) => p.id === productId);
   const route = store.routes.find((r) => r.id === product?.route);
@@ -55,24 +56,28 @@ function NewBatch() {
   }, [recipeVersion, batchSize, actuals, ingredientLots, store.lots]);
   const ingredientTotal = round2(ingredients.reduce((sum, i) => sum + i.actual, 0));
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
+    if (saving) return;
     setError('');
     if (!product || !route) return;
+    let id: string | undefined;
     if (route.id === 'chocolate') {
       if (!recipeVersion || ingredientTotal <= 0) return setError('Enter the ingredient weights you actually used.');
-      const id = store.createBatch({
+      setSaving(true);
+      id = await store.createBatch({
         productId, name: batchName, batchDate, startWeight: ingredientTotal, recipeVersion: recipeVersion.version, note,
         ingredients: ingredients.map((i) => ({ name: i.name, expected: i.expected, actual: i.actual, lotId: i.lotId || undefined })),
         lotUses: ingredients.filter((i) => i.lotId).map((i) => ({ lotId: i.lotId, quantity: i.actual })),
       });
-      router.push(`/production/batches/${id}/record/${route.stations[0]}`);
-      return;
+    } else {
+      const startWeight = Number(weight);
+      if (!(startWeight > 0)) return setError('Enter the weight from the scale.');
+      setSaving(true);
+      id = await store.createBatch({ productId, name: batchName, batchDate, startWeight, note, lotUses: [] });
     }
-    const startWeight = Number(weight);
-    if (!(startWeight > 0)) return setError('Enter the weight from the scale.');
-    const id = store.createBatch({ productId, name: batchName, batchDate, startWeight, note, lotUses: [] });
-    router.push(`/production/batches/${id}/record/${route.stations[0]}`);
+    setSaving(false);
+    if (id) router.push(`/production/batches/${id}/record/${route.stations[0]}`);
   }
 
   const productField = (
@@ -160,7 +165,7 @@ function NewBatch() {
         {error && <Notice tone="danger">{error}</Notice>}
         <div className="flex flex-wrap justify-end gap-2">
           <LinkButton variant="secondary" href="/production">Cancel</LinkButton>
-          <Button type="submit">Create batch and record {stationName(route?.stations[0]).toLowerCase()} <ArrowRight size={15} /></Button>
+          <Button type="submit" disabled={saving}>{saving ? 'Saving…' : <>Create batch and record {stationName(route?.stations[0]).toLowerCase()} <ArrowRight size={15} /></>}</Button>
         </div>
       </form>
     </>
@@ -182,6 +187,7 @@ function ReceiveDelivery({ productId, productField, batchDate, setBatchDate }: {
   const [error, setError] = useState('');
   // A double tap on Save must not start a second batch.
   const saving = useRef(false);
+  const [busy, setBusy] = useState(false);
 
   const suggested = suggestBatchName(store, supplierId, batchDate);
   const batchName = name ?? suggested;
@@ -189,7 +195,7 @@ function ReceiveDelivery({ productId, productField, batchDate, setBatchDate }: {
   const nets = rows.map((r) => netWeight(r.weight, store.containers));
   const balance = calculateBalance(input.net, rows.map((r, i) => ({ kind: r.kind, weight: nets[i].net })));
 
-  function save(event: FormEvent) {
+  async function save(event: FormEvent) {
     event.preventDefault();
     setError('');
     if (!(input.net > 0)) return setError('Enter the delivered weight from the scale.');
@@ -197,10 +203,12 @@ function ReceiveDelivery({ productId, productField, batchDate, setBatchDate }: {
     if (outputs.length === 0) return setError('Enter the accepted beans.');
     if (saving.current) return;
     saving.current = true;
-    const id = store.createBatch({ productId, name: batchName, batchDate, startWeight: input.net, supplierId, note: note || undefined, lotUses: [] });
-    if (!id) { saving.current = false; return setError('Could not start the batch.'); }
-    store.saveRecord(id, 'receiving', { weight: input.net, container: input.container }, outputs, note || undefined);
-    router.push(`/production/batches/${id}/record/receiving?saved=1`);
+    setBusy(true);
+    const id = await store.receiveDelivery({ productId, name: batchName, batchDate, startWeight: input.net, supplierId, note: note || undefined, lotUses: [] }, { weight: input.net, container: input.container }, outputs, note || undefined);
+    saving.current = false;
+    setBusy(false);
+    if (id) router.push(`/production/batches/${id}/record/receiving?saved=1`);
+    else window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   return (
@@ -243,7 +251,7 @@ function ReceiveDelivery({ productId, productField, batchDate, setBatchDate }: {
       <div className="save-bar">
         <LiveBalance balance={balance} limit={store.thresholds.variancePct.receiving} wasteLimit={store.thresholds.wastePct} />
         {error && <div className="save-bar-error" role="alert">{error}</div>}
-        <Button type="submit"><Check size={16} /> Save delivery</Button>
+        <Button type="submit" disabled={busy}><Check size={16} /> {busy ? 'Saving…' : 'Save delivery'}</Button>
       </div>
     </form>
   );

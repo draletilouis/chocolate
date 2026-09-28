@@ -57,8 +57,16 @@ async function waitForUrl(page, pattern) {
 }
 
 async function signIn(page) {
+  // Start from the sample factory: the data lives on the server now, so reset the demo there (this signs everyone out).
   await page.goto(`${BASE}/production`);
-  await page.evaluate(() => { localStorage.clear(); });
+  const reset = await page.evaluate(async () => {
+    const signIn = await fetch('/api/session', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ method: 'password', email: 'alex.morgan@cocoafactory.example', password: 'cocoa123' }) });
+    if (!signIn.ok) return `sign-in answered ${signIn.status}`;
+    const res = await fetch('/api/demo/reset', { method: 'POST' });
+    return res.ok ? 'ok' : `reset answered ${res.status}`;
+  });
+  if (reset !== 'ok') throw new Error(`Run this check against a demo instance (DEMO_MODE=true): ${reset}`);
+  await page.context().clearCookies();
   await page.goto(`${BASE}/production`);
   await page.getByRole('heading', { name: 'Who is recording?' }).waitFor();
   await action(page, 'Choose a name to sign in', page.getByRole('button', { name: 'Sign in as Alex Morgan' }), async () => {
@@ -321,7 +329,13 @@ async function navigationAndFilters(page) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  // The check enters a wrong PIN and a wrong password on purpose; the browser logs the server's two refusals.
+  let expectedRefusals = 2;
+  page.on('console', (m) => {
+    if (m.type() !== 'error') return;
+    if (expectedRefusals > 0 && m.text().includes('status of 401') && m.location().url.endsWith('/api/session')) { expectedRefusals -= 1; return; }
+    errors.push(m.text());
+  });
   try {
     await signIn(page);
     await productionLine(page);

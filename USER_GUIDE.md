@@ -4,18 +4,26 @@ This guide explains how factory staff use Chocolate Factory to start batches, re
 
 ## 1. Sign in
 
-Open the app at `http://127.0.0.1:3100`.
+Open the factory's web address in the browser of any phone, tablet or computer. Everyone uses the same records: what one person saves appears on the other devices within a few seconds.
+
+**On a shared tablet or PC set up by a manager:**
 
 1. Tap your name under **Who is recording?**
 2. Enter your 4-digit PIN on the keypad (a keyboard works too).
 
-You can also select **Sign in with email and password**.
+**On any other device, such as your own phone:** enter your email and password. Your manager gives you these; ask them for a new password or PIN if you forget one.
 
-For the demo, every account uses the PIN `1234`, or the email `alex.morgan@cocoafactory.example` with the password `cocoa123`.
+After five wrong PINs, PIN sign-in is locked for 15 minutes for that person. Email and password still work.
 
 Your name is attached to every measurement, hold and correction you make. When you hand the device to someone else, select **Sign out** (the arrow icon). The next person taps their own name.
 
-Shared devices sign out on their own after a few minutes without use (10 by default; a manager can change this in **Setup → Users**).
+You are signed out on your own after a few minutes without use (10 by default; a manager can change this in **Setup → Users**). Anything not yet saved is lost then, so save as soon as you have weighed.
+
+**First start.** On a new installation the app opens on **Set up your factory**. The person setting it up enters their name, email, a password and a PIN and becomes the first manager; that device is set up for quick sign-in.
+
+**Setting up a shared tablet or PC (managers).** On the device, sign in with your email and password and tick **Set up this device for quick sign-in**, then name it after where it is used, for example *Roasting tablet*. You can also do it in **Setup → Users → Devices set up for quick sign-in**. If a tablet is lost, remove it there: PINs stop working on it and anyone signed in on it is signed out.
+
+**Demo.** In the demo every account uses the PIN `1234`, or the email `alex.morgan@cocoafactory.example` with the password `cocoa123`, and every device shows the names.
 
 ## 2. Find your way around
 
@@ -137,12 +145,12 @@ From a batch page:
 
 The batch appears as **On hold** and cannot be recorded at its next station until released.
 
-To continue:
+To continue, a manager:
 
-1. Open the batch.
-2. Select **Release hold**.
-3. Enter a release note.
-4. Select **Release**.
+1. Opens the batch.
+2. Selects **Release hold**.
+3. Enters a release note.
+4. Selects **Release**.
 
 The hold and its release remain in the batch history and in **Reports → Holds**.
 
@@ -253,10 +261,12 @@ Users with access to Setup can configure:
 - **Output categories** — the standard rows workers see at each station.
 - **Routes** — the default station order for each batch type.
 - **Suppliers** — delivery sources and contact details.
-- **Users** — staff accounts with a 4-digit PIN, **Operator** or **Manager** access, and the stations on each person's **My work** page. The idle sign-out time for shared devices is set here too. At least one person must keep manager access.
+- **Users** — staff accounts with email, password, 4-digit PIN, **Operator** or **Manager** access, and the stations on each person's **My work** page. To reset a forgotten password or PIN, edit the person and type a new one. The idle sign-out time and the devices set up for quick sign-in are here too. At least one person must keep manager access.
 - **Alert thresholds** — station variance limits, waste limit, and low-stock warning.
 
-Changes apply immediately in the current browser. Business details are saved with the browser data and are included in future reports.
+Changes are saved on the server and reach every device within a few seconds. Business details are included in future reports.
+
+**Records from the old browser version.** If this browser was used with the earlier version that kept records in the browser itself, **Setup → Business details** shows **Records saved in this browser** with an **Upload to the server** button. Uploading replaces the batches, lots and settings on the server with that browser's records. People from it are added; anyone who had no password or PIN, or still had the sample one, needs a new one from you in **Setup → Users**.
 
 Setup rows can be edited with the pencil action and deleted with the trash action. Deletion is deliberately guarded: products used by recipes or batches, pack sizes used by packaging records, suppliers referenced by lots, routes used by products or batches, and users referenced by audit history cannot be deleted. Output rows can be removed, but this only changes the rows shown on future station forms; old records remain unchanged.
 
@@ -270,4 +280,5 @@ Other editable areas follow the same traceability rule. Recipe names and batch n
 - Missing weight is reported separately from waste.
 - Pick the container when you weigh in one, so its empty weight is taken off.
 - Sign out when you hand the device over, so the next records carry the right name.
-- The current demo stores data in this browser only. It is not shared between browsers or devices.
+- Saving needs a connection to the server. If the connection drops, a banner says so and the weights you typed stay on the screen: save again once it is back.
+- If someone else saves the same station for the same batch while you are typing, the form tells you within a few seconds and **Save** turns off, so nobody's weights are overwritten. Select **See the saved weights**, then **Edit weights** if they need changing.

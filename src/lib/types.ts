@@ -90,6 +90,8 @@ export interface StationRecord {
   packaging?: PackagingResult;
   recordedAt: string;
   recordedBy: string;
+  /** New on every save, so two saves of the same station in the same second are still told apart */
+  rev?: string;
   note?: string;
   destinationsSaved: boolean;
 }
@@ -184,15 +186,13 @@ export interface Supplier { id: string; name: string; supplies: string; contact:
 /** Operators see their own work; managers also see reports, recipes and setup */
 export type Access = 'operator' | 'manager';
 
+/** A staff account as the app sees it. Passwords and PINs stay on the server, hashed. */
 export interface User {
   id: string;
   name: string;
   role: string;
   initials: string;
   email: string;
-  password: string;
-  /** Four-digit PIN for quick sign-in on a shared device */
-  pin: string;
   access: Access;
   /** Stations this person works at; their "My work" page shows batches waiting there */
   stations: StationId[];
@@ -205,7 +205,7 @@ export interface BusinessDetails {
   email: string;
 }
 
-export interface OutputCategory extends OutputRowDef { station: StationId; custom?: boolean }
+export interface OutputCategory extends OutputRowDef { id: string; station: StationId; custom?: boolean }
 
 export interface Thresholds {
   /** Allowed unaccounted variance per station, in percent of input */
