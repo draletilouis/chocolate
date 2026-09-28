@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { ArrowRight, Plus } from 'lucide-react';
 import { Badge, Empty, LinkButton, PageHeader, Panel, RowLink } from '@/components/ui';
-import { activeBatches, batchAlerts, batchDisplayName, currentStation, pendingStations, stationQueue } from '@/lib/derive';
+import { activeBatches, batchAlerts, batchDisplayName, currentStation, stationQueue, waitingAt } from '@/lib/derive';
 import { useStore } from '@/lib/store';
 import { stationGroups, stationName, stations } from '@/lib/stations';
 
@@ -21,7 +21,7 @@ export default function ProductionPage() {
         {batches.map((batch) => {
           const alerts = batchAlerts(store, batch);
           const onHold = batch.status === 'hold';
-          const alsoWaiting = pendingStations(batch).filter((s) => s !== batch.nextStation);
+          const waiting = waitingAt(batch);
           return (
             <div key={batch.id} className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-2 border-b border-line px-4 py-3.5 last:border-b-0 md:grid-cols-[110px_1fr_1fr_1fr_auto] md:px-5">
               <Link href={`/production/batches/${batch.id}`} className="min-w-0 font-bold text-green hover:underline"><span className="block truncate">{batchDisplayName(batch)}</span>{batch.name && <span className="block text-[10px] font-normal text-muted">{batch.id}</span>}</Link>
@@ -30,12 +30,11 @@ export default function ProductionPage() {
                 {onHold && <Badge tone="danger">On hold</Badge>}
                 {!onHold && alerts.length > 0 && <Badge tone="warn">{alerts.length} alert{alerts.length > 1 ? 's' : ''}</Badge>}
               </div>
-              <div className="text-[13px]"><span className="block text-[11px] font-bold tracking-wide text-faint uppercase">Current station</span>{stationName(currentStation(batch))}</div>
-              <div className="text-[13px]"><span className="block text-[11px] font-bold tracking-wide text-faint uppercase">Next step</span>{onHold ? `${stationName(batch.nextStation)} (on hold)` : stationName(batch.nextStation)}{alsoWaiting.length > 0 && <span className="block text-[11px] text-muted">Also waiting: {alsoWaiting.map((s) => stationName(s)).join(', ')}</span>}</div>
+              <div className="text-[13px] md:col-span-2"><span className="block text-[11px] font-bold tracking-wide text-faint uppercase">Waiting at</span><strong>{waiting.map((s) => stationName(s)).join(' · ') || '—'}</strong>{onHold && ' (on hold)'}<span className="block text-[11px] text-muted">Last recorded: {stationName(currentStation(batch)).toLowerCase()}</span></div>
               <div className="col-start-2 row-start-1 md:col-start-auto md:row-start-auto">
                 {onHold
                   ? <LinkButton variant="secondary" href={`/production/batches/${batch.id}`}>Review hold</LinkButton>
-                  : <LinkButton href={`/production/batches/${batch.id}/record/${batch.nextStation}`} aria-label={`Continue ${batchDisplayName(batch)}`}>Continue <ArrowRight size={15} /></LinkButton>}
+                  : <LinkButton href={`/production/batches/${batch.id}/record/${waiting[0] ?? batch.nextStation}`} aria-label={`Continue ${batchDisplayName(batch)}`}>Continue <ArrowRight size={15} /></LinkButton>}
               </div>
             </div>
           );

@@ -4,129 +4,109 @@ This guide explains how factory staff use Chocolate Factory to start batches, re
 
 ## 1. Sign in
 
-Open the app at `http://127.0.0.1:3100` and sign in with your staff email and password.
+Open the app at `http://127.0.0.1:3100`.
 
-For the demo, use:
+1. Tap your name under **Who is recording?**
+2. Enter your 4-digit PIN on the keypad (a keyboard works too).
 
-- Email: `alex.morgan@cocoafactory.example`
-- Password: `cocoa123`
+You can also select **Sign in with email and password**.
 
-Your name is attached to measurements, holds, and corrections that you make. Select **Sign out** from the top bar when you are finished.
+For the demo, every account uses the PIN `1234`, or the email `alex.morgan@cocoafactory.example` with the password `cocoa123`.
+
+Your name is attached to every measurement, hold and correction you make. When you hand the device to someone else, select **Sign out** (the arrow icon). The next person taps their own name.
+
+Shared devices sign out on their own after a few minutes without use (10 by default; a manager can change this in **Setup → Users**).
 
 ## 2. Find your way around
 
-The main navigation is:
+What you see depends on your access:
 
+- **Operators** see **My work** and **Production line**.
+- **Managers** also see **Overview**, **Materials**, **Recipes**, **Reports** and **Setup**.
+  - A manager who has their own stations also gets **My work**.
+
+The sections are:
+
+- **My work** — the batches waiting at your stations, each with one button to record it.
 - **Overview** — production summary and alerts.
-- **Production line** — active batches, waiting work, and the five parts of the line.
-- **Materials** — raw materials, intermediate products, by-products, rework, and finished-goods lots.
+- **Production line** — every active batch, where it is waiting, and the five parts of the line.
+- **Materials** — raw materials, intermediate products, by-products, rework and finished-goods lots.
 - **Recipes** — recipe versions and ingredient comparisons.
-- **Reports** — losses, variance, batch history, corrections, and holds.
-- **Setup** — products, pack sizes, output rows, routes, suppliers, users, and thresholds.
+- **Reports** — losses, missing weight, batch history, corrections and holds.
+- **Setup** — products, pack sizes, containers, output rows, routes, suppliers, users and thresholds.
 
-On a phone, use the bottom navigation bar. On a desktop, use the sidebar. Numbers beside Production and Overview show active batches and alerts that need attention.
+On a phone, use the bottom bar. On a desktop, use the sidebar.
 
-## 3. Start a new batch
+**Finding a batch or lot:**
 
-1. Open **Production line**.
-2. Select **New batch**.
-3. Choose the product.
-4. Check the route shown by the system.
-5. Enter an optional **Batch name**, such as `Monday morning roast`. This is the name staff will see in queues, records, alerts, and reports.
-6. Enter the **Batch date**. It defaults to today; choose an earlier date when entering a past batch.
-7. Enter the starting material or ingredient weights.
-8. Add an optional note.
-9. Select **Create batch and record…**.
+- **Search:** type a batch name, batch ID, lot ID, material or supplier into the search box (top bar on a desktop, magnifier on a phone, or the box on **My work**).
+- **Scan:** point the phone camera at the QR code on a batch card or label and open the link. It goes straight to the station where that batch is waiting.
 
-For cocoa beans or stored nibs, enter the positive starting weight shown by the scale. For cocoa beans, also choose the **Supplier** who delivered them — it is printed on the liquor label so the liquor traces back to the supplier. Give the batch a name: the label shows it.
+## 3. Start a batch
 
-For chocolate batches:
+### Receive a delivery of beans
 
-1. Select the recipe version.
-2. Enter the planned batch size. This calculates expected ingredient quantities.
-3. Enter the actual weight used for each ingredient.
-4. Select the source lot for each ingredient when available.
-5. Check the total weighed-in amount. This becomes the Mixing input.
+1. On **My work**, select **Receive a delivery** (or **New batch** on the production line).
+2. Choose the **Supplier**. The **Batch name** fills itself in from the supplier and the date, for example `Kuapa 28 Sep`; change it if you like. The name and supplier are printed on labels.
+3. Weigh the delivery and enter the **Delivered weight**.
+4. Enter the **Accepted beans** and any **Rejected beans**. The bar at the bottom checks the balance while you type.
+5. Select **Save delivery**.
 
-The system keeps a unique batch ID such as `CH-019` for links and traceability, and opens the first station's recording screen. If no name is entered, the batch ID is used as the display name.
+The batch and its receiving record are saved together. The next screen shows the **Batch card**, which carries the batch name, the supplier and a QR code. Select **Print batch card** and keep it with the beans, then select **Record sorting** when they are sorted.
+
+### Other batches
+
+For stored nibs (butter & powder) or chocolate:
+
+1. Choose the product.
+2. Enter the batch date and an optional name.
+3. Enter the starting weight, or for chocolate the recipe version and the ingredient weights and lots.
+4. Select **Create batch and record…**.
+
+To start a chocolate batch from a lot, open the lot (or scan its label) and select **Use in a chocolate batch**. That lot is already chosen for its ingredient.
+
+The system keeps a unique batch ID such as `CH-019` for links and traceability.
 
 ## 4. Record work at a station
 
-Every station follows the same four-step process:
+Open the batch from **My work**, a station queue, the batch page or a scanned code. Everything for the station is on one screen:
 
-### Step 1: Confirm the input
+1. **Input.** The weight sent from the previous station is already filled in. If you reweighed it, select **Reweighed? Change** and enter the new reading.
+2. **Weights.** Enter the kilograms beside each output. Leave a row empty if there was none. Select **Add another output** for anything not listed.
+3. **Containers.** If you weigh in a container (husk bin, nib bucket, butter tub…), pick it next to the weight and type the scale reading. Its empty weight is taken off and the net weight is shown. The container you used last time is picked for you.
+4. **Where it goes.** Each output shows where it goes as a coloured tag (→ next station, Keep in store, For sale, Rework, Waste bin). The usual choice is already set; tap the tag to change it.
+5. **Check.** The bar at the bottom shows how much is still unassigned or missing, and turns orange when it is above the limit. Check the scale and the container before saving.
+6. **Save.** Select **Save** (for example **Save winnowing**).
 
-The screen shows the material and weight carried from the previous station. Select **Confirm input** if the displayed weight is correct.
+For Packaging, choose the pack size and enter the total and rejected units; accepted units are worked out.
 
-If you reweighed the material, select **Adjust weight**, enter the new scale reading, and confirm it. If nothing was carried forward, enter the weight you are starting with.
+After saving, the top of the screen shows what happens next: **Record pressing**, plus any other station now waiting (for example **Liquor grinding also waiting** after winnowing). Below that is the result in one line, what was weighed, and for liquor grinding the **Liquor label** to print. Select **Edit weights** if you need to change anything before the batch is completed.
 
-### Step 2: Enter what you measured
+Only output sent on to a station becomes that station's input. One batch can continue to more than one station: after winnowing, the batch waits at both pressing and liquor grinding.
 
-For a weighing station:
+**Entering a step early:** when a later process's scale log is ready before the batch reaches it, open the batch and select **Enter early** on that step. It is saved against the batch without changing where the batch is waiting.
 
-- Enter the measured kilograms beside each output.
-- Leave a row empty when that output was not produced.
-- Select **Add another output** for an output not listed.
-- Classify a custom output as useful, by-product, or waste.
-- Add a note if something unusual happened.
+## 5. Understand the balance
 
-For Packaging:
+After saving, the result is one line:
 
-- Choose the pack size.
-- Enter total units made.
-- Enter rejected units.
-- Check the calculated accepted units and nominal accepted weight.
+- **Balance OK · 0.50 kg missing (0.55%)** — within the limit.
+- **6.20 kg missing** or **more than went in** (orange) — above the limit or impossible; check the scale and the container.
+- **Waste is … of the input** (amber) — waste is above the waste limit set in Setup.
 
-Enter what the scale or count shows. The system calculates totals, yield, waste, and variance.
+Select **Show details** for the full figures:
 
-### Step 3: Choose where outputs go
-
-Choose a destination for every output:
-
-- **Continue to…** — send the output to another station in this batch.
-- **Store as a lot** — make it available as inventory.
-- **Store for sale** — make it a finished-goods lot for sale (for example whole roasted beans, nibs for sale, butter for sale, fine cocoa powder).
-- **Send to rework** — create a rework lot.
-- **Waste bin** — record it as waste without creating a lot.
-
-Only output assigned to **Continue to…** becomes the next station's input. Other outputs, such as nibs for sale or stored liquor, remain separate and do not get added to the next station automatically. Each row suggests the usual destination for that output; change it if today is different.
-
-One batch can continue to more than one station. At winnowing, nibs for liquor go to liquor grinding while nibs for butter go to pressing; the batch then waits in both queues, and the saved screen says what else is waiting.
-
-Select **Save destinations** when the choices are correct.
-
-### Step 4: Continue or finish
-
-After saving, you can:
-
-- open the batch record;
-- return to the station queue;
-- re-enter the weights;
-- record the next station; or
-- review and complete the batch when all stations are finished.
-
-From a batch page, the **Process weights** panel shows every process for that batch with its own status, input weight, measured output and variance. Use **Record weights** for the next process in the normal flow. Use **Enter independently** when a later process's scale log is available before the batch reaches it; this saves that process against the selected batch without changing the batch's next step.
-
-## 5. Understand the calculated balance
-
-The balance is based on the confirmed input and the measured outputs:
-
-- **Measured output** — all useful, by-product, and waste weights entered.
-- **Useful output** — material that can be used, stored, or reworked.
-- **By-products** — secondary material recorded separately from waste.
-- **Recorded waste** — material classified as waste.
-- **Unaccounted variance** — input minus measured output. This is not automatically treated as waste.
-- **Yield** — useful output as a percentage of input.
-- **Waste** — recorded waste as a percentage of input.
-- **Variance** — unaccounted variance as a percentage of input.
-
-An orange warning means the variance is above the configured limit. If measured output is greater than input, check the scale reading and tare before saving.
+- **Went in / Weighed out** — the input and everything weighed.
+- **Good output** — material that can be used, stored or sold.
+- **By-products** and **Waste** — recorded separately.
+- **Missing weight** — input minus everything weighed. It is not counted as waste.
+- **Yield** — good output as a share of the input.
 
 ## 6. Work with station queues
 
-Open a production part, then open a station to see:
+Your **My work** page lists the batches waiting at your own stations. To see any station, open a production part and then the station:
 
-- **Ready to record** — batches whose next step is this station.
+- **Ready to record** — batches with material waiting at this station.
 - **On hold at this station** — batches that must be reviewed before work continues.
 - **Recorded at this station** — recently completed records.
 
@@ -168,14 +148,15 @@ The hold and its release remain in the batch history and in **Reports → Holds*
 
 ## 8. Correct a recorded weight
 
-Use a correction when a saved weight was entered incorrectly:
+Use a correction when a saved weight was wrong, including on a completed batch:
 
-1. Open the batch.
-2. Select **Add correction**.
-3. Choose the station output to correct.
-4. Enter the corrected weight.
-5. Explain why it was changed.
-6. Select **Save correction**.
+1. Open the batch. Its **Steps** list shows every station in order: done, waiting or later.
+2. Select **Details** on the step.
+3. Select **Correct** next to the weight.
+4. Enter the correct weight and say why.
+5. Select **Save correction**.
+
+While a batch is still in progress, you can also open the step's record and select **Edit weights**.
 
 The original value is kept in the correction history. The corrected value is used in balances and reports. If the output created a lot, the lot quantity is adjusted as well.
 
@@ -217,7 +198,9 @@ Select a lot from **Materials** to see:
 - batches that used it; and
 - lots made by those downstream batches.
 
-This is the traceability path from a supplier delivery through production. Lots made by a batch also show a printable label with the batch name and supplier.
+This is the traceability path from a supplier delivery through production.
+
+Lots made by a batch also show a printable **label** with the batch name, supplier, weight and a QR code; scanning the code opens the lot. Lots used in chocolate recipes (for example liquor or cocoa butter) have a **Use in a chocolate batch** button that starts a batch with that lot already chosen.
 
 ## 11. Manage recipes
 
@@ -266,10 +249,11 @@ Users with access to Setup can configure:
 - **Business details** — the business name and contact details shown on exported Excel and print/PDF reports.
 - **Products** — products, batch prefixes, routes, and recipes.
 - **Pack sizes** — grams per unit used in Packaging.
+- **Containers** — bins, buckets and tubs with their empty weight, taken off the scale reading at every station.
 - **Output categories** — the standard rows workers see at each station.
 - **Routes** — the default station order for each batch type.
 - **Suppliers** — delivery sources and contact details.
-- **Users** — staff accounts and the user used for recording.
+- **Users** — staff accounts with a 4-digit PIN, **Operator** or **Manager** access, and the stations on each person's **My work** page. The idle sign-out time for shared devices is set here too. At least one person must keep manager access.
 - **Alert thresholds** — station variance limits, waste limit, and low-stock warning.
 
 Changes apply immediately in the current browser. Business details are saved with the browser data and are included in future reports.
@@ -283,6 +267,7 @@ Other editable areas follow the same traceability rule. Recipe names and batch n
 - Enter actual measured values, not estimates.
 - A useful output stored as a lot is not automatically carried into the next station.
 - By-products are tracked separately and are not counted as recorded waste.
-- Variance is reported separately from waste.
-- Save destinations after changing them; otherwise the batch cannot be completed.
+- Missing weight is reported separately from waste.
+- Pick the container when you weigh in one, so its empty weight is taken off.
+- Sign out when you hand the device over, so the next records carry the right name.
 - The current demo stores data in this browser only. It is not shared between browsers or devices.

@@ -6,13 +6,11 @@ This document explains the current implementation of the Chocolate Factory produ
 
 Chocolate Factory records the movement of material through a chocolate-production line:
 
-1. A worker starts or selects a batch.
-2. The worker confirms the input at a station.
-3. The worker enters only the weights or counts observed at that station.
-4. The app calculates the mass balance.
-5. Each output is assigned a destination: another station, stock, rework, or waste.
-6. Continued material becomes the next station's input; stored and rejected outputs remain separate lots or waste records.
-7. A batch is reviewed and closed at Completion.
+1. A worker signs in with their name and PIN and opens a batch from **My work**, a station queue, search or a scanned QR code.
+2. On one screen, the worker checks the input and enters only the weights or counts observed at that station. Each output already shows where it goes: another station, stock, sale, rework or waste.
+3. The app checks the mass balance while the weights are typed and saves everything in one step.
+4. Continued material becomes the next station's input; stored, for-sale and rejected outputs become separate lots or waste records.
+5. A batch is reviewed and closed at Completion.
 
 The app also provides material-lot traceability, recipe versioning, alerts, holds, corrections, reports, and factory setup screens.
 
@@ -26,6 +24,8 @@ The main runtime layers are:
 | --- | --- | --- |
 | App shell | `src/app/layout.tsx`, `src/components/Shell.tsx` | Loads global styles, mounts the store, gates the app behind sign-in, and renders navigation. |
 | Shared UI | `src/components/ui.tsx` | Reusable headers, panels, buttons, fields, tables, badges, notices, stats, and navigation tabs. |
+| Weighing UI | `src/components/weighing.tsx` | Weight field with container tare, destination tags, the live balance bar and the one-line saved verdict. |
+| Labels | `src/components/BatchLabel.tsx` | Printable batch cards and material labels with a QR code that opens the record (`/scan/<id>`). |
 | Domain configuration | `src/lib/stations.ts` | Defines the seventeen stations, five line parts, station inputs/outputs, output rows with default destinations, and allowed next stations. |
 | Domain types and state | `src/lib/types.ts`, `src/lib/seed.ts` | Defines the data model and supplies the initial sample data. |
 | Business calculations | `src/lib/balance.ts` | Calculates station balances, percentages, rounding, and packaging quantities. |
@@ -37,18 +37,40 @@ All feature screens read and mutate state through `useStore()` from `src/lib/sto
 
 ## 3. Startup and sign-in
 
-`src/app/page.tsx` redirects `/` to `/production`. The root layout mounts `StoreProvider` and then `Shell`.
+The root layout mounts `StoreProvider` and then `Shell`. `src/app/page.tsx` sends operators, and managers who have their own stations, to `/work`; other managers go to `/production`.
 
 On the first client render, the provider starts with `seedState()` and then hydrates from browser storage:
 
 - Data key: `cocoa-production-v1`
 - Session key: `cocoa-session`
+- Last activity: `cocoa-last-active`
 
-The shell waits for hydration so the seed data does not briefly flash, then shows `LoginScreen` when there is no session user. Login compares the submitted email and password with the in-browser `users` array. A successful login stores the user ID in `cocoa-session` and also sets `currentUserId`, which is written onto new measurements, holds, and corrections.
+The shell waits for hydration so the seed data does not briefly flash, then shows `LoginScreen` when there is no session user.
 
-Sample users are defined in `src/lib/seed.ts`; all seeded accounts use the password `cocoa123`. The login screen includes Alex Morgan's demo credentials.
+**Quick sign-in** is the default. The screen lists every user; tapping a name opens a 4-digit PIN keypad (digits can also be typed). `signInWithPin()` compares the PIN with the in-browser `users` array. **Sign in with email and password** stays available through `signIn()`.
 
-The `migrate()` function in `src/lib/store.tsx` upgrades older stored users that do not yet have email or password fields. It merges stored data over a fresh seed shape and fills missing user credentials from the matching seed user or a generated default. When stored data predates the current line layout (`workflowVersion`), it replaces the built-in output rows and seeded route station lists with the current ones, keeps output rows the user added, and fills variance limits for new stations.
+A successful sign-in stores the user ID in `cocoa-session`, resets the last-activity time, and sets `currentUserId`, which is written onto new measurements, holds and corrections.
+
+**Sign-out and idle sign-out:**
+
+- Signing out returns to `/`, so the next person lands on their own home page.
+- Shared devices sign out after `idleMinutes` without pointer, touch or key activity (10 by default, 0 = never).
+- The last activity is kept in storage, so a stale session also ends when the page is reloaded. In that case the URL is kept, so a scanned link still opens after signing in.
+
+**Access and "recording as":**
+
+- Each user has `access` (`operator` or `manager`) and `stations`.
+- Menu access follows the signed-in user.
+- A manager may choose another person under **Setup → Users** to record on their behalf; `currentUserId` changes but the menu does not.
+- Operators who open `/overview`, `/recipes`, `/reports` or `/setup` are sent to `/work`.
+
+Sample users are defined in `src/lib/seed.ts`; all seeded accounts use the PIN `1234` and the password `cocoa123`.
+
+The `migrate()` function in `src/lib/store.tsx` upgrades data saved by earlier versions:
+
+- **Users:** fills missing email, password, PIN, access and stations from the matching seed user. Unknown users default to PIN `1234` and manager access, so nobody is locked out.
+- **Line layout:** when stored data predates the current layout (`workflowVersion`), it replaces the built-in output rows and seeded route station lists with the current ones, and keeps output rows the user added.
+- **Limits and settings:** fills variance limits for new stations. It also adds the seeded containers and idle setting when they are missing.
 
 ## 4. Production line model
 
@@ -108,22 +130,25 @@ Liquor is weighed once, after fine grinding. The Liquor grinding result screen s
 
 `/production/new` creates a batch using a selected product. Products map to a route and, for chocolate products, to a recipe.
 
-For bean and stored-nib products, the worker enters a positive starting weight. Bean batches also record the supplier of the delivery, which is printed on labels. For chocolate products, the worker selects a recipe version, enters a planned size, reviews the expected ingredient quantities, and records actual ingredient weights and optional source lots. The sum of actual ingredient weights becomes the mixing input. The worker also enters the calendar date on which the batch started; this defaults to today in the new-batch form and allows historical batches to be entered.
+**Bean products use one "Receive a delivery" form.** It asks for the supplier, delivery date, batch name, delivered weight (with an optional container), and the receiving output rows (accepted and rejected beans, with their destinations). The live balance bar checks them while typing.
 
-The worker may also enter an optional operator-facing batch name. It is trimmed and stored separately from the generated batch ID. The name is used in queues, alerts, records, and reports; the immutable ID remains the canonical key for URLs, lot uses, and traceability. Older batches without a name continue to display their ID.
+- The batch name is suggested from the supplier and date by `suggestBatchName()`, e.g. `Kuapa 28 Sep`. It is made unique with a number when needed, and can be edited.
+- **Save delivery** calls `createBatch()` and then `saveRecord()` for Receiving, then opens the saved receiving screen with the printable batch card.
+
+For stored-nib products the worker enters a starting weight. For chocolate products, the worker picks a recipe version and planned size, then records actual ingredient weights and source lots.
+
+`/production/new?lot=<id>` pre-selects that lot for the matching ingredient and picks a chocolate product whose recipe uses it; lot pages link here with **Use in a chocolate batch**. The worker also enters the calendar date on which the batch started. It defaults to today, so historical batches can be entered.
+
+The optional batch name is trimmed and stored separately from the generated batch ID. The name is used in queues, alerts, records, labels and reports; the ID remains the key for URLs, lot uses, QR codes and traceability.
 
 `createBatch()` then:
 
-- Generates the next batch ID from the product prefix, such as `CH-019`.
-- Stores the optional manual batch name, when provided.
-- Stores the entered batch calendar date as `startedAt` (at noon local time); older callers without a date continue to use the current timestamp.
-- Sets status to `active`.
-- Sets `nextStation` to the first station in the route.
-- Stores the supplier for bean batches.
+- Generates the next batch ID from the product prefix, such as `CH-019`, from the latest state (so it can be returned straight away).
+- Stores the optional batch name and, for bean batches, the supplier.
+- Stores the entered batch calendar date as `startedAt` (at noon local time).
+- Sets status to `active` and `nextStation` to the first station in the route.
 - Stores the starting material, weight, source lot IDs, optional recipe snapshot, and note.
 - Draws down each selected lot by the actual quantity used, never below zero, while retaining the scale weight as entered.
-
-The first station's recording screen opens immediately after creation.
 
 ### Statuses
 
@@ -145,47 +170,61 @@ Each `StationRecord` stores:
 - optional note; and
 - whether destinations have been saved.
 
-Re-entering a station updates its existing record rather than adding a duplicate station record. Existing destinations for outputs with the same name are retained while new weights are entered. The record is marked `destinationsSaved: false` until its destinations are saved again.
+A station's weights and destinations are saved together, so new records are always complete (`destinationsSaved: true`). Re-entering a station (**Edit weights**) updates its existing record rather than adding a duplicate, and keeps the lot IDs it created before, so printed labels stay valid. Records from older versions that were saved without destinations show **Not finished** and open in the form to be completed.
 
-The batch page also exposes a process-by-process weight view. Every process record is keyed by the batch and station, so multiple batches can carry independent weights at the same station. A process may be entered out of order from this view when a scale log is available; the entry stores its explicit input weight and does not change `nextStation` or the normal production sequence.
+The batch page shows one **Steps** list in line order: each station is done (with **Details** for its weights, destinations, lots, notes and corrections), waiting (with **Record**), or later (with **Enter early**). Every process record is keyed by the batch and station, so multiple batches can carry independent weights at the same station. An early entry stores its explicit input weight and does not change `nextStation` or the normal production sequence.
 
 ## 6. Recording a station
 
-The route `/production/batches/[id]/record/[station]` implements a four-step station flow:
+The route `/production/batches/[id]/record/[station]` is one screen with one Save button (`StationForm`), followed by a saved view (`SavedView`). A station can be opened when the batch is waiting there (`isReadyAt()`: its `nextStation` or a station with continued material waiting), with `?mode=independent` for an early entry, or when it already has a record.
 
-### Step 1: Confirm input
+### Input
 
-`nextInput()` finds the recorded output(s) whose destination is `continue:<current station>`. Their names are joined and their weights are summed. If the batch is at its first route station, or no station has been recorded, the batch's `startInput` is used.
+`nextInput(batch, station)` adds up the saved outputs whose destination is `continue:<station>`; their names are joined. If nothing was continued and the batch has no records, or this is the route's first station, the batch's `startInput` is used. The input is shown pre-filled. **Reweighed? Change** opens a weight field for the new scale reading. An early entry, or a station with nothing carried forward, starts with the field open.
 
-For an independent entry, the operator enters the input weight for that process directly. `nextInput()` resolves the normal workflow input by the output that explicitly targets `nextStation`, so out-of-order records do not replace the material waiting at the active step.
+### Weights, containers and destinations
 
-The worker can accept the carried-forward weight or enable a reweigh adjustment. If no material was carried forward, the worker must enter a positive starting weight manually.
+The form loads the station's configured output rows (`outputCategories`), plus any custom outputs on an existing record. Operators can add custom rows and classify them as good output, by-product or waste.
 
-### Step 2: Enter outputs or packaging counts
+**Containers.** Each weight has an optional container from **Setup → Containers**.
 
-For a weights station, the form loads the station's configured output rows. Empty rows are ignored; positive rows are saved. Operators can add a custom output row and classify it as useful, by-product, or waste.
+- The typed value is then the scale reading. `netWeight()` subtracts the container's empty weight (tare).
+- The record keeps the gross reading, tare and container name (`container` on the output, `inputContainer` on the record), so history does not change if the container list changes.
+- The container last used for that output at that station (`lastContainerId()`) is pre-selected.
 
-For Packaging, the operator selects a pack size and enters total units and rejected units. Accepted units are calculated, not typed.
+**Destinations.** Each output shows its destination as a tag that can be changed:
 
-The form warns when measured output is greater than the confirmed input, but it does not block saving. It requires a positive input and at least one positive measured output, or a positive total unit count for Packaging.
-
-### Step 3: Choose destinations
-
-Every saved output gets an individual destination:
-
-- `continue:<station>`: carry it to another permitted station in the batch;
-- `stock`: create an inventory lot;
-- `sale`: create a Finished goods lot for sale;
+- `continue:<station>`: carry it to another permitted station in the batch (the options come from the station's `next` list);
+- `stock`: create an inventory lot ("Keep in store");
+- `sale`: create a Finished goods lot ("For sale");
 - `rework`: create a rework lot; or
-- `waste`: send it to the waste record without creating a lot.
+- `waste`: waste bin, no lot.
 
-Default destinations are assigned when a record is first saved from each output row's own default (see the station table). Custom rows fall back to: waste goes to the waste bin, by-products go to stock, and the first useful output continues to the station's default next station. The operator can change every destination before saving.
+Defaults come from each output row's `to` in `src/lib/stations.ts`. Custom rows fall back to: waste to the waste bin, by-products to stock, and the first useful output to the station's default next station.
 
-When destinations are saved, `batch.nextStation` becomes the first station (in line order) with continued material waiting; if none is waiting, the next station becomes Completion. Only the output(s) explicitly continued to a station are used by `nextInput()` for that station.
+**Live check.** The bar pinned to the bottom of the screen (`LiveBalance`) recalculates the balance as weights are typed:
 
-### Step 4: Finish
+- It shows how much is entered, how much is left to assign or missing, and turns orange above the station's variance limit or when more was entered than went in.
+- It also notes when waste is above the waste limit.
+- It does not block saving. Saving requires a positive input and at least one positive weight, or a positive total unit count for Packaging, where accepted units are calculated from total and rejected units.
 
-The completed recording screen shows the balance, destinations, created lot links, and next action. The operator can open the batch, return to the station queue, re-enter weights, or record the next station.
+### Saving
+
+`saveRecord()` (or `savePackaging()`) builds the record and hands it to `commitRecord()`, which:
+
+1. creates or updates a lot for every output sent to `stock`, `sale` or `rework`, reusing the lot IDs this station created before;
+2. replaces the station's record on the batch; and
+3. unless it is an early entry, sets `nextStation` to the first station in line order with continued material waiting (`pendingStations()`), or Completion when none is waiting.
+
+### Saved view
+
+The saved view puts the next step first:
+
+- **Top:** a banner lists what was sent on, with buttons to record the next station and any other station now waiting.
+- **Verdict:** the balance in one line (`BalanceVerdict`), with **Show details** for the full figures.
+- **What was weighed:** each output with its destination, lot link and container reading.
+- **Labels:** Liquor grinding shows the liquor label; Receiving shows the batch card.
+- **Edit weights** reopens the form until the batch is completed.
 
 ## 7. Mass balance and packaging calculations
 
@@ -227,6 +266,8 @@ Receiving material at `/materials/receive` always creates a kilogram supplier lo
 
 Saving station destinations creates lots only for outputs sent to `stock`, `sale` or `rework`. Outputs sent to `sale` become Finished goods lots. Continued outputs stay attached to the batch path, and waste outputs do not create lots. Packaging's accepted output creates a Finished goods lot measured in units and named with the product and pack size. Other stored/rework outputs create kilogram lots.
 
+Lots made by a batch show a printable label on their lot page, and a bean batch prints a batch card from its receiving screen or batch page. Labels carry the batch name, batch ID, supplier(s), weight, date, lot ID and a QR code for `/scan/<batch or lot ID>`. `scanTarget()` opens a batch at the station where it is waiting (or its batch page when it waits at more than one), and a lot at its lot page. Scanning works with the phone's own camera app.
+
 Each lot records its source, received quantity, available quantity, and uses. When a source lot is selected for a new chocolate batch, the actual amount used is appended to the lot's use history and subtracted from availability. The lot page links upstream source lots, the creating batch/station, downstream batch uses, and lots made by those downstream batches.
 
 Lot IDs are generated in `nextLotId()` using material-specific prefixes such as `BEAN`, `WRB`, `NIB`, `SILK`, `BUT`, `PWD`, `LIQ`, `REW`, and `FIN`, followed by a four-digit sequence.
@@ -239,7 +280,7 @@ From a batch page, an operator can:
 - release all unreleased holds with a release note; and
 - add a correction to a previously recorded output.
 
-Corrections update the output weight and append an audit entry containing the old value, new value, reason, timestamp, and correcting user. If the corrected output created a lot, the associated lot quantity is adjusted by the correction delta.
+Corrections are made from the batch page: open a step's **Details** and select **Correct** next to the weight. They update the output weight and append an audit entry containing the old value, new value, reason, timestamp, and correcting user. If the corrected output created a lot, the associated lot quantity is adjusted by the correction delta.
 
 The batch timeline shows station records, input/output balances, destinations, recording users, holds, corrections, the next station, upcoming default stations, and completion information.
 
@@ -269,12 +310,15 @@ Alerts appear in the Overview, in the production navigation counts, on batch pag
 | --- | --- |
 | `/` | Redirects to Production. |
 | `/overview` | Active-batch count, alert count, completed-today count, aggregate variance, alerts, and recent records. |
-| `/production` | Active batches, current/next stations (and any other station with material waiting), holds, and the five production parts. |
-| `/production/new` | Starts a bean (with supplier), stored-nib, or chocolate batch. |
+| `/work` | My work: batches waiting at the signed-in person's stations (all stations for people without their own), with one button to record each, search, and **Receive a delivery**. |
+| `/search?q=` | Finds batches (name, ID, product, supplier) and lots (ID, material, supplier). |
+| `/scan/[code]` | Target of the QR codes on labels: opens the batch where it is waiting, or the lot. |
+| `/production` | Active batches, where each is waiting, holds, and the five production parts. |
+| `/production/new` | Receive a delivery (bean batches: batch and receiving in one form), or start a stored-nib or chocolate batch; `?lot=` pre-selects a lot. |
 | `/production/parts/[part]` | Shows batches waiting in one line part and lists its stations. |
 | `/production/stations/[station]` | Shows a station's ready, held, and recently recorded queues. |
-| `/production/batches/[id]` | Shows process-by-process weights and statuses, the batch timeline, actions, recipe comparison, holds, corrections, and alerts. |
-| `/production/batches/[id]/record/[station]` | Records input, outputs/counts, destinations, and completion. |
+| `/production/batches/[id]` | One Steps list (done with details and inline corrections, waiting, later with early entry), batch card printing, actions, recipe comparison, holds, and alerts. |
+| `/production/batches/[id]/record/[station]` | One-screen station entry (input, weights with containers, destinations, live check), the saved view, and completion. |
 | `/materials` | Filters and lists all material lots. |
 | `/materials/receive` | Records a supplier delivery and creates a lot. |
 | `/materials/[lot]` | Shows lot quantities, a printable label for production lots, and upstream/downstream traceability; edits/deletes unused supplier lots only. |
@@ -288,10 +332,11 @@ Alerts appear in the Overview, in the production navigation counts, on batch pag
 | `/setup/business` | Edits the business name and contact details rendered on reports. |
 | `/setup/products` | Lists, adds, edits, and guarded-deletes products and route/recipe associations. |
 | `/setup/pack-sizes` | Lists, adds, edits, and guarded-deletes packaging sizes. |
+| `/setup/containers` | Lists, adds, edits and deletes containers and their empty weights. |
 | `/setup/outputs` | Lists, adds, edits, and deletes station output rows for future station forms. |
 | `/setup/routes` | Edits route names, starting material and notes; station order stays structural and route deletion is guarded. |
 | `/setup/suppliers` | Lists, adds, edits, and guarded-deletes suppliers. |
-| `/setup/users` | Lists, adds, edits, and guarded-deletes staff accounts; also changes the user used for recording. |
+| `/setup/users` | Lists, adds, edits and guarded-deletes staff accounts with PIN, access and stations; sets the idle sign-out time; also changes the user used for recording. The last manager cannot be removed or demoted. |
 | `/setup/alerts` | Edits thresholds. |
 
 `/reports` redirects to `/reports/losses`; `/setup` redirects to `/setup/products`. The former `/setup/paper-catalog` URL redirects to `/setup/products`.
@@ -318,11 +363,13 @@ The seed configuration includes the bean and liquor products, three verified cho
 
 `Shell.tsx` provides:
 
-- a desktop sidebar with Overview, Production line, Materials, Recipes, Reports, and Setup;
-- expandable-looking production part links with waiting counts;
-- a desktop top bar showing the current page and signed-in user;
-- a mobile header; and
+- a menu that depends on access: operators get **My work** and **Production line**; managers get Overview, Production line, Materials, Recipes, Reports and Setup, plus **My work** when they have their own stations;
+- production part links with waiting counts;
+- a desktop top bar with the current page and a search box;
+- a mobile header with the person's name, search and sign-out; and
 - a fixed mobile bottom navigation bar.
+
+Controls on the floor screens are at least 44–48 px tall for gloved or wet hands, and weight fields open the number keypad on phones. On phones the losses report shows one card per batch instead of the wide grid.
 
 `ui.tsx` centralizes the visual primitives used across screens. `globals.css` defines the design tokens, responsive layout, forms, tables, notices, status badges, and StockMaster-inspired navy/orange visual language.
 
@@ -344,14 +391,15 @@ npm run typecheck
 node browser-check.cjs
 ```
 
-The browser check expects the dev server to already be running and uses Microsoft Edge/Playwright. `interaction-audit.cjs` is an additional interaction-audit script that records browser checks under its configured output directory.
+The browser check expects the app to already be running and uses Microsoft Edge/Playwright. It covers PIN and email sign-in, all 17 station queues, one-screen recording with the live check, the nib split, labels, receiving a delivery in one form, the batch steps with inline corrections, holds, completion, reports, setup, the phone layout and operator menus. `interaction-audit.cjs` clicks through the same flows, saving before/after screenshots and a report under its configured output directory.
 
 ## 15. Current scope and limitations
 
 The current app is a browser-local prototype/demo rather than a production deployment:
 
 - Data is stored as JSON in `localStorage`; there is no shared server database or synchronization between users/devices.
-- Authentication is a client-side credential comparison. Passwords are stored in the browser state, so this is not a security boundary for real factory access.
+- Authentication is a client-side comparison of PINs and passwords stored in the browser state, so it is not a security boundary for real factory access. The operator/manager menu is a convenience, not access control.
+- QR codes open records only on a device that holds the data. Until data is shared through a server, a label scanned on another phone finds nothing.
 - IDs are generated from the current browser state and are not safe for concurrent multi-user creation.
 - Weights are recorded in kilograms and rounded to two decimals; Packaging also stores accepted units.
 - Setup changes apply immediately to the current browser's forms and reports.

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { ArrowDown, Pencil, Trash2 } from 'lucide-react';
-import { Back, Badge, Button, Empty, Field, Input, Notice, PageHeader, Panel, Select, Stat } from '@/components/ui';
+import { Back, Badge, Button, Empty, Field, Input, LinkButton, Notice, PageHeader, Panel, Select, Stat } from '@/components/ui';
 import { BatchLabel } from '@/components/BatchLabel';
 import { batchById, lotOrigin, recordBalance } from '@/lib/derive';
 import { dateTime } from '@/lib/format';
@@ -28,11 +28,13 @@ export default function LotPage() {
   const madeLots = downstream.flatMap((d) => store.lots.filter((l) => l.source.type === 'batch' && l.source.batchId === d.use.batchId));
   const referencedByBatch = store.batches.some((batch) => batch.startInput.lotIds.includes(lot.id) || batch.records.some((record) => record.inputLotIds.includes(lot.id) || record.outputs.some((output) => output.lotId === lot.id)));
   const canDelete = lot.source.type === 'supplier' && lot.uses.length === 0 && lot.available === lot.received && !referencedByBatch;
+  // A scanned tub or sack at mixing starts a chocolate batch with this lot already chosen.
+  const usedInRecipes = lot.unit === 'kg' && lot.available > 0 && store.recipes.some((r) => r.versions.find((v) => v.version === r.currentVersion)?.ingredients.some((i) => i.name === lot.material));
 
   return (
     <>
       <Back href="/materials" label="Materials" />
-      <PageHeader eyebrow={lot.category} title={`${lot.id} · ${lot.material}`} subtitle={`${lotOrigin(store, lot)} · received ${dateTime(lot.receivedAt)}`} action={<div className="flex gap-2"><Button variant="secondary" onClick={() => setEditing((value) => !value)}><Pencil size={14} /> Edit</Button><Button variant="danger" disabled={!canDelete} title={canDelete ? 'Delete lot' : 'Only unused supplier lots can be deleted.'} onClick={() => { if (canDelete && window.confirm(`Delete lot ${lot.id}?`)) { store.deleteLot(lot.id); router.push('/materials'); } }}><Trash2 size={14} /> Delete</Button></div>} />
+      <PageHeader eyebrow={lot.category} title={`${lot.id} · ${lot.material}`} subtitle={`${lotOrigin(store, lot)} · received ${dateTime(lot.receivedAt)}`} action={<div className="flex flex-wrap gap-2">{usedInRecipes && <LinkButton href={`/production/new?lot=${lot.id}`}>Use in a chocolate batch</LinkButton>}<Button variant="secondary" onClick={() => setEditing((value) => !value)}><Pencil size={14} /> Edit</Button><Button variant="danger" disabled={!canDelete} title={canDelete ? 'Delete lot' : 'Only unused supplier lots can be deleted.'} onClick={() => { if (canDelete && window.confirm(`Delete lot ${lot.id}?`)) { store.deleteLot(lot.id); router.push('/materials'); } }}><Trash2 size={14} /> Delete</Button></div>} />
       <div className="mb-5 grid grid-cols-3 gap-3">
         <Stat label="Received" value={`${lot.received} ${lot.unit}`} />
         <Stat label="Used" value={`${Math.round((lot.received - lot.available) * 100) / 100} ${lot.unit}`} />

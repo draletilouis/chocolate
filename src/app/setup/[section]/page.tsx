@@ -7,12 +7,13 @@ import { Badge, Button, Field, Input, Notice, PageHeader, Panel, Select, SubNav,
 import { kindLabel } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { stationName, stations } from '@/lib/stations';
-import type { BusinessDetails, OutputKind, RouteId, StationId } from '@/lib/types';
+import type { Access, BusinessDetails, OutputKind, RouteId, StationId, User } from '@/lib/types';
 
 const sections = [
   { id: 'business', label: 'Business details', href: '/setup/business' },
   { id: 'products', label: 'Products', href: '/setup/products' },
   { id: 'pack-sizes', label: 'Pack sizes', href: '/setup/pack-sizes' },
+  { id: 'containers', label: 'Containers', href: '/setup/containers' },
   { id: 'outputs', label: 'Output categories', href: '/setup/outputs' },
   { id: 'routes', label: 'Routes', href: '/setup/routes' },
   { id: 'suppliers', label: 'Suppliers', href: '/setup/suppliers' },
@@ -54,11 +55,38 @@ function RowActions({ onEdit, onDelete, deleteDisabled, deleteHint }: { onEdit: 
   );
 }
 
+/** Staff fields shared by the add and edit forms: PIN, access and the stations on their "My work" page */
+function UserFields({ user }: { user?: User }) {
+  return (
+    <>
+      <Field label="PIN (4 digits)" hint="Used for quick sign-in on shared devices."><Input name="pin" inputMode="numeric" pattern="\d{4}" maxLength={4} defaultValue={user?.pin ?? ''} required autoComplete="off" /></Field>
+      <Field label="Access" hint="Operators see My work and the production line. Managers also see reports, recipes and setup.">
+        <Select name="access" defaultValue={user?.access ?? 'operator'}><option value="operator">Operator</option><option value="manager">Manager</option></Select>
+      </Field>
+      <fieldset className="md:col-span-2">
+        <legend className="form-label">Stations on their My work page</legend>
+        <div className="grid grid-cols-2 gap-1 sm:grid-cols-3 lg:grid-cols-4">
+          {stations.map((s) => (
+            <label key={s.id} className="flex min-h-[44px] items-center gap-2 rounded-lg px-2 text-[13px] hover:bg-paper"><input type="checkbox" name="stations" value={s.id} defaultChecked={user?.stations.includes(s.id)} className="h-5 w-5" />{s.name}</label>
+          ))}
+        </div>
+      </fieldset>
+    </>
+  );
+}
+
+const userPatch = (d: FormData) => ({
+  pin: String(d.get('pin')).trim(),
+  access: (d.get('access') as Access) || 'operator',
+  stations: d.getAll('stations').map(String) as StationId[],
+});
+
 export default function SetupPage() {
   const { section } = useParams<{ section: string }>();
   const store = useStore();
   const [businessDetails, setBusinessDetails] = useState<BusinessDetails>(store.business);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [userError, setUserError] = useState('');
   const current = sections.find((s) => s.id === section) ?? sections[0];
   if (section === 'paper-catalog') redirect('/setup/products');
 
@@ -190,22 +218,60 @@ export default function SetupPage() {
       )}
 
       {current.id === 'users' && (
-        <Panel title="Users" subtitle="Staff accounts. Records are signed with the user chosen here; everyone signs in with their own email and password.">
-          <Table head={['Name', 'Role', 'Email', 'Recording as', '']}>
+        <Panel title="Users" subtitle="Staff accounts. Everyone signs in by tapping their name and entering their PIN; email and password also work. Records are signed with the person who is signed in.">
+          <Table head={['Name', 'Role', 'Access', 'Stations', 'Recording as', '']}>
             {store.users.map((u) => {
               const usedInAudit = store.batches.some((b) => b.records.some((r) => r.recordedBy === u.id) || b.holds.some((h) => h.placedBy === u.id) || b.corrections.some((c) => c.correctedBy === u.id));
-              const canDelete = u.id !== store.currentUserId && !usedInAudit;
+              const lastManager = u.access === 'manager' && store.users.filter((x) => x.access === 'manager').length === 1;
+              const canDelete = u.id !== store.currentUserId && !usedInAudit && !lastManager;
               return <Fragment key={u.id}>
-                <tr key={u.id}><td className={td}>{u.name}</td><td className={td}>{u.role}</td><td className={td}>{u.email}</td><td className={td}>{u.id === store.currentUserId ? <Badge tone="green">Current user</Badge> : <button className="btn-text" onClick={() => store.setCurrentUser(u.id)}>Use {u.name.split(' ')[0]}</button>}</td><td className={td}><RowActions onEdit={() => setEditingId(u.id)} onDelete={() => { if (canDelete && window.confirm(`Delete ${u.name}?`)) store.deleteUser(u.id); }} deleteDisabled={!canDelete} deleteHint="The current user or users referenced in audit history cannot be deleted." /></td></tr>
-                {editingId === u.id && <tr key={`${u.id}-edit`}><td className={td} colSpan={5}><EditForm onCancel={() => setEditingId(null)} onSubmit={(d) => { const password = String(d.get('password')); store.updateUser(u.id, { name: String(d.get('name')).trim(), role: String(d.get('role')).trim(), email: String(d.get('email')).trim(), password: password || u.password }); setEditingId(null); }}><Field label="Name"><Input name="name" defaultValue={u.name} required /></Field><Field label="Role"><Input name="role" defaultValue={u.role} required /></Field><Field label="Email"><Input name="email" type="email" defaultValue={u.email} required autoComplete="off" /></Field><Field label="New password" hint="Leave blank to keep the current password."><Input name="password" type="password" minLength={6} autoComplete="new-password" /></Field></EditForm></td></tr>}
+                <tr key={u.id}>
+                  <td className={td}>{u.name}<span className="block text-[11px] text-muted">{u.email}</span></td><td className={td}>{u.role}</td>
+                  <td className={td}><Badge tone={u.access === 'manager' ? 'info' : 'neutral'}>{u.access === 'manager' ? 'Manager' : 'Operator'}</Badge></td>
+                  <td className={td}>{u.stations.length ? u.stations.map((sid) => stationName(sid)).join(', ') : <span className="text-faint">All (no own stations)</span>}</td>
+                  <td className={td}>{u.id === store.currentUserId ? <Badge tone="green">Current user</Badge> : <button className="btn-text" onClick={() => store.setCurrentUser(u.id)}>Use {u.name.split(' ')[0]}</button>}</td>
+                  <td className={td}><RowActions onEdit={() => { setEditingId(u.id); setUserError(''); }} onDelete={() => { if (canDelete && window.confirm(`Delete ${u.name}?`)) store.deleteUser(u.id); }} deleteDisabled={!canDelete} deleteHint="The current user, the last manager, and users in the audit history cannot be deleted." /></td>
+                </tr>
+                {editingId === u.id && <tr key={`${u.id}-edit`}><td className={td} colSpan={6}>
+                  <EditForm onCancel={() => setEditingId(null)} onSubmit={(d) => {
+                    const password = String(d.get('password'));
+                    const ok = store.updateUser(u.id, { name: String(d.get('name')).trim(), role: String(d.get('role')).trim(), email: String(d.get('email')).trim(), password: password || u.password, ...userPatch(d) });
+                    if (!ok) return setUserError('At least one person must keep manager access.');
+                    setUserError(''); setEditingId(null);
+                  }}>
+                    <Field label="Name"><Input name="name" defaultValue={u.name} required /></Field><Field label="Role"><Input name="role" defaultValue={u.role} required /></Field>
+                    <Field label="Email"><Input name="email" type="email" defaultValue={u.email} required autoComplete="off" /></Field><Field label="New password" hint="Leave blank to keep the current password."><Input name="password" type="password" minLength={6} autoComplete="new-password" /></Field>
+                    <UserFields user={u} />
+                    {userError && <div className="md:col-span-2"><Notice tone="danger">{userError}</Notice></div>}
+                  </EditForm>
+                </td></tr>}
               </Fragment>;
             })}
           </Table>
-          <AddForm title="Add user" onSubmit={(d) => store.addUser({ name: String(d.get('name')), role: String(d.get('role')), email: String(d.get('email')).trim(), password: String(d.get('password')) })}>
+          <AddForm title="Add user" onSubmit={(d) => store.addUser({ name: String(d.get('name')), role: String(d.get('role')), email: String(d.get('email')).trim(), password: String(d.get('password')), ...userPatch(d) })}>
             <Field label="Name"><Input name="name" required /></Field>
             <Field label="Role"><Input name="role" required placeholder="e.g. Winnowing operator" /></Field>
             <Field label="Email"><Input name="email" type="email" required autoComplete="off" /></Field>
             <Field label="Password"><Input name="password" type="password" required minLength={6} autoComplete="new-password" /></Field>
+            <UserFields />
+          </AddForm>
+          <div className="grid gap-2 border-t border-line p-5 md:grid-cols-[320px_1fr] md:items-end">
+            <Field label="Shared devices: sign out after (minutes without use)" hint="0 keeps people signed in."><Input type="number" min="0" step="1" value={store.idleMinutes} onChange={(e) => store.setIdleMinutes(Number(e.target.value))} aria-label="Idle sign-out minutes" /></Field>
+          </div>
+        </Panel>
+      )}
+
+      {current.id === 'containers' && (
+        <Panel title="Containers" subtitle="Bins, buckets and tubs weighed together with the material. Operators pick the container and its empty weight is taken off the scale reading.">
+          <Table head={['Container', 'Empty weight', '']}>
+            {store.containers.map((c) => <Fragment key={c.id}>
+              <tr key={c.id}><td className={td}>{c.name}</td><td className={tdNum}>{c.tare.toFixed(2)} kg</td><td className={td}><RowActions onEdit={() => setEditingId(c.id)} onDelete={() => { if (window.confirm(`Delete ${c.name}? Past records keep the weight they used.`)) store.deleteContainer(c.id); }} /></td></tr>
+              {editingId === c.id && <tr key={`${c.id}-edit`}><td className={td} colSpan={3}><EditForm onCancel={() => setEditingId(null)} onSubmit={(d) => { store.updateContainer(c.id, { name: String(d.get('name')).trim(), tare: Number(d.get('tare')) }); setEditingId(null); }}><Field label="Name"><Input name="name" defaultValue={c.name} required /></Field><Field label="Empty weight (kg)" hint="Weigh the empty container."><Input name="tare" type="number" min="0" step="0.01" defaultValue={c.tare} required /></Field></EditForm></td></tr>}
+            </Fragment>)}
+          </Table>
+          <AddForm title="Add container" onSubmit={(d) => store.addContainer({ name: String(d.get('name')).trim(), tare: Number(d.get('tare')) })}>
+            <Field label="Name"><Input name="name" required placeholder="e.g. Husk bin 2" /></Field>
+            <Field label="Empty weight (kg)" hint="Weigh the empty container."><Input name="tare" type="number" min="0" step="0.01" required /></Field>
           </AddForm>
         </Panel>
       )}

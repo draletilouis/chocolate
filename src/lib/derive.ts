@@ -60,10 +60,10 @@ export function recordAlerts(state: State, batch: Batch, record: StationRecord):
   const alerts: Alert[] = [];
   const limit = state.thresholds.variancePct[record.station];
   if (Math.abs(balance.variancePct) > limit) {
-    alerts.push({ id: `${batch.id}-${record.id}-variance`, kind: 'variance', message: `${batchDisplayName(batch)} · ${stationName(record.station)}: variance ${balance.variancePct.toFixed(2)}% is above the ${limit}% limit`, href: `/production/batches/${batch.id}` });
+    alerts.push({ id: `${batch.id}-${record.id}-variance`, kind: 'variance', message: `${batchDisplayName(batch)} · ${stationName(record.station)}: ${balance.variancePct.toFixed(2)}% of the weight is missing, above the ${limit}% limit`, href: `/production/batches/${batch.id}` });
   }
   if (balance.wastePct > state.thresholds.wastePct) {
-    alerts.push({ id: `${batch.id}-${record.id}-waste`, kind: 'waste', message: `${batchDisplayName(batch)} · ${stationName(record.station)}: waste ${balance.wastePct.toFixed(2)}% is above the ${state.thresholds.wastePct}% limit`, href: `/production/batches/${batch.id}` });
+    alerts.push({ id: `${batch.id}-${record.id}-waste`, kind: 'waste', message: `${batchDisplayName(batch)} · ${stationName(record.station)}: waste is ${balance.wastePct.toFixed(2)}% of the input, above the ${state.thresholds.wastePct}% limit`, href: `/production/batches/${batch.id}` });
   }
   return alerts;
 }
@@ -133,4 +133,57 @@ export function nextLotId(state: State, material: string, taken: string[] = []) 
   const ids = [...state.lots.map((l) => l.id), ...taken];
   const max = ids.filter((id) => id.startsWith(`${prefix}-`)).reduce((m, id) => Math.max(m, parseInt(id.slice(prefix.length + 1), 10) || 0), 0);
   return `${prefix}-${String(max + 1).padStart(4, '0')}`;
+}
+
+/** Every station where this batch has something to do now: its next step plus any material waiting after a split */
+export function waitingAt(batch: Batch): StationId[] {
+  if (batch.status === 'completed') return [];
+  return Array.from(new Set([batch.nextStation, ...pendingStations(batch)].filter((s): s is StationId => Boolean(s))));
+}
+
+/** Suggested batch name from the supplier and date, e.g. "Kuapa 28 Sep", made unique with a number */
+export function suggestBatchName(state: State, supplierId: string, isoDate: string) {
+  const supplier = state.suppliers.find((s) => s.id === supplierId)?.name.split(' ')[0] ?? 'Delivery';
+  const [, month, day] = isoDate.split('-').map(Number);
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const base = `${supplier} ${day && months[month - 1] ? `${day} ${months[month - 1]}` : isoDate}`;
+  const taken = new Set(state.batches.map((b) => b.name?.trim()).filter(Boolean));
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${base} (${n})`)) n += 1;
+  return `${base} (${n})`;
+}
+
+/** The container last used for this output at this station, so the operator does not pick it every time */
+export function lastContainerId(state: State, station: StationId, output: string): string {
+  const records = state.batches.flatMap((b) => b.records).filter((r) => r.station === station).sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
+  for (const r of records) {
+    const used = output === '__input' ? r.inputContainer : r.outputs.find((o) => o.name === output)?.container;
+    if (used) return state.containers.find((c) => c.name === used.name)?.id ?? '';
+    if (output === '__input' || r.outputs.some((o) => o.name === output)) return '';
+  }
+  return '';
+}
+
+/** Batches and lots matching a search: name, ID, product, material or supplier */
+export function searchRecords(state: State, query: string) {
+  const q = query.trim().toLowerCase();
+  if (!q) return { batches: [] as Batch[], lots: [] as Lot[] };
+  const hit = (...values: (string | undefined)[]) => values.some((v) => v?.toLowerCase().includes(q));
+  return {
+    batches: state.batches.filter((b) => hit(b.id, b.name, b.product, ...batchSuppliers(state, b))).sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
+    lots: state.lots.filter((l) => hit(l.id, l.material, l.source.type === 'supplier' ? supplierName(state, l.source.supplierId) : l.source.batchId)).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt)),
+  };
+}
+
+/** Where a scanned code should open: a batch at the station it is waiting at, or a lot */
+export function scanTarget(state: State, code: string): string | null {
+  const id = decodeURIComponent(code).trim().toUpperCase();
+  const batch = state.batches.find((b) => b.id.toUpperCase() === id);
+  if (batch) {
+    const stations = waitingAt(batch);
+    return batch.status === 'active' && stations.length === 1 ? `/production/batches/${batch.id}/record/${stations[0]}` : `/production/batches/${batch.id}`;
+  }
+  const lot = state.lots.find((l) => l.id.toUpperCase() === id);
+  return lot ? `/materials/${lot.id}` : null;
 }

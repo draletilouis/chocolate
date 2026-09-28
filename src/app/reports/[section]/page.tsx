@@ -197,7 +197,32 @@ export default function ReportsPage() {
       {current.id === 'losses' && (
         <>
           <Panel title="Weigh-in at each stage, every batch" subtitle="Each cell is the weight that went into that stage. The small figure below it is the useful weight that came out.">
-            {reportBatches.length === 0 ? <Empty>No batches in this period.</Empty> : (
+            {reportBatches.length === 0 ? <Empty>No batches in this period.</Empty> : (<>
+              {/* Phones: one card per batch instead of a table wider than the screen */}
+              <div className="md:hidden">
+                {[...reportBatches].sort((a, b) => b.startedAt.localeCompare(a.startedAt)).map((b) => {
+                  const last = b.records.at(-1);
+                  const lostSoFar = last ? round2(b.startInput.weight - recordBalance(last).useful) : 0;
+                  return (
+                    <div key={b.id} className="border-b border-line px-4 py-3 last:border-b-0">
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <Link href={`/production/batches/${b.id}`} className="font-semibold text-green">{batchDisplayName(b)}</Link>
+                        <span className="text-[12px] text-muted">{b.product}{b.status === 'hold' ? ' · on hold' : b.status === 'completed' ? ' · completed' : ''}</span>
+                      </div>
+                      <div className="mt-1 grid gap-0.5 text-[12px] tabular-nums">
+                        <div className="flex justify-between"><span className="text-muted">Start</span><span>{num(b.startInput.weight)} kg</span></div>
+                        {b.records.map((r) => {
+                          const balance = recordBalance(r);
+                          const over = Math.abs(balance.variancePct) > store.thresholds.variancePct[r.station];
+                          return <div key={r.id} className="flex justify-between gap-2"><span className="text-muted">{stationName(r.station)}</span><span className={over ? 'text-warn' : ''}>{num(balance.input)} → {num(balance.useful)}</span></div>;
+                        })}
+                        <div className="flex justify-between border-t border-line pt-1 font-semibold"><span>Lost so far</span><span>{num(lostSoFar)} kg ({pct(b.startInput.weight ? round2((lostSoFar / b.startInput.weight) * 100) : 0)})</span></div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="hidden md:block">
               <Table head={['Batch', 'Start', ...gridStations.map((s) => s.name), 'Lost so far']}>
                 {[...reportBatches].sort((a, b) => b.startedAt.localeCompare(a.startedAt)).map((b) => {
                   const last = b.records.at(-1);
@@ -227,7 +252,8 @@ export default function ReportsPage() {
                   );
                 })}
               </Table>
-            )}
+              </div>
+            </>)}
             <p className="px-5 py-3 text-[12px] text-muted">Weights in kg. An orange figure means the unaccounted variance at that stage is above its limit. Packaging shows the finished chocolate weighed in and the nominal weight of accepted units.</p>
           </Panel>
 

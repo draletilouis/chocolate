@@ -1,19 +1,22 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { calculatePackaging, round2 } from './balance';
 import { nextBatchId, nextInput, nextLotId, pendingStations } from './derive';
 import { seedState, type State } from './seed';
 import { stationById } from './stations';
 import type {
-  Batch, Destination, Ingredient, Lot, LotCategory, OutputKind, PackSize, Product, RecipeIngredient, RecordedOutput,
+  Batch, Container, ContainerUse, Destination, Ingredient, Lot, LotCategory, OutputKind, PackSize, Product, RecipeIngredient, RecordedOutput,
   Route, StationId, StationRecord, Supplier, Thresholds, User, BusinessDetails,
 } from './types';
 
 const STORAGE_KEY = 'cocoa-production-v1';
 const SESSION_KEY = 'cocoa-session';
+/** Last time someone used this device; a fresh sign-in resets it so the idle check starts over */
+export const ACTIVE_KEY = 'cocoa-last-active';
 
-export interface MeasuredOutput { name: string; kind: OutputKind; weight: number }
+/** One weighed output and where it goes, saved together in a single step */
+export interface OutputEntry { name: string; kind: OutputKind; weight: number; destination: Destination; container?: ContainerUse }
 
 /** Optional controls used when a process is recorded from the batch view. */
 export interface RecordOptions {
@@ -48,9 +51,9 @@ export interface NewLotInput {
 
 interface Actions {
   createBatch: (input: NewBatchInput) => string;
-  saveMeasurements: (batchId: string, station: StationId, inputWeight: number, outputs: MeasuredOutput[], note?: string, options?: RecordOptions) => string;
-  savePackaging: (batchId: string, inputWeight: number, packSizeId: string, totalUnits: number, rejectedUnits: number, note?: string, options?: RecordOptions) => string;
-  saveDestinations: (batchId: string, recordId: string, destinations: Record<string, Destination>, options?: RecordOptions) => void;
+  /** Saves a station's input, weights and destinations at once, creates lots and moves the batch on */
+  saveRecord: (batchId: string, station: StationId, input: { weight: number; container?: ContainerUse }, outputs: OutputEntry[], note?: string, options?: RecordOptions) => void;
+  savePackaging: (batchId: string, inputWeight: number, packSizeId: string, totalUnits: number, rejectedUnits: number, note?: string, options?: RecordOptions) => void;
   completeBatch: (batchId: string, note?: string) => void;
   updateBatchDetails: (batchId: string, patch: { name?: string; note?: string }) => void;
   deleteBatch: (batchId: string) => void;
@@ -73,7 +76,8 @@ interface Actions {
   updateSupplier: (supplierId: string, patch: Omit<Supplier, 'id'>) => void;
   deleteSupplier: (supplierId: string) => void;
   addUser: (user: Omit<User, 'id' | 'initials'>) => void;
-  updateUser: (userId: string, patch: Omit<User, 'id' | 'initials'>) => void;
+  /** Returns false when the change would leave nobody with manager access */
+  updateUser: (userId: string, patch: Omit<User, 'id' | 'initials'>) => boolean;
   deleteUser: (userId: string) => void;
   updateRoute: (routeId: string, patch: Pick<Route, 'name' | 'startMaterial' | 'note'>) => void;
   deleteRoute: (routeId: string) => void;
@@ -86,6 +90,12 @@ interface Actions {
   deleteOutputCategory: (index: number) => void;
   /** Signs in with a staff email and password; returns false when they do not match */
   signIn: (email: string, password: string) => boolean;
+  /** Quick sign-in on a shared device: pick your name, enter your PIN */
+  signInWithPin: (userId: string, pin: string) => boolean;
+  addContainer: (container: Omit<Container, 'id'>) => void;
+  updateContainer: (containerId: string, patch: Omit<Container, 'id'>) => void;
+  deleteContainer: (containerId: string) => void;
+  setIdleMinutes: (minutes: number) => void;
   signOut: () => void;
 }
 
@@ -98,13 +108,16 @@ const now = () => new Date().toISOString().slice(0, 19);
 /** Upgrades data saved by earlier versions of the app (e.g. users saved before login existed). */
 function migrate(stored: State): State {
   const seed = seedState();
-  const users = (stored.users ?? seed.users).map((u) => {
-    if (u.email && u.password) return u;
+  const users = (stored.users ?? seed.users).map((u): User => {
     const fromSeed = seed.users.find((s) => s.id === u.id);
     return {
       ...u,
       email: u.email || fromSeed?.email || `${u.name.toLowerCase().replace(/[^a-z]+/g, '.')}@cocoafactory.example`,
       password: u.password || fromSeed?.password || 'cocoa123',
+      // Accounts saved before quick sign-in and roles existed keep full access until a manager changes them.
+      pin: u.pin || fromSeed?.pin || '1234',
+      access: u.access ?? fromSeed?.access ?? 'manager',
+      stations: u.stations ?? fromSeed?.stations ?? [],
     };
   });
   const business = { ...seed.business, ...(stored.business ?? {}) };
@@ -135,8 +148,44 @@ function migrate(stored: State): State {
 }
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
-/** Default destination for an output when a station is first saved: the row's own default, else by kind */
-function defaultDestination(station: StationId, name: string, kind: OutputKind, index: number): Destination {
+/**
+ * Puts a finished station record on its batch: creates a lot for every output stored, kept for sale
+ * or sent to rework, and moves the batch to the first station with material waiting. Re-saving a
+ * station keeps the lot IDs it created before, so printed labels stay valid.
+ */
+function commitRecord(s: State, batchId: string, draft: StationRecord, options?: RecordOptions): State {
+  const batch = s.batches.find((b) => b.id === batchId);
+  if (!batch) return s;
+  const stamp = now();
+  const previous = batch.records.find((r) => r.station === draft.station);
+  const fromThisStation = (l: Lot) => l.source.type === 'batch' && l.source.batchId === batchId && l.source.station === draft.station;
+  const kept = s.lots.filter((l) => !fromThisStation(l));
+  const made: Lot[] = [];
+  const outputs = draft.outputs.map((o): RecordedOutput => {
+    if (o.destination !== 'stock' && o.destination !== 'sale' && o.destination !== 'rework') return { ...o, lotId: undefined };
+    const isUnits = draft.station === 'packaging' && o.name === 'Accepted units';
+    const quantity = isUnits ? draft.packaging!.acceptedUnits : o.weight;
+    const category: LotCategory = o.destination === 'rework' ? 'Rework' : isUnits || o.destination === 'sale' ? 'Finished goods' : o.kind === 'byproduct' ? 'By-product' : 'Intermediate';
+    const material = isUnits ? `${batch.product} · ${s.packSizes.find((p) => p.id === draft.packaging!.packSizeId)?.name ?? ''}` : o.name;
+    const earlier = s.lots.find((l) => fromThisStation(l) && l.id === previous?.outputs.find((e) => e.name === o.name)?.lotId);
+    if (earlier) {
+      const used = round2(earlier.received - earlier.available);
+      made.push({ ...earlier, material, category, received: quantity, available: Math.max(0, round2(quantity - used)) });
+      return { ...o, lotId: earlier.id };
+    }
+    const id = nextLotId({ ...s, lots: [...kept, ...made] }, o.name);
+    made.push({ id, material, category, received: quantity, available: quantity, unit: isUnits ? 'units' : 'kg', source: { type: 'batch', batchId, station: draft.station }, receivedAt: stamp, uses: [] });
+    return { ...o, lotId: id };
+  });
+  const record: StationRecord = { ...draft, outputs, destinationsSaved: true };
+  const records = previous ? batch.records.map((r) => (r.station === record.station ? record : r)) : [...batch.records, record];
+  const updated = { ...batch, records };
+  const next = options?.advanceWorkflow === false ? updated : { ...updated, nextStation: pendingStations(updated)[0] ?? ('completion' as StationId) };
+  return { ...s, batches: s.batches.map((b) => (b.id === batchId ? next : b)), lots: [...kept, ...made] };
+}
+
+/** Suggested destination for an output: the row's own default, else by kind */
+export function defaultDestination(station: StationId, name: string, kind: OutputKind, index: number): Destination {
   const suggested = stationById[station].rows.find((row) => row.name === name)?.to;
   if (suggested) return suggested;
   const next = stationById[station].next[0];
@@ -147,6 +196,9 @@ function defaultDestination(station: StationId, name: string, kind: OutputKind, 
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<State>(seedState);
+  // Latest state for actions that must return an ID straight away (the batch page opens it next).
+  const stateRef = useRef(state);
+  stateRef.current = state;
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
 
@@ -176,12 +228,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const actions: Actions = useMemo(() => ({
     createBatch(input) {
-      let id = '';
+      const product = stateRef.current.products.find((p) => p.id === input.productId);
+      if (!product) return '';
+      const id = nextBatchId(stateRef.current, product.prefix);
       setState((s) => {
-        const product = s.products.find((p) => p.id === input.productId);
-        if (!product) return s;
         const route = s.routes.find((r) => r.id === product.route)!;
-        id = nextBatchId(s, product.prefix);
+        if (s.batches.some((b) => b.id === id)) return s;
         const stamp = /^\d{4}-\d{2}-\d{2}$/.test(input.batchDate ?? '') ? `${input.batchDate}T12:00:00` : now();
         const batch: Batch = {
           id, name: input.name?.trim() || undefined, productId: product.id, product: product.name, route: route.id, startedAt: stamp, status: 'active',
@@ -202,78 +254,41 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return id;
     },
 
-    saveMeasurements(batchId, station, inputWeight, outputs, note, options) {
-      const recordId = `${station}-${now()}`;
-      updateBatch(batchId, (b) => {
+    saveRecord(batchId, station, input, outputs, note, options) {
+      setState((s) => {
+        const b = s.batches.find((item) => item.id === batchId);
+        if (!b) return s;
         const existing = b.records.find((r) => r.station === station);
-        const recorded: RecordedOutput[] = outputs
-          .filter((o) => o.weight > 0)
-          .map((o, i) => ({
-            name: o.name, kind: o.kind, weight: round2(o.weight),
-            destination: existing?.outputs.find((e) => e.name === o.name)?.destination ?? defaultDestination(station, o.name, o.kind, i),
-          }));
-        const record: StationRecord = {
-          id: existing?.id ?? recordId, station, inputMaterial: existing?.inputMaterial ?? options?.inputMaterial ?? (nextInput(b, station).weight > 0 ? nextInput(b, station).material : stationById[station].input),
-          inputWeight: round2(inputWeight), inputLotIds: existing?.inputLotIds ?? (options?.inputMaterial ? [] : b.records.length ? [] : b.startInput.lotIds),
-          outputs: recorded, recordedAt: now(), recordedBy: state.currentUserId, note, destinationsSaved: false,
+        const carried = nextInput(b, station);
+        const draft: StationRecord = {
+          id: existing?.id ?? `${station}-${now()}`, station,
+          inputMaterial: existing?.inputMaterial ?? options?.inputMaterial ?? (carried.weight > 0 ? carried.material : stationById[station].input),
+          inputWeight: round2(input.weight), inputContainer: input.container,
+          inputLotIds: existing?.inputLotIds ?? (options?.inputMaterial ? [] : b.records.length ? [] : b.startInput.lotIds),
+          outputs: outputs.filter((o) => o.weight > 0).map((o) => ({ name: o.name, kind: o.kind, weight: round2(o.weight), destination: o.destination, container: o.container })),
+          recordedAt: now(), recordedBy: stateRef.current.currentUserId, note, destinationsSaved: true,
         };
-        const records = existing ? b.records.map((r) => (r.station === station ? record : r)) : [...b.records, record];
-        return { ...b, records };
+        return commitRecord(s, batchId, draft, options);
       });
-      return recordId;
     },
 
     savePackaging(batchId, inputWeight, packSizeId, totalUnits, rejectedUnits, note, options) {
-      const recordId = `packaging-${now()}`;
-      updateBatch(batchId, (b, s) => {
-        const pack = s.packSizes.find((p) => p.id === packSizeId)!;
+      setState((s) => {
+        const b = s.batches.find((item) => item.id === batchId);
+        const pack = s.packSizes.find((p) => p.id === packSizeId);
+        if (!b || !pack) return s;
         const { acceptedUnits, acceptedWeight } = calculatePackaging(totalUnits, rejectedUnits, pack.grams);
         const existing = b.records.find((r) => r.station === 'packaging');
-        const all: RecordedOutput[] = [
-          { name: 'Accepted units', kind: 'useful', weight: acceptedWeight, destination: 'stock' },
-          { name: 'Rejected units', kind: 'waste', weight: round2((rejectedUnits * pack.grams) / 1000), destination: 'waste' },
-        ];
-        const outputs = all.filter((o) => o.weight > 0 || o.name === 'Accepted units');
-        const record: StationRecord = {
-          id: existing?.id ?? recordId, station: 'packaging', inputMaterial: existing?.inputMaterial ?? options?.inputMaterial ?? 'Finished chocolate', inputWeight: round2(inputWeight), inputLotIds: [],
+        const outputs: RecordedOutput[] = [
+          { name: 'Accepted units', kind: 'useful' as const, weight: acceptedWeight, destination: 'stock' as const },
+          { name: 'Rejected units', kind: 'waste' as const, weight: round2((rejectedUnits * pack.grams) / 1000), destination: 'waste' as const },
+        ].filter((o) => o.weight > 0 || o.name === 'Accepted units');
+        const draft: StationRecord = {
+          id: existing?.id ?? `packaging-${now()}`, station: 'packaging', inputMaterial: existing?.inputMaterial ?? options?.inputMaterial ?? 'Finished chocolate', inputWeight: round2(inputWeight), inputLotIds: [],
           outputs, packaging: { packSizeId, packGrams: pack.grams, totalUnits, rejectedUnits, acceptedUnits, acceptedWeight },
-          recordedAt: now(), recordedBy: state.currentUserId, note, destinationsSaved: false,
+          recordedAt: now(), recordedBy: stateRef.current.currentUserId, note, destinationsSaved: true,
         };
-        return { ...b, records: existing ? b.records.map((r) => (r.station === 'packaging' ? record : r)) : [...b.records, record] };
-      });
-      return recordId;
-    },
-
-    saveDestinations(batchId, recordId, destinations, options) {
-      const stamp = now();
-      updateBatch(batchId, (b) => {
-        const record = b.records.find((r) => r.id === recordId);
-        if (!record) return b;
-        const outputs = record.outputs.map((o) => ({ ...o, destination: destinations[o.name] ?? o.destination, lotId: undefined }));
-        const updated = { ...b, records: b.records.map((r) => (r.id === recordId ? { ...r, outputs, destinationsSaved: true } : r)) };
-        // A split can leave material waiting at several stations; the first one in line order is next.
-        const nextStation: StationId = pendingStations(updated)[0] ?? 'completion';
-        return options?.advanceWorkflow === false ? updated : { ...updated, nextStation };
-      }, (s, batch) => {
-        const record = batch.records.find((r) => r.id === recordId)!;
-        // Replace lots this record created before, then create lots for outputs stored, kept for sale or sent to rework.
-        const kept = s.lots.filter((l) => !(l.source.type === 'batch' && l.source.batchId === batchId && l.source.station === record.station));
-        const created: Lot[] = [];
-        const outputs = record.outputs.map((o) => {
-          if (o.destination !== 'stock' && o.destination !== 'sale' && o.destination !== 'rework') return o;
-          const isUnits = record.station === 'packaging' && o.name === 'Accepted units';
-          const id = nextLotId({ ...s, lots: kept }, o.name, created.map((l) => l.id));
-          const category: LotCategory = o.destination === 'rework' ? 'Rework' : isUnits || o.destination === 'sale' ? 'Finished goods' : o.kind === 'byproduct' ? 'By-product' : 'Intermediate';
-          const quantity = isUnits ? record.packaging!.acceptedUnits : o.weight;
-          created.push({
-            id, material: isUnits ? `${batch.product} · ${s.packSizes.find((p) => p.id === record.packaging!.packSizeId)?.name ?? ''}` : o.name,
-            category, received: quantity, available: quantity, unit: isUnits ? 'units' : 'kg',
-            source: { type: 'batch', batchId, station: record.station }, receivedAt: stamp, uses: [],
-          });
-          return { ...o, lotId: id };
-        });
-        const batches = s.batches.map((b) => (b.id === batchId ? { ...b, records: b.records.map((r) => (r.id === recordId ? { ...r, outputs } : r)) } : b));
-        return { batches, lots: [...kept, ...created] };
+        return commitRecord(s, batchId, draft, options);
       });
     },
 
@@ -419,17 +434,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setState((s) => ({ ...s, users: [...s.users, { ...user, id: `U-${Date.now()}`, initials: user.name.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase() }] }));
     },
     updateUser(userId, patch) {
-      setState((s) => ({
-        ...s,
-        users: s.users.map((user) => user.id === userId
-          ? { ...patch, id: userId, initials: patch.name.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase() }
-          : user),
-      }));
+      const users = stateRef.current.users.map((user) => user.id === userId
+        ? { ...patch, id: userId, initials: patch.name.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase() }
+        : user);
+      if (!users.some((user) => user.access === 'manager')) return false;
+      setState((s) => ({ ...s, users: s.users.map((user) => users.find((u) => u.id === user.id) ?? user) }));
+      return true;
     },
     deleteUser(userId) {
       setState((s) => {
         const usedInAudit = s.batches.some((batch) => batch.records.some((record) => record.recordedBy === userId) || batch.holds.some((hold) => hold.placedBy === userId) || batch.corrections.some((correction) => correction.correctedBy === userId));
-        if (s.currentUserId === userId || usedInAudit) return s;
+        const lastManager = s.users.filter((user) => user.access === 'manager').every((user) => user.id === userId);
+        if (s.currentUserId === userId || usedInAudit || lastManager) return s;
         return { ...s, users: s.users.filter((user) => user.id !== userId) };
       });
     },
@@ -457,9 +473,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!user) return false;
       setSessionUserId(user.id);
       setState((s) => ({ ...s, currentUserId: user.id }));
-      try { window.localStorage.setItem(SESSION_KEY, user.id); } catch { /* ignore */ }
+      try { window.localStorage.setItem(SESSION_KEY, user.id); window.localStorage.setItem(ACTIVE_KEY, String(Date.now())); } catch { /* ignore */ }
       return true;
     },
+    signInWithPin(userId, pin) {
+      const user = state.users.find((u) => u.id === userId && u.pin === pin.trim());
+      if (!user) return false;
+      setSessionUserId(user.id);
+      setState((s) => ({ ...s, currentUserId: user.id }));
+      try { window.localStorage.setItem(SESSION_KEY, user.id); window.localStorage.setItem(ACTIVE_KEY, String(Date.now())); } catch { /* ignore */ }
+      return true;
+    },
+    addContainer(container) { setState((s) => ({ ...s, containers: [...s.containers, { ...container, id: `C-${Date.now()}` }] })); },
+    updateContainer(containerId, patch) { setState((s) => ({ ...s, containers: s.containers.map((c) => (c.id === containerId ? { ...patch, id: containerId } : c)) })); },
+    // Records keep their own copy of the container name and tare, so removing one never changes history.
+    deleteContainer(containerId) { setState((s) => ({ ...s, containers: s.containers.filter((c) => c.id !== containerId) })); },
+    setIdleMinutes(minutes) { setState((s) => ({ ...s, idleMinutes: Math.max(0, Math.round(minutes)) })); },
     signOut() {
       setSessionUserId(null);
       try { window.localStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }

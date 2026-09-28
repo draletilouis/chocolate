@@ -9,7 +9,7 @@ export const dateTime = (iso: string) => {
 };
 export const kindLabel = { useful: 'Useful output', byproduct: 'By-product', waste: 'Waste' } as const;
 export const destinationLabel = (destination: string, stationName: (id: string) => string) =>
-  destination.startsWith('continue:') ? `Continue to ${stationName(destination.slice(9))}` :
-  destination === 'stock' ? 'Store as lot' :
-  destination === 'sale' ? 'For sale (lot)' :
+  destination.startsWith('continue:') ? `To ${stationName(destination.slice(9)).toLowerCase()}` :
+  destination === 'stock' ? 'Kept in store' :
+  destination === 'sale' ? 'For sale' :
   destination === 'rework' ? 'Rework' : 'Waste bin';

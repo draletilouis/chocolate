@@ -31,20 +31,25 @@ async function expectText(page, text) {
   await page.evaluate(() => localStorage.clear());
   await page.goto(`${BASE}/production`);
 
-  // Login: the app is gated behind a standard email + password sign-in.
-  await page.getByRole('heading', { name: 'Enter your workspace' }).waitFor();
+  // Login: quick sign-in (tap your name, enter a PIN) with email + password as the fallback.
+  await page.getByRole('heading', { name: 'Who is recording?' }).waitFor();
   if (await page.getByRole('navigation', { name: 'Main navigation' }).count()) throw new Error('App shell visible before sign-in');
+  await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-login.png` });
+  await page.getByRole('button', { name: 'Sign in as Alex Morgan' }).click();
+  for (const digit of '1111') await page.getByRole('button', { name: digit, exact: true }).click();
+  await page.getByRole('alert').filter({ hasText: 'Wrong PIN' }).waitFor();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByRole('button', { name: 'Sign in with email and password' }).click();
   await page.getByLabel('Email').fill('alex.morgan@cocoafactory.example');
   await page.getByLabel('Password', { exact: true }).fill('wrong-password');
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.getByRole('alert').filter({ hasText: 'Invalid credentials' }).waitFor();
-  await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-login.png` });
   await page.getByLabel('Password', { exact: true }).fill('cocoa123');
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.getByRole('heading', { name: 'Which batch needs attention?' }).waitFor();
   await page.reload();
   await page.getByRole('heading', { name: 'Which batch needs attention?' }).waitFor(); // session survives a reload
-  ok('login screen: rejects wrong password, signs in, session persists');
+  ok('login: wrong PIN and wrong password rejected, email sign-in works, session persists');
 
   // Sidebar: six destinations, active state, counts, no "All screens".
   const nav = page.getByRole('navigation', { name: 'Main navigation' });
@@ -56,10 +61,9 @@ async function expectText(page, text) {
   await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-production.png`, fullPage: true });
   ok('sidebar navigation, active state and counts');
 
-  // Active batch rows show batch, product, current station, next step and Continue.
+  // Active batch rows show batch, product, where it is waiting, and Continue.
   await expectText(page, 'CB-025');
-  await expectText(page, 'Current station');
-  await expectText(page, 'Next step');
+  await expectText(page, 'Waiting at');
   await page.getByRole('link', { name: 'Continue CB-025' }).waitFor();
   ok('active batch rows');
 
@@ -90,79 +94,76 @@ async function expectText(page, text) {
   if (await page.getByRole('link', { name: /Open station/ }).count()) throw new Error('Production page should not list stations (long scroll)');
   ok('five parts as sidebar entries with their own pages; all 17 stations open their queues');
 
-  // Winnowing: exact worked example. Crushed nibs are weighed in portions for liquor, butter and sale.
+  // Winnowing on one screen: input already filled in, each output shows where it goes, one Save.
   await page.goto(`${BASE}/production/stations/winnowing`);
   await page.getByRole('link', { name: /CB-025/ }).click();
   await page.waitForURL('**/production/batches/CB-025/record/winnowing');
-  await expectText(page, 'Roasted beans');
+  await expectText(page, 'roasted beans');
   await expectText(page, '90.40 kg');
-  await page.getByRole('button', { name: 'Confirm input' }).click();
-  for (const [name, value] of [['Nibs for liquor', '50'], ['Nibs for butter', '20'], ['Nibs for sale', '4'], ['Husks', '15.9']]) await page.getByRole('spinbutton', { name, exact: true }).fill(value);
-  await expectText(page, '89.90 kg of 90.40 kg');
-  await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-record-winnowing.png`, fullPage: true });
-  await page.getByRole('button', { name: 'Save measurements' }).click();
-  await page.getByText('Winnowing saved.').waitFor();
-  const balance = await page.locator('main').innerText();
-  const expected = [['Measured output', '89.90 kg'], ['Useful output', '74.00 kg'], ['Recorded waste / by-product', '15.90 kg'], ['Unaccounted variance', '0.50 kg'], ['Material accounted for', '99.45%'], ['Variance', '0.55%'], ['Yield', '81.86%']];
-  for (const [label, value] of expected) {
-    const re = new RegExp(`${label.replace(/[/]/g, '\\/')}\\s*\\n?\\s*${value.replace('.', '\\.')}`);
-    if (!re.test(balance)) throw new Error(`Balance missing "${label} ${value}"`);
-  }
-  ok('winnowing mass balance example (89.90 / 74.00 / 15.90 / 0.50 / 99.45% / 0.55%)');
-
-  // Destinations default from the process: nibs to pressing and grinding, nibs for sale, husks to waste.
   for (const [name, value] of [['Nibs for liquor', 'continue:grinding'], ['Nibs for butter', 'continue:pressing'], ['Nibs for sale', 'sale'], ['Husks', 'waste']]) {
     if ((await page.getByLabel(`${name} destination`).inputValue()) !== value) throw new Error(`${name} should default to ${value}`);
   }
-  await page.getByRole('button', { name: 'Save destinations' }).click();
-  await page.getByText('20.00 kg nibs for butter available. Record pressing. Also waiting: liquor grinding.').waitFor();
+  for (const [name, value] of [['Nibs for liquor', '50'], ['Nibs for butter', '20'], ['Nibs for sale', '4'], ['Husks', '15.9']]) await page.getByRole('spinbutton', { name, exact: true }).fill(value);
+  await expectText(page, 'Entered 89.90 of 90.40 kg');
+  await expectText(page, 'Balance OK · 0.50 kg missing (0.55%)');
+  await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-record-winnowing.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Save winnowing' }).click();
+  await page.getByText('Winnowing saved.').waitFor();
+  await page.getByText('Sent on: 50.00 kg nibs for liquor to liquor grinding · 20.00 kg nibs for butter to pressing.').waitFor();
+  await page.getByRole('button', { name: 'Show details' }).click();
+  const balance = await page.locator('main').innerText();
+  const expected = [['Went in', '90.40 kg'], ['Weighed out', '89.90 kg'], ['Good output', '74.00 kg'], ['Missing weight', '0.50 kg'], ['Missing %', '0.55%'], ['Yield', '81.86%']];
+  for (const [label, value] of expected) {
+    const re = new RegExp(`${label}\\s*\\n?\\s*${value.replace('.', '\\.')}`);
+    if (!re.test(balance)) throw new Error(`Balance missing "${label} ${value}"`);
+  }
   await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-winnowing-saved.png`, fullPage: true });
+  ok('winnowing on one screen: default destinations, live check, verdict and details (89.90 / 74.00 / 0.50 / 0.55% / 81.86%)');
+
+  // The split waits at two stations; the next steps are offered at the top.
+  await page.getByRole('link', { name: /Record pressing/ }).waitFor();
+  await page.getByRole('link', { name: /Liquor grinding also waiting/ }).waitFor();
   for (const id of ['pressing', 'grinding']) {
     await page.goto(`${BASE}/production/stations/${id}`);
     await page.getByRole('link', { name: /CB-025/ }).waitFor();
   }
   ok('nib split waits at pressing and liquor grinding at the same time');
 
-  // Pressing with a custom output row; butter stored, cake kept for sale so this batch ends after grinding.
+  // Pressing with a custom output row; butter kept in store, cake for sale, so the batch ends after grinding.
   await page.goto(`${BASE}/production/batches/CB-025/record/pressing`);
   await expectText(page, '20.00 kg');
-  await page.getByRole('button', { name: 'Confirm input' }).click();
   await page.getByRole('spinbutton', { name: 'Brown butter', exact: true }).fill('9');
   await page.getByRole('spinbutton', { name: 'Cocoa cake (powder)', exact: true }).fill('10.8');
   await page.getByRole('button', { name: 'Add another output' }).click();
   await page.getByLabel('Output 4 name').fill('Screen residue');
   await page.getByLabel('Output 4 type').selectOption('waste');
-  await page.getByLabel('Output 4 weight').fill('0.1');
-  await page.getByRole('button', { name: 'Save measurements' }).click();
-  await page.getByText('Pressing saved.').waitFor();
+  await page.getByLabel('Output 4 weight', { exact: true }).fill('0.1');
   await page.getByLabel('Brown butter destination').selectOption('stock');
   await page.getByLabel('Cocoa cake (powder) destination').selectOption('sale');
-  await page.getByRole('button', { name: 'Save destinations' }).click();
-  await page.getByText('Record liquor grinding.').waitFor();
+  await page.getByRole('button', { name: 'Save pressing' }).click();
+  await page.getByText('Pressing saved.').waitFor();
   await page.getByRole('link', { name: /Record liquor grinding/ }).click();
   await page.waitForURL('**/record/grinding');
   await expectText(page, '50.00 kg'); // only the nibs for liquor became the grinding input
   ok('pressing with custom output row; only continued output becomes the next input');
 
   // Liquor grinding: weighed after fine grinding, labelled with the batch name and supplier.
-  await page.getByRole('button', { name: 'Confirm input' }).click();
   await page.getByRole('spinbutton', { name: 'Liquor', exact: true }).fill('49.8');
-  await page.getByRole('button', { name: 'Save measurements' }).click();
+  await page.getByRole('button', { name: 'Save liquor grinding' }).click();
   await page.getByText('Liquor grinding saved.').waitFor();
-  await page.getByRole('button', { name: 'Save destinations' }).click();
-  await page.getByText('Complete the batch.').waitFor();
+  await page.getByText('Nothing else is waiting. Complete the batch.').waitFor();
   await expectText(page, 'Liquor label');
   await expectText(page, 'Kuapa Kokoo');
   ok('liquor grinding stores labelled liquor; label carries the batch and supplier');
 
-  // Batch timeline shows completed stations, next station, outputs, destinations, variance.
+  // One step list with the weights behind each step, and corrections next to the weight.
   await page.goto(`${BASE}/production/batches/CB-025`);
-  await page.getByRole('heading', { name: 'Batch timeline' }).waitFor();
-  for (const t of ['Receiving', 'Sorting', 'Roasting', 'Winnowing', 'Pressing', 'Liquor grinding', 'Store as lot', 'For sale (lot)', 'Variance 0.50 kg (0.55%)', 'Completion']) await expectText(page, t);
+  await page.getByRole('heading', { name: 'Steps' }).waitFor();
+  for (const t of ['Receiving', 'Sorting', 'Roasting', 'Winnowing', 'Pressing', 'Liquor grinding', 'missing 0.50 kg (0.55%)', 'Completion']) await expectText(page, t);
   await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-batch-timeline.png`, fullPage: true });
-  // Correction and hold.
-  await page.getByRole('button', { name: 'Add correction' }).click();
-  await page.getByLabel('Recorded output').selectOption({ label: 'Winnowing · Husks (15.90 kg)' });
+  await page.getByRole('button', { name: 'Details', exact: true }).nth(3).click();
+  await expectText(page, 'For sale');
+  await page.getByRole('button', { name: 'Correct Husks' }).click();
   await page.getByLabel('Corrected weight').fill('15.8');
   await page.getByLabel('Correction reason').fill('Bin tare was wrong.');
   await page.getByRole('button', { name: 'Save correction' }).click();
@@ -179,47 +180,48 @@ async function expectText(page, text) {
   await page.getByRole('button', { name: 'Complete batch' }).click();
   await page.waitForURL('**/production/batches/CB-025');
   await expectText(page, 'Completed');
-  ok('batch timeline, correction, hold/release, completion');
+  ok('batch steps, inline correction, hold/release, completion');
 
-  // Batch-first process list exposes later stations for independent entry.
+  // The step list exposes later stations for early entry.
   await page.goto(`${BASE}/production/batches/CH-018`);
-  await expectText(page, 'Process weights');
-  await page.getByRole('link', { name: /Enter Packaging weights independently for CH-018/ }).waitFor();
+  await page.getByRole('heading', { name: 'Steps' }).waitFor();
+  await page.getByRole('link', { name: /Enter Packaging weights early for CH-018/ }).waitFor();
 
   // Chocolate finishing: moulding → packaging → completion.
   await page.goto(`${BASE}/production/stations/moulding`);
   await page.getByRole('link', { name: /CH-018/ }).click();
-  await page.getByRole('button', { name: 'Confirm input' }).click();
   await page.getByRole('spinbutton', { name: 'Finished chocolate', exact: true }).fill('94.8');
   await page.getByRole('spinbutton', { name: 'Recoverable chocolate', exact: true }).fill('1.2');
-  await page.getByRole('button', { name: 'Save measurements' }).click();
+  await page.getByRole('button', { name: 'Save moulding' }).click();
   await page.getByText('Moulding saved.').waitFor();
-  await page.getByRole('button', { name: 'Save destinations' }).click();
-  await page.getByText('94.80 kg finished chocolate available. Record packaging.').waitFor();
+  await page.getByText('Sent on: 94.80 kg finished chocolate to packaging.').waitFor();
   await page.getByRole('link', { name: /Record packaging/ }).click();
-  await page.getByRole('button', { name: 'Confirm input' }).click();
   await page.getByLabel('Pack size').selectOption({ label: '45 g bar' });
   await page.getByLabel('Total units made').fill('2090');
   await page.getByLabel('Rejected units').fill('14');
   await expectText(page, '2076');
   await page.getByRole('button', { name: 'Save packaging' }).click();
   await page.getByText('Packaging saved.').waitFor();
-  await page.getByRole('button', { name: 'Save destinations' }).click();
-  await page.getByText('2076 accepted units ready. Complete the batch.').waitFor();
+  await expectText(page, '2076 accepted units ready.');
+  await page.getByText('Nothing else is waiting. Complete the batch.').waitFor();
   await page.getByRole('link', { name: /Review & complete batch/ }).click();
   await expectText(page, '2076 × 45 g');
   await page.getByRole('button', { name: 'Complete batch' }).click();
   await page.waitForURL('**/production/batches/CH-018');
   ok('moulding, packaging (accepted units calculated), completion');
 
-  // New batch starts from the scale; source-lot selection is intentionally not shown here.
+  // A bean delivery is one form: the batch and its receiving record are saved together.
   await page.goto(`${BASE}/production/new`);
+  await page.getByRole('heading', { name: 'Receive a delivery' }).waitFor();
   if (await page.getByLabel(/Cocoa beans lot/).count()) throw new Error('Cocoa bean lot selector should not appear on the new batch screen');
-  await page.getByLabel('Starting weight').fill('50');
-  await page.getByRole('button', { name: /Create batch and record receiving/ }).click();
-  await page.waitForURL('**/production/batches/CB-026/record/receiving');
-  await expectText(page, '50.00 kg');
-  ok('new batch uses the scale weight without a source-lot selector');
+  await page.getByRole('spinbutton', { name: 'Delivered weight', exact: true }).fill('50');
+  await page.getByRole('spinbutton', { name: 'Accepted beans', exact: true }).fill('49.5');
+  await page.getByRole('button', { name: 'Save delivery' }).click();
+  await page.waitForURL('**/production/batches/CB-026/record/receiving?saved=1');
+  await expectText(page, 'Receiving saved.');
+  await expectText(page, 'Batch card');
+  await page.getByRole('link', { name: /Record sorting/ }).waitFor();
+  ok('receive a delivery: batch and receiving saved in one form, batch card printed from there');
 
   // Materials: lots, traceability, receive.
   await page.goto(`${BASE}/materials`);
@@ -255,7 +257,7 @@ async function expectText(page, text) {
   ok('reports: waste & variance, batch history, corrections, holds');
 
   // Setup.
-  for (const [section, text] of [['products', 'Batch prefix'], ['pack-sizes', '45 g bar'], ['outputs', 'Nibs for liquor'], ['routes', 'Beans to liquor'], ['suppliers', 'Kuapa Kokoo'], ['users', 'Current user'], ['alerts', 'Variance limit per station']]) {
+  for (const [section, text] of [['products', 'Batch prefix'], ['pack-sizes', '45 g bar'], ['outputs', 'Nibs for liquor'], ['containers', 'Husk bin'], ['routes', 'Beans to liquor'], ['suppliers', 'Kuapa Kokoo'], ['users', 'Current user'], ['alerts', 'Variance limit per station']]) {
     await page.goto(`${BASE}/setup/${section}`);
     await expectText(page, text);
   }
@@ -277,8 +279,8 @@ async function expectText(page, text) {
   let overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   if (overflow) throw new Error('Horizontal overflow on mobile production page');
   await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-mobile-production.png`, fullPage: true });
-  await page.goto(`${BASE}/production/batches/CB-026/record/receiving`);
-  await page.getByRole('button', { name: 'Confirm input' }).click();
+  await page.goto(`${BASE}/production/batches/CB-026/record/sorting`);
+  await page.getByRole('button', { name: 'Save sorting' }).waitFor();
   overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   if (overflow) throw new Error('Horizontal overflow on mobile record page');
   await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-mobile-record.png`, fullPage: true });
@@ -286,11 +288,20 @@ async function expectText(page, text) {
 
   // Sign out returns to the login screen (mobile header button), and the login screen fits a phone.
   await page.getByRole('button', { name: 'Sign out' }).click();
-  await page.getByRole('heading', { name: 'Enter your workspace' }).waitFor();
+  await page.getByRole('heading', { name: 'Who is recording?' }).waitFor();
   overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   if (overflow) throw new Error('Horizontal overflow on mobile login page');
   await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-login-mobile.png`, fullPage: true });
   ok('sign out returns to login; mobile login layout');
+
+  // An operator signs in with a PIN and lands on their own work.
+  await page.getByRole('button', { name: 'Sign in as Ama Boateng' }).click();
+  for (const digit of '1234') await page.getByRole('button', { name: digit, exact: true }).click();
+  await page.waitForURL('**/work');
+  await page.getByRole('link', { name: /Record Sorting for/ }).waitFor();
+  if ((await page.getByRole('navigation', { name: 'Mobile navigation' }).getByRole('link').count()) !== 2) throw new Error('Operators should see only My work and Production line');
+  await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-my-work.png`, fullPage: true });
+  ok('operator PIN sign-in lands on My work with a two-item menu');
 
   console.log(JSON.stringify({ checked, errors }, null, 2));
   await browser.close();
