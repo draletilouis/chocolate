@@ -21,7 +21,7 @@ export default function StationPage() {
     <>
       <Back href={`/production/parts/${groupOf(station.id).slug}`} label={station.group} />
       <PageHeader eyebrow={station.group} title={station.name} subtitle={<>{station.input} <ArrowRight size={12} className="inline" /> {station.output}</>}
-        action={station.id === 'receiving' ? <LinkButton href="/production/new"><Plus size={16} /> Start a batch from a delivery</LinkButton> : undefined} />
+        action={station.id === 'receiving' ? <LinkButton href="/production/new"><Plus size={16} /> Receive a delivery</LinkButton> : undefined} />
 
       <Panel title={station.form === 'completion' ? 'Ready to complete' : `Ready to record ${station.name.toLowerCase()}`} subtitle={station.help}>
         {queue.ready.length === 0 && <Empty>No batches are waiting at {station.name.toLowerCase()}.</Empty>}
@@ -65,7 +65,7 @@ export default function StationPage() {
             const balance = recordBalance(record);
             return (
               <RowLink key={batch.id} href={`/production/batches/${batch.id}`}>
-                <span className="flex-1"><strong>{batchDisplayName(batch)}</strong>{batch.name && <span className="ml-2 text-[11px] text-muted">ID {batch.id}</span>} <span className="text-muted">{batch.product}</span><span className="block text-[12px] text-muted">{dateTime(record.recordedAt)} · input {kg(record.inputWeight)} · useful output {kg(balance.useful)} · variance {kg(balance.variance)}</span></span>
+                <span className="flex-1"><strong>{batchDisplayName(batch)}</strong>{batch.name && <span className="ml-2 text-[11px] text-muted">ID {batch.id}</span>} <span className="text-muted">{batch.product}</span><span className="block text-[12px] text-muted">{dateTime(record.recordedAt)} · in {kg(record.inputWeight)} · good output {kg(balance.useful)} · missing {kg(balance.variance)}</span></span>
               </RowLink>
             );
           })}

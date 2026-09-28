@@ -3,50 +3,36 @@
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
-import { AlertTriangle, ArrowRight, Check, Circle, Pause, PenLine, Pencil, Play, Trash2 } from 'lucide-react';
-import { Back, Badge, Button, Empty, Field, Input, LinkButton, Notice, PageHeader, Panel, Select, Textarea, UnitInput } from '@/components/ui';
-import { batchAlerts, batchById, batchDisplayName, batchSuppliers, nextInput, pendingStations, recordBalance, recordFor, userName } from '@/lib/derive';
-import { dateTime, destinationLabel, kg, kindLabel, num, pct } from '@/lib/format';
+import { AlertTriangle, ArrowRight, Check, ChevronDown, Circle, Pause, PenLine, Pencil, Play, Trash2 } from 'lucide-react';
+import { Back, Badge, Button, Empty, Field, Input, LinkButton, Notice, PageHeader, Panel, Textarea, UnitInput } from '@/components/ui';
+import { PrintLabelButton } from '@/components/BatchLabel';
+import { batchAlerts, batchById, batchDisplayName, batchSuppliers, nextInput, recordBalance, recordFor, userName, waitingAt } from '@/lib/derive';
+import { dateTime, destinationLabel, kg, num, pct } from '@/lib/format';
 import { useStore } from '@/lib/store';
-import { stationById, stationName } from '@/lib/stations';
-import type { StationId } from '@/lib/types';
+import { stationName, stations } from '@/lib/stations';
+import type { Batch, StationId } from '@/lib/types';
 
 export default function BatchPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const store = useStore();
   const batch = batchById(store, id);
-  const [panel, setPanel] = useState<'hold' | 'release' | 'correction' | null>(null);
+  const [panel, setPanel] = useState<'hold' | 'release' | null>(null);
   const [editingDetails, setEditingDetails] = useState(false);
   const [reason, setReason] = useState('');
-  const [correction, setCorrection] = useState({ recordId: '', output: '', weight: '' });
   if (!batch) return <Empty>Batch {id} was not found.</Empty>;
 
   const alerts = batchAlerts(store, batch);
   const activeHold = batch.holds.find((h) => !h.releasedAt);
-  const ready = nextInput(batch);
-
-  // Other stations with material waiting (after a split), then route stations not reached yet.
-  const waiting = pendingStations(batch).filter((s) => s !== batch.nextStation);
-  const route = store.routes.find((r) => r.id === batch.route);
-  const upcoming: StationId[] = batch.status === 'completed' ? [] : (route?.stations ?? []).filter((s) => s !== batch.nextStation && !waiting.includes(s) && !recordFor(batch, s));
+  const waiting = waitingAt(batch);
+  const firstWaiting = waiting[0];
   const suppliers = batchSuppliers(store, batch);
-
-  const correctable = batch.records.flatMap((r) => r.outputs.map((o) => ({ recordId: r.id, station: r.station, output: o.name, weight: o.weight })));
   const canDelete = batch.records.length === 0 && batch.holds.length === 0 && batch.corrections.length === 0 && !store.lots.some((lot) => lot.source.type === 'batch' && lot.source.batchId === batch.id);
 
-  function submitHold(event: FormEvent) {
+  async function submitHold(event: FormEvent) {
     event.preventDefault();
-    if (panel === 'hold') store.placeHold(batch!.id, reason);
-    if (panel === 'release') store.releaseHold(batch!.id, reason);
-    setPanel(null); setReason('');
-  }
-  function submitCorrection(event: FormEvent) {
-    event.preventDefault();
-    const target = correctable.find((c) => c.recordId === correction.recordId && c.output === correction.output) ?? correctable[0];
-    if (!target || !(Number(correction.weight) >= 0)) return;
-    store.addCorrection(batch!.id, target.recordId, target.output, Number(correction.weight), reason);
-    setPanel(null); setReason(''); setCorrection({ recordId: '', output: '', weight: '' });
+    const saved = panel === 'hold' ? await store.placeHold(batch!.id, reason) : await store.releaseHold(batch!.id, reason);
+    if (saved) { setPanel(null); setReason(''); }
   }
 
   const statusBadge = batch.status === 'completed' ? <Badge tone="green">Completed</Badge> : batch.status === 'hold' ? <Badge tone="danger">On hold</Badge> : <Badge tone="green">In progress</Badge>;
@@ -56,120 +42,41 @@ export default function BatchPage() {
       <Back href="/production" label="Production line" />
       <PageHeader eyebrow={`Batch ${batch.id}`} title={`${batchDisplayName(batch)} · ${batch.product}`}
         subtitle={<span className="flex flex-wrap items-center gap-2">{statusBadge}<span>ID {batch.id}</span><span>Started {dateTime(batch.startedAt)}</span>{suppliers.length > 0 && <span>· Supplier {suppliers.join(', ')}</span>}{batch.recipeId && <span>· Recipe {batch.recipeId} v{batch.recipeVersion}</span>}</span>}
-        action={<div className="flex flex-wrap justify-end gap-2"><Button variant="secondary" onClick={() => setEditingDetails((value) => !value)}><Pencil size={14} /> Edit details</Button><Button variant="danger" disabled={!canDelete} title={canDelete ? 'Delete blank batch' : 'Batches with history cannot be deleted.'} onClick={() => { if (canDelete && window.confirm(`Delete blank batch ${batch.id}?`)) { store.deleteBatch(batch.id); router.push('/production'); } }}><Trash2 size={14} /> Delete</Button>{batch.status === 'active' && batch.nextStation ? <LinkButton href={`/production/batches/${batch.id}/record/${batch.nextStation}`}>{batch.nextStation === 'completion' ? 'Review & complete' : `Record ${stationName(batch.nextStation).toLowerCase()}`} <ArrowRight size={15} /></LinkButton> : null}</div>} />
+        action={(
+          <div className="flex flex-wrap justify-end gap-2">
+            {batch.status === 'active' && firstWaiting && <LinkButton href={`/production/batches/${batch.id}/record/${firstWaiting}`}>{firstWaiting === 'completion' ? 'Review & complete' : `Record ${stationName(firstWaiting).toLowerCase()}`} <ArrowRight size={15} /></LinkButton>}
+            <PrintLabelButton batch={batch} material={batch.product} quantity={kg(batch.startInput.weight)} madeAt={batch.startedAt}>Print batch card</PrintLabelButton>
+            <Button variant="secondary" onClick={() => setEditingDetails((value) => !value)}><Pencil size={14} /> Edit details</Button>
+            {canDelete && <Button variant="danger" onClick={async () => { if (window.confirm(`Delete blank batch ${batch.id}?`) && await store.deleteBatch(batch.id)) router.push('/production'); }}><Trash2 size={14} /> Delete</Button>}
+          </div>
+        )} />
 
       {activeHold && <Notice tone="danger" icon={Pause}><strong>On hold</strong> since {dateTime(activeHold.placedAt)} by {userName(store, activeHold.placedBy)}: {activeHold.reason}</Notice>}
       {alerts.filter((a) => a.kind !== 'hold').map((a) => <Notice key={a.id} tone="warn" icon={AlertTriangle}>{a.message}</Notice>)}
-      {!canDelete && batch.records.length > 0 && <Notice tone="neutral">This batch has production history. Its identity and recorded history stay protected; use corrections for measured-output changes.</Notice>}
 
-      {editingDetails && <Panel title="Edit batch details" subtitle="These are descriptive fields only. Measurements, holds and corrections remain audit-protected.">
-        <form className="grid gap-4 p-5 md:grid-cols-2" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); store.updateBatchDetails(batch.id, { name: String(form.get('name')), note: String(form.get('note')) }); setEditingDetails(false); }}>
+      {editingDetails && <Panel title="Edit batch details" subtitle="The name is printed on labels. Weights, holds and corrections stay as recorded.">
+        <form className="grid gap-4 p-5 md:grid-cols-2" onSubmit={async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); if (await store.updateBatchDetails(batch.id, { name: String(form.get('name')), note: String(form.get('note')) })) setEditingDetails(false); }}>
           <Field label="Batch name"><Input name="name" defaultValue={batch.name ?? ''} placeholder={batch.id} /></Field>
           <Field label="Note" className="md:col-span-2"><Textarea name="note" defaultValue={batch.note ?? ''} rows={2} placeholder="Optional production note" /></Field>
           <div className="flex justify-end gap-2 md:col-span-2"><Button variant="secondary" onClick={() => setEditingDetails(false)}>Cancel</Button><Button type="submit">Save changes</Button></div>
         </form>
       </Panel>}
 
-      <ProcessWeights batch={batch} />
-
       <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
-        <div>
-          <Panel title="Batch timeline" subtitle="Completed stations, what is next, and what remains.">
-            <ol className="px-5 py-2">
-              <li className="flex gap-3 py-3">
-                <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-moss text-green"><Check size={13} /></span>
-                <div className="text-[13px]">
-                  <strong>Started</strong> <span className="text-muted">· {dateTime(batch.startedAt)}</span>
-                  <div className="text-muted">{batch.startInput.material}: <strong className="text-ink tabular-nums">{kg(batch.startInput.weight)}</strong>{batch.startInput.lotIds.length > 0 && <> from {batch.startInput.lotIds.map((l, i) => <span key={l}>{i > 0 && ', '}<Link href={`/materials/${l}`} className="font-semibold text-green">{l}</Link></span>)}</>}</div>
-                </div>
-              </li>
-              {batch.records.map((record) => {
-                const balance = recordBalance(record);
-                const limit = store.thresholds.variancePct[record.station];
-                const over = Math.abs(balance.variancePct) > limit;
-                const fixes = batch.corrections.filter((c) => c.recordId === record.id);
-                return (
-                  <li key={record.id} className="flex gap-3 border-t border-line py-3">
-                    <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-green text-white"><Check size={13} /></span>
-                    <div className="min-w-0 flex-1 text-[13px]">
-                      <div className="flex flex-wrap items-center gap-2"><strong className="text-[14px]">{stationName(record.station)}</strong><span className="text-muted">{dateTime(record.recordedAt)} · {userName(store, record.recordedBy)}</span>{!record.destinationsSaved && <Badge tone="warn">Destinations not saved</Badge>}</div>
-                      <div className="text-muted">Input {record.inputMaterial.toLowerCase()} <strong className="text-ink tabular-nums">{kg(record.inputWeight)}</strong> → measured <strong className="text-ink tabular-nums">{kg(balance.measured)}</strong></div>
-                      <ul className="mt-1.5 grid gap-1 sm:grid-cols-2">
-                        {record.outputs.map((o) => (
-                          <li key={o.name} className="rounded-md bg-paper px-2.5 py-1.5">
-                            <span className="flex justify-between gap-2"><span>{o.name} <span className="text-[11px] text-faint">{kindLabel[o.kind]}</span></span><strong className="tabular-nums">{record.station === 'packaging' && record.packaging ? (o.name === 'Accepted units' ? `${record.packaging.acceptedUnits} units` : `${record.packaging.rejectedUnits} units`) : kg(o.weight)}</strong></span>
-                            <span className="block text-[11px] text-muted">→ {destinationLabel(o.destination, (s) => stationName(s as StationId))}{o.lotId && <> · <Link href={`/materials/${o.lotId}`} className="font-semibold text-green">{o.lotId}</Link></>}</span>
-                          </li>
-                        ))}
-                      </ul>
-                      <div className={`mt-1.5 ${over ? 'text-warn' : 'text-muted'}`}>Variance {kg(balance.variance)} ({pct(balance.variancePct)}){over ? ` · above ${limit}% limit` : ''} · yield {pct(balance.yieldPct)} · waste {pct(balance.wastePct)}</div>
-                      {record.note && <div className="mt-1 text-muted">Note: {record.note}</div>}
-                      {fixes.map((c) => <div key={c.id} className="mt-1 flex items-center gap-1 text-muted"><PenLine size={12} /> Corrected {c.output}: {num(c.previous)} → {num(c.corrected)} kg ({c.reason})</div>)}
-                      <Link href={`/production/batches/${batch.id}/record/${record.station}`} className="mt-1 inline-block text-[12px] font-semibold text-green">Open {stationName(record.station).toLowerCase()} record</Link>
-                    </div>
-                  </li>
-                );
-              })}
-              {batch.nextStation && (
-                <li className="flex gap-3 border-t border-line py-3">
-                  <span className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 ${batch.status === 'hold' ? 'border-danger text-danger' : 'border-green text-green'}`}>{batch.status === 'hold' ? <Pause size={11} /> : <Play size={11} />}</span>
-                  <div className="text-[13px]">
-                    <div className="flex flex-wrap items-center gap-2"><strong className="text-[14px]">{stationName(batch.nextStation)}</strong><Badge tone={batch.status === 'hold' ? 'danger' : 'green'}>{batch.status === 'hold' ? 'On hold' : 'Next step'}</Badge></div>
-                    {batch.nextStation !== 'completion' && <div className="text-muted">Input ready: <strong className="text-ink tabular-nums">{kg(ready.weight)}</strong> {ready.material.toLowerCase()}</div>}
-                    {batch.status === 'active' && <LinkButton className="mt-2" href={`/production/batches/${batch.id}/record/${batch.nextStation}`}>{batch.nextStation === 'completion' ? 'Review & complete' : `Record ${stationName(batch.nextStation).toLowerCase()}`} <ArrowRight size={14} /></LinkButton>}
-                  </div>
-                </li>
-              )}
-              {waiting.map((s) => {
-                const input = nextInput(batch, s);
-                return (
-                  <li key={s} className="flex gap-3 border-t border-line py-3">
-                    <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 border-green text-green"><Play size={11} /></span>
-                    <div className="text-[13px]">
-                      <div className="flex flex-wrap items-center gap-2"><strong className="text-[14px]">{stationName(s)}</strong><Badge tone={batch.status === 'hold' ? 'danger' : 'green'}>Material waiting</Badge></div>
-                      <div className="text-muted">Input ready: <strong className="text-ink tabular-nums">{kg(input.weight)}</strong> {input.material.toLowerCase()}</div>
-                      {batch.status === 'active' && <LinkButton variant="secondary" className="mt-2" href={`/production/batches/${batch.id}/record/${s}`}>Record {stationName(s).toLowerCase()} <ArrowRight size={14} /></LinkButton>}
-                    </div>
-                  </li>
-                );
-              })}
-              {upcoming.map((s) => (
-                <li key={s} className="flex gap-3 border-t border-line py-2.5 text-[13px] text-faint">
-                  <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center"><Circle size={12} /></span>
-                  <span>{stationName(s)} <span className="text-[11px]">· later</span></span>
-                </li>
-              ))}
-              {batch.status === 'completed' && (
-                <li className="flex gap-3 border-t border-line py-3 text-[13px]"><span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-green text-white"><Check size={13} /></span><div><strong>Completed</strong> <span className="text-muted">· {batch.completedAt && dateTime(batch.completedAt)}</span>{batch.note && <div className="text-muted">{batch.note}</div>}</div></li>
-              )}
-            </ol>
-          </Panel>
-        </div>
+        <div><Steps batch={batch} /></div>
 
         <div>
           <Panel title="Actions">
             <div className="flex flex-wrap gap-2 p-4">
               {batch.status === 'active' && <Button variant="secondary" onClick={() => setPanel(panel === 'hold' ? null : 'hold')}><Pause size={14} /> Put on hold</Button>}
-              {batch.status === 'hold' && <Button variant="secondary" onClick={() => setPanel(panel === 'release' ? null : 'release')}><Play size={14} /> Release hold</Button>}
-              {batch.records.length > 0 && <Button variant="secondary" onClick={() => setPanel(panel === 'correction' ? null : 'correction')}><PenLine size={14} /> Add correction</Button>}
+              {batch.status === 'hold' && store.signedInUser?.access === 'manager' && <Button variant="secondary" onClick={() => setPanel(panel === 'release' ? null : 'release')}><Play size={14} /> Release hold</Button>}
+              {batch.status === 'hold' && store.signedInUser?.access !== 'manager' && <span className="text-[13px] text-muted">A manager releases the hold.</span>}
+              {batch.status === 'completed' && <span className="text-[13px] text-muted">Completed. Weights can still be corrected from the steps.</span>}
             </div>
             {(panel === 'hold' || panel === 'release') && (
               <form onSubmit={submitHold} className="border-t border-line p-4">
                 <Field label={panel === 'hold' ? 'Why is the batch on hold?' : 'Release note'}><Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} required aria-label={panel === 'hold' ? 'Hold reason' : 'Release note'} /></Field>
                 <div className="mt-3 flex justify-end gap-2"><Button variant="secondary" onClick={() => setPanel(null)}>Cancel</Button><Button type="submit">{panel === 'hold' ? 'Place hold' : 'Release'}</Button></div>
-              </form>
-            )}
-            {panel === 'correction' && (
-              <form onSubmit={submitCorrection} className="grid gap-3 border-t border-line p-4">
-                <Field label="Recorded output">
-                  <Select value={`${correction.recordId}|${correction.output}`} onChange={(e) => { const [recordId, output] = e.target.value.split('|'); const t = correctable.find((c) => c.recordId === recordId && c.output === output); setCorrection({ recordId, output, weight: t ? String(t.weight) : '' }); }} aria-label="Recorded output">
-                    <option value="|">Choose an output</option>
-                    {correctable.map((c) => <option key={`${c.recordId}|${c.output}`} value={`${c.recordId}|${c.output}`}>{stationName(c.station)} · {c.output} ({num(c.weight)} kg)</option>)}
-                  </Select>
-                </Field>
-                <Field label="Corrected weight"><UnitInput unit="kg" value={correction.weight} onChange={(e) => setCorrection({ ...correction, weight: e.target.value })} aria-label="Corrected weight" required /></Field>
-                <Field label="Reason"><Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} required aria-label="Correction reason" /></Field>
-                <div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setPanel(null)}>Cancel</Button><Button type="submit" disabled={!correction.recordId}>Save correction</Button></div>
               </form>
             )}
           </Panel>
@@ -191,67 +98,115 @@ export default function BatchPage() {
               {batch.holds.map((h) => <div key={h.id} className="border-b border-line px-4 py-2.5 text-[13px] last:border-b-0"><div>{h.reason}</div><div className="text-[12px] text-muted">{dateTime(h.placedAt)} · {userName(store, h.placedBy)} · at {stationName(h.station).toLowerCase()}{h.releasedAt ? ` · released ${dateTime(h.releasedAt)}${h.releaseNote ? `: ${h.releaseNote}` : ''}` : ''}</div></div>)}
             </Panel>
           )}
-
-          {batch.corrections.length > 0 && (
-            <Panel title="Corrections">
-              {batch.corrections.map((c) => <div key={c.id} className="border-b border-line px-4 py-2.5 text-[13px] last:border-b-0"><div>{stationName(c.station)} · {c.output}: {num(c.previous)} → {num(c.corrected)} kg</div><div className="text-[12px] text-muted">{c.reason} · {dateTime(c.correctedAt)} · {userName(store, c.correctedBy)}</div></div>)}
-            </Panel>
-          )}
         </div>
       </div>
     </>
   );
 }
 
-function ProcessWeights({ batch }: { batch: NonNullable<ReturnType<typeof batchById>> }) {
+/** Every step of the batch in line order: done (with details), waiting, or later */
+function Steps({ batch }: { batch: Batch }) {
   const store = useStore();
-  const route = store.routes.find((item) => item.id === batch.route);
-  const routeStations = route?.stations.filter((station) => station !== 'completion') ?? [];
-  const pending = pendingStations(batch);
-  const processIds = [...routeStations, ...batch.records.map((record) => record.station), batch.nextStation, ...pending]
-    .filter((station): station is StationId => Boolean(station) && station !== 'completion')
-    .filter((station, index, all) => all.indexOf(station) === index);
-  const recorded = processIds.filter((station) => Boolean(batch.records.find((record) => record.station === station))).length;
+  const waiting = waitingAt(batch);
+  const route = store.routes.find((r) => r.id === batch.route);
+  const included = new Set<StationId>([...(route?.stations ?? []), ...batch.records.map((r) => r.station), ...waiting]);
+  included.delete('completion');
+  const steps = stations.map((s) => s.id).filter((id) => included.has(id));
+  const recorded = steps.filter((s) => recordFor(batch, s)).length;
+  const [open, setOpen] = useState<StationId | null>(null);
+  const [fixing, setFixing] = useState<{ recordId: string; output: string } | null>(null);
+  const [fix, setFix] = useState({ weight: '', reason: '' });
+
+  async function saveFix(event: FormEvent) {
+    event.preventDefault();
+    if (!fixing || !(Number(fix.weight) >= 0) || !fix.reason.trim()) return;
+    if (await store.addCorrection(batch.id, fixing.recordId, fixing.output, Number(fix.weight), fix.reason.trim())) { setFixing(null); setFix({ weight: '', reason: '' }); }
+  }
 
   return (
-    <Panel title="Process weights" subtitle="Each process is saved separately against this batch. Use independent entry when a scale reading is available before the normal next step." action={<span className="text-[12px] font-semibold text-muted">{recorded} of {processIds.length} recorded</span>}>
-      <div className="divide-y divide-line">
-        {processIds.map((stationId, index) => {
-          const station = stationById[stationId];
+    <Panel title="Steps" subtitle="What was recorded, what is waiting, and what comes later. Open a step for its weights." action={<span className="text-[12px] font-semibold text-muted">{recorded} of {steps.length} recorded</span>}>
+      <ol>
+        <li className="step-row">
+          <span className="step-icon is-done"><Check size={13} /></span>
+          <div className="min-w-0 flex-1 text-[13px]">
+            <strong className="text-[14px]">Started</strong> <span className="text-muted">· {dateTime(batch.startedAt)}</span>
+            <div className="text-muted">{batch.startInput.material}: <strong className="text-ink tabular-nums">{kg(batch.startInput.weight)}</strong>{batch.startInput.lotIds.length > 0 && <> from {batch.startInput.lotIds.map((l, i) => <span key={l}>{i > 0 && ', '}<Link href={`/materials/${l}`} className="font-semibold text-green">{l}</Link></span>)}</>}</div>
+          </div>
+        </li>
+        {steps.map((stationId, index) => {
           const record = recordFor(batch, stationId);
-          const balance = record ? recordBalance(record) : undefined;
-          const isNext = batch.nextStation === stationId || pending.includes(stationId);
-          const ready = isNext ? nextInput(batch, stationId) : undefined;
-          const canEnter = !record && batch.status === 'active';
-          const href = `/production/batches/${batch.id}/record/${stationId}${isNext ? '' : '?mode=independent'}`;
-
+          const isWaiting = waiting.includes(stationId);
+          const expanded = open === stationId;
+          if (record) {
+            const balance = recordBalance(record);
+            const limit = store.thresholds.variancePct[stationId] ?? 0;
+            const over = Math.abs(balance.variancePct) > limit;
+            const fixes = batch.corrections.filter((c) => c.recordId === record.id);
+            return (
+              <li key={stationId} className="step-row">
+                <span className={`step-icon ${record.destinationsSaved ? 'is-done' : 'is-warn'}`}>{record.destinationsSaved ? <Check size={13} /> : '!'}</span>
+                <div className="min-w-0 flex-1 text-[13px]">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="flex flex-wrap items-center gap-2"><strong className="text-[14px]">{stationName(stationId)}</strong>{!record.destinationsSaved && <Badge tone="warn">Not finished</Badge>}</span>
+                    <button type="button" className="verdict-toggle text-green" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : stationId)}>{expanded ? 'Hide' : 'Details'} <ChevronDown size={14} className={expanded ? 'rotate-180' : ''} /></button>
+                  </div>
+                  <div className={over ? 'text-warn' : 'text-muted'}>In {kg(balance.input)} → out {kg(balance.measured)} · missing {kg(balance.variance)} ({pct(balance.variancePct)}){over ? ` · above the ${limit}% limit` : ''}</div>
+                  {fixes.length > 0 && !expanded && <div className="text-muted"><PenLine size={12} className="inline" /> {fixes.length} correction{fixes.length > 1 ? 's' : ''}</div>}
+                  {expanded && (
+                    <div className="mt-2 grid gap-2">
+                      <div className="text-muted">Recorded {dateTime(record.recordedAt)} by {userName(store, record.recordedBy)} · input {record.inputMaterial.toLowerCase()}</div>
+                      <ul className="grid gap-1.5">
+                        {record.outputs.map((o) => {
+                          const isFixing = fixing?.recordId === record.id && fixing.output === o.name;
+                          return (
+                            <li key={o.name} className="rounded-md bg-paper px-3 py-2">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span><strong>{o.name}</strong> <span className="tabular-nums">{record.packaging ? `${o.name === 'Accepted units' ? record.packaging.acceptedUnits : record.packaging.rejectedUnits} units` : kg(o.weight)}</span></span>
+                                {!record.packaging && <button type="button" className="btn-text inline-flex min-h-[44px] items-center gap-1" onClick={() => { setFixing(isFixing ? null : { recordId: record.id, output: o.name }); setFix({ weight: String(o.weight), reason: '' }); }} aria-label={`Correct ${o.name}`}><Pencil size={13} /> Correct</button>}
+                              </div>
+                              <div className="text-[12px] text-muted">{destinationLabel(o.destination, (s) => stationName(s as StationId))}{o.lotId && <> · <Link href={`/materials/${o.lotId}`} className="font-semibold text-green">{o.lotId}</Link></>}{o.container && <> · {kg(o.container.gross)} on the scale − {kg(o.container.tare)} {o.container.name.toLowerCase()}</>}</div>
+                              {isFixing && (
+                                <form onSubmit={saveFix} className="mt-2 grid gap-2 sm:grid-cols-[160px_1fr_auto] sm:items-end">
+                                  <Field label="Correct weight"><UnitInput unit="kg" value={fix.weight} onChange={(e) => setFix({ ...fix, weight: e.target.value })} aria-label="Corrected weight" required autoFocus /></Field>
+                                  <Field label="Why?"><Input value={fix.reason} onChange={(e) => setFix({ ...fix, reason: e.target.value })} aria-label="Correction reason" placeholder="e.g. bin tare was not taken off" required /></Field>
+                                  <Button type="submit">Save correction</Button>
+                                </form>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                      {record.note && <div className="text-muted">Note: {record.note}</div>}
+                      {fixes.map((c) => <div key={c.id} className="flex items-center gap-1 text-muted"><PenLine size={12} /> Corrected {c.output}: {num(c.previous)} → {num(c.corrected)} kg ({c.reason}) · {userName(store, c.correctedBy)}</div>)}
+                      <Link href={`/production/batches/${batch.id}/record/${stationId}`} className="inline-flex min-h-[44px] items-center text-[13px] font-semibold text-green">Open {stationName(stationId).toLowerCase()} record{batch.status !== 'completed' ? ' to edit' : ''}</Link>
+                    </div>
+                  )}
+                </div>
+              </li>
+            );
+          }
+          const ready = isWaiting ? nextInput(batch, stationId) : undefined;
           return (
-            <div key={stationId} className="flex flex-wrap items-center gap-3 px-5 py-3.5">
-              <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full ${record ? 'bg-green text-white' : isNext ? 'border-2 border-green text-green' : 'border border-line text-faint'}`}>
-                {record ? <Check size={13} /> : <span className="text-[11px] font-bold">{index + 1}</span>}
-              </span>
-              <div className="min-w-[180px] flex-1">
-                <div className="flex flex-wrap items-center gap-2 text-[14px]">
-                  <strong>{station.name}</strong>
-                  {record ? <Badge tone={record.destinationsSaved ? 'green' : 'warn'}>{record.destinationsSaved ? 'Recorded' : 'Finish entry'}</Badge> : isNext ? <Badge tone={batch.status === 'hold' ? 'danger' : 'green'}>{batch.status === 'hold' ? 'On hold' : 'Next step'}</Badge> : <Badge>Not entered</Badge>}
+            <li key={stationId} className={`step-row ${isWaiting ? '' : 'is-later'}`}>
+              <span className={`step-icon ${isWaiting ? (batch.status === 'hold' ? 'is-hold' : 'is-next') : 'is-later'}`}>{isWaiting ? (batch.status === 'hold' ? <Pause size={11} /> : <Play size={11} />) : <Circle size={10} />}</span>
+              <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-2 text-[13px]">
+                <div className="min-w-0">
+                  <span className="flex flex-wrap items-center gap-2"><strong className="text-[14px]">{stationName(stationId)}</strong>{isWaiting ? <Badge tone={batch.status === 'hold' ? 'danger' : 'green'}>{batch.status === 'hold' ? 'On hold' : 'Waiting'}</Badge> : <span className="text-[12px] text-faint">{batch.status === 'completed' ? 'not used' : `step ${index + 1} · later`}</span>}</span>
+                  {ready && <div className="text-muted">Ready: <strong className="text-ink tabular-nums">{kg(ready.weight)}</strong> {ready.material.toLowerCase()}</div>}
                 </div>
-                <div className="text-[12px] text-muted">
-                  {record && balance ? <>Input {kg(balance.input)} · measured {kg(balance.measured)} · variance {kg(balance.variance)}</> : isNext && ready ? <>Input ready: {kg(ready.weight)} {ready.material.toLowerCase()}</> : <>No weight recorded yet</>}
-                </div>
+                {batch.status === 'active' && (isWaiting
+                  ? <LinkButton href={`/production/batches/${batch.id}/record/${stationId}`} aria-label={`Record ${stationName(stationId)} weights for ${batchDisplayName(batch)}`}>Record <ArrowRight size={14} /></LinkButton>
+                  : <LinkButton variant="ghost" href={`/production/batches/${batch.id}/record/${stationId}?mode=independent`} aria-label={`Enter ${stationName(stationId)} weights early for ${batchDisplayName(batch)}`}>Enter early</LinkButton>)}
               </div>
-              <div className="ml-auto">
-                {record ? (
-                  <LinkButton variant="secondary" href={href} aria-label={`Open ${station.name} weights for ${batchDisplayName(batch)}`}>Open record</LinkButton>
-                ) : canEnter ? (
-                  <LinkButton href={href} aria-label={isNext ? `Record ${station.name} weights for ${batchDisplayName(batch)}` : `Enter ${station.name} weights independently for ${batchDisplayName(batch)}`}>{isNext ? 'Record weights' : 'Enter independently'} <ArrowRight size={14} /></LinkButton>
-                ) : (
-                  <span className="text-[12px] font-semibold text-faint">{batch.status === 'hold' ? 'On hold' : batch.status === 'completed' ? 'Not recorded' : 'Waiting'}</span>
-                )}
-              </div>
-            </div>
+            </li>
           );
         })}
-      </div>
+        <li className="step-row">
+          {batch.status === 'completed'
+            ? <><span className="step-icon is-done"><Check size={13} /></span><div className="text-[13px]"><strong className="text-[14px]">Completed</strong> <span className="text-muted">· {batch.completedAt && dateTime(batch.completedAt)}</span>{batch.note && <div className="text-muted">{batch.note}</div>}</div></>
+            : <><span className={`step-icon ${batch.nextStation === 'completion' ? 'is-next' : 'is-later'}`}>{batch.nextStation === 'completion' ? <Play size={11} /> : <Circle size={10} />}</span><div className="flex flex-1 flex-wrap items-center justify-between gap-2 text-[13px]"><span><strong className="text-[14px]">Completion</strong> <span className="text-[12px] text-faint">{batch.nextStation === 'completion' ? 'ready' : 'when nothing is waiting'}</span></span>{batch.status === 'active' && batch.nextStation === 'completion' && <LinkButton href={`/production/batches/${batch.id}/record/completion`}>Review & complete <ArrowRight size={14} /></LinkButton>}</div></>}
+        </li>
+      </ol>
     </Panel>
   );
 }

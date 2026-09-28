@@ -35,10 +35,18 @@ export interface Station {
 /** Where a recorded output goes after the station is saved. 'sale' stores it as a finished-goods lot. */
 export type Destination = `continue:${StationId}` | 'stock' | 'sale' | 'rework' | 'waste';
 
+/** A container weighed together with the material. Its empty weight (tare) is subtracted from the scale reading. */
+export interface Container { id: string; name: string; tare: number }
+
+/** How a net weight was worked out: the scale reading (gross) minus the container's tare */
+export interface ContainerUse { name: string; tare: number; gross: number }
+
 export interface RecordedOutput {
   name: string;
   kind: OutputKind;
+  /** Net weight in kg */
   weight: number;
+  container?: ContainerUse;
   destination: Destination;
   /** Inventory lot created when the output was sent to stock, sale or rework */
   lotId?: string;
@@ -75,11 +83,15 @@ export interface StationRecord {
   station: StationId;
   inputMaterial: string;
   inputWeight: number;
+  /** Set when the input was reweighed in a container */
+  inputContainer?: ContainerUse;
   inputLotIds: string[];
   outputs: RecordedOutput[];
   packaging?: PackagingResult;
   recordedAt: string;
   recordedBy: string;
+  /** New on every save, so two saves of the same station in the same second are still told apart */
+  rev?: string;
   note?: string;
   destinationsSaved: boolean;
 }
@@ -171,7 +183,20 @@ export interface Product {
 export interface Route { id: RouteId; name: string; stations: StationId[]; startMaterial: string; note: string }
 export interface PackSize { id: string; name: string; grams: number }
 export interface Supplier { id: string; name: string; supplies: string; contact: string }
-export interface User { id: string; name: string; role: string; initials: string; email: string; password: string }
+/** Operators see their own work; managers also see reports, recipes and setup */
+export type Access = 'operator' | 'manager';
+
+/** A staff account as the app sees it. Passwords and PINs stay on the server, hashed. */
+export interface User {
+  id: string;
+  name: string;
+  role: string;
+  initials: string;
+  email: string;
+  access: Access;
+  /** Stations this person works at; their "My work" page shows batches waiting there */
+  stations: StationId[];
+}
 
 export interface BusinessDetails {
   name: string;
@@ -180,7 +205,7 @@ export interface BusinessDetails {
   email: string;
 }
 
-export interface OutputCategory extends OutputRowDef { station: StationId; custom?: boolean }
+export interface OutputCategory extends OutputRowDef { id: string; station: StationId; custom?: boolean }
 
 export interface Thresholds {
   /** Allowed unaccounted variance per station, in percent of input */

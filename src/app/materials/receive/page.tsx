@@ -19,14 +19,15 @@ export default function ReceivePage() {
   const [quantity, setQuantity] = useState('');
   const [error, setError] = useState('');
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
     const qty = Number(quantity);
     if (!(qty > 0)) return setError('Enter the weight you measured on delivery.');
     const name = material === 'Other' ? other.trim() : material;
     if (!name) return setError('Name the material.');
     const category: LotCategory = name === 'Liquor' ? 'Intermediate' : 'Raw material';
-    const id = store.receiveLot({ material: name, category, quantity: qty, unit: 'kg', supplierId, reference: reference || undefined });
+    const id = await store.receiveLot({ material: name, category, quantity: qty, unit: 'kg', supplierId, reference: reference || undefined });
+    if (!id) return;
     router.push(`/materials/${id}`);
   }
 
