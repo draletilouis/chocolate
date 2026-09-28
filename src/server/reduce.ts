@@ -1,6 +1,6 @@
 import { calculatePackaging, round2 } from '@/lib/balance';
 import type { Command } from '@/lib/commands';
-import { batchDisplayName, isReadyAt, nextBatchId, nextInput, nextLotId, pendingStations, recordStamp, waitingAt } from '@/lib/derive';
+import { batchDisplayName, isReadyAt, issuedNumbers, nextBatchId, nextInput, nextLotId, pendingStations, recordStamp, waitingAt } from '@/lib/derive';
 import { demoCredentials, seedState, type State } from '@/lib/seed';
 import { stationById, stationName } from '@/lib/stations';
 import type { Batch, Lot, LotCategory, OutputCategory, RecordedOutput, StationId, StationRecord, User } from '@/lib/types';
@@ -64,7 +64,8 @@ function createBatch(s: State, input: NewBatch, ctx: CommandContext): { state: S
 /**
  * Puts a finished station record on its batch: creates a lot for every output stored, kept for sale
  * or sent to rework, and moves the batch to the first station with material waiting. Re-saving a
- * station keeps the lot IDs it created before, so printed labels stay valid.
+ * station keeps the lot IDs it created before, so printed labels stay valid. A lot it no longer
+ * stores is removed, and its number is never given to another lot.
  */
 function commitRecord(s: State, batchId: string, draft: StationRecord, advance: boolean, now: string): State {
   const batch = findBatch(s, batchId);
@@ -84,7 +85,8 @@ function commitRecord(s: State, batchId: string, draft: StationRecord, advance: 
       made.push({ ...earlier, material, category, received: quantity, available: Math.max(0, round2(quantity - used)) });
       return { ...o, lotId: earlier.id };
     }
-    const id = nextLotId({ ...s, lots: [...kept, ...made] }, o.name);
+    // s.lots still holds the lots this save drops, so a new lot cannot take one of their numbers.
+    const id = nextLotId(s, o.name, made.map((l) => l.id));
     made.push({ id, material, category, received: quantity, available: quantity, unit: isUnits ? 'units' : 'kg', source: { type: 'batch', batchId, station: draft.station }, receivedAt: now, uses: [] });
     return { ...o, lotId: id };
   });
@@ -168,7 +170,18 @@ function checkUser(s: State, user: { email: string; stations: StationId[] }, exc
   if (s.users.some((u) => u.id !== exceptId && u.email.toLowerCase() === user.email.toLowerCase())) fail('Another person already uses that email address.');
 }
 
+/**
+ * Applies one command. The ID counters then cover every batch and lot number from before and after
+ * it, so a number this command removed (a deleted lot or batch, a lot dropped by a re-save, records
+ * replaced by an upload) stays taken and is never issued again.
+ */
 export function applyCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
+  const outcome = runCommand(s, cmd, ctx);
+  const idCounters = issuedNumbers(outcome.state, s);
+  return idCounters === outcome.state.idCounters ? outcome : { ...outcome, state: { ...outcome.state, idCounters } };
+}
+
+function runCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
   switch (cmd.type) {
     case 'createBatch': {
       const { state, id } = createBatch(s, cmd.input, ctx);
@@ -372,6 +385,8 @@ export function migrateLegacy(stored: Record<string, unknown>): { state: State; 
     containers: data.containers ?? seed.containers,
     thresholds: { ...seed.thresholds, ...(data.thresholds ?? {}), variancePct: { ...seed.thresholds.variancePct, ...(data.thresholds?.variancePct ?? {}) } },
     business: { ...seed.business, ...(data.business ?? {}) }, idleMinutes: data.idleMinutes ?? seed.idleMinutes, workflowVersion: seed.workflowVersion,
+    // Browsers kept no counters: numbers continue from the highest IDs, and applyCommand() keeps the server's.
+    idCounters: { batches: {}, lots: {} },
   };
   return { state, secrets };
 }

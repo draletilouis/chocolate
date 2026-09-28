@@ -1,7 +1,7 @@
 import { calculateBalance } from './balance';
 import { stationById, stationName, stations } from './stations';
 import { routes, type State } from './seed';
-import type { Alert, Batch, Destination, Lot, OutputKind, StationId, StationRecord } from './types';
+import type { Alert, Batch, Destination, IdCounters, Lot, OutputKind, StationId, StationRecord } from './types';
 
 export const recordBalance = (r: StationRecord) => calculateBalance(r.inputWeight, r.outputs);
 
@@ -125,8 +125,14 @@ export function lotOrigin(state: State, lot: Lot) {
   return `Made by batch ${label}${batch?.name ? ` (ID ${batch.id})` : ''} at ${stationById[source.station].name.toLowerCase()}`;
 }
 
+/**
+ * Batch and lot numbers are never issued twice: the next one follows the highest number issued for the
+ * prefix (state.idCounters) or in use now, whichever is higher. Removing the newest batch or lot does
+ * not free its number, so an old label can never open a different record. Data saved before the
+ * counters existed continues from its highest ID.
+ */
 export function nextBatchId(state: State, prefix: string) {
-  const max = state.batches.filter((b) => b.id.startsWith(`${prefix}-`)).reduce((m, b) => Math.max(m, Number(b.id.slice(prefix.length + 1)) || 0), 0);
+  const max = state.batches.filter((b) => b.id.startsWith(`${prefix}-`)).reduce((m, b) => Math.max(m, Number(b.id.slice(prefix.length + 1)) || 0), state.idCounters.batches[prefix] ?? 0);
   return `${prefix}-${String(max + 1).padStart(3, '0')}`;
 }
 
@@ -139,11 +145,32 @@ const lotPrefixes: Record<string, string> = {
   'Machine residue': 'REW', 'Recoverable chocolate': 'REW', 'Finished chocolate': 'FIN', 'Accepted units': 'FIN', 'Rejected units': 'REJ',
 };
 
+/** The next lot ID for a material, never one issued before (see nextBatchId()); taken are IDs already chosen in the same save */
 export function nextLotId(state: State, material: string, taken: string[] = []) {
   const prefix = lotPrefixes[material] ?? (material.replace(/[^a-z]/gi, '').slice(0, 4).toUpperCase() || 'LOT');
   const ids = [...state.lots.map((l) => l.id), ...taken];
-  const max = ids.filter((id) => id.startsWith(`${prefix}-`)).reduce((m, id) => Math.max(m, parseInt(id.slice(prefix.length + 1), 10) || 0), 0);
+  const max = ids.filter((id) => id.startsWith(`${prefix}-`)).reduce((m, id) => Math.max(m, parseInt(id.slice(prefix.length + 1), 10) || 0), state.idCounters.lots[prefix] ?? 0);
   return `${prefix}-${String(max + 1).padStart(4, '0')}`;
+}
+
+/**
+ * The ID counters raised to cover the counters and the batch and lot IDs of every given state, read
+ * the way nextBatchId() and nextLotId() read them. Returns the first state's counters unchanged when
+ * nothing is higher, so an unchanged counter is not saved again.
+ */
+export function issuedNumbers(...states: Pick<State, 'idCounters' | 'batches' | 'lots'>[]): IdCounters {
+  let counters = states[0].idCounters;
+  const raise = (kind: keyof IdCounters, prefix: string, n: number) => {
+    if (prefix && n > (counters[kind][prefix] ?? 0)) counters = { ...counters, [kind]: { ...counters[kind], [prefix]: n } };
+  };
+  for (const s of states) {
+    for (const kind of ['batches', 'lots'] as const) for (const [prefix, n] of Object.entries(s.idCounters[kind])) raise(kind, prefix, n);
+    // A batch ID is the product prefix, which may itself contain a dash, then the number: CB-024.
+    for (const { id } of s.batches) raise('batches', id.slice(0, Math.max(0, id.lastIndexOf('-'))), Number(id.slice(id.lastIndexOf('-') + 1)));
+    // A lot prefix is letters only; older lots may have a letter after the number: NIB-023B.
+    for (const { id } of s.lots) raise('lots', id.slice(0, Math.max(0, id.indexOf('-'))), parseInt(id.slice(id.indexOf('-') + 1), 10));
+  }
+  return counters;
 }
 
 /** Every station where this batch has something to do now: its next step plus any material waiting after a split */

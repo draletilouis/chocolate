@@ -216,6 +216,12 @@ export interface Thresholds {
   lowStockKg: number;
 }
 
+/**
+ * Highest number given out so far for each ID prefix, batches and lots counted apart. Counters only
+ * go up, so a removed batch or lot never has its ID given to another and old labels stay true.
+ */
+export interface IdCounters { batches: Record<string, number>; lots: Record<string, number> }
+
 export interface Alert {
   id: string;
   kind: 'variance' | 'waste' | 'hold' | 'stock';

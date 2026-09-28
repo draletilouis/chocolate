@@ -59,7 +59,7 @@ The schema is created on first start (`createSchema()` in `src/server/db.ts`):
 | Table | Holds |
 | --- | --- |
 | `app_meta` | The data version. Every saved change increases it by one. |
-| `app_items` | One row per batch, lot, recipe, product, pack size, supplier, person, route, output row and container, and one per setting (limits, business details, idle minutes, workflow version), with the version at which it last changed. Deleted items stay as tombstones so other devices learn about the deletion. |
+| `app_items` | One row per batch, lot, recipe, product, pack size, supplier, person, route, output row and container, and one per setting (limits, business details, idle minutes, workflow version, ID counters), with the version at which it last changed. Deleted items stay as tombstones so other devices learn about the deletion. |
 | `app_commands` | The audit log: every change with its version, time, the command, who was signed in (`user_id`) and, when a manager recorded on someone's behalf, whose name the records carry (`recorded_as`). Passwords and PINs are never logged. |
 | `app_credentials` | Password and PIN hashes (scrypt with a random salt) and failed-attempt counters. |
 | `app_sessions` | Signed-in sessions: a SHA-256 hash of the cookie token, the person, last activity, device and recording-as. |
@@ -79,7 +79,7 @@ Every change is a named command, for example `saveRecord`, `receiveDelivery`, `p
 
 Nothing changes in the browser until the server has accepted a change. A refusal or a lost connection is shown in a banner at the top of the screen, and the form keeps what was typed so it can be saved again.
 
-Batch and lot numbers are generated inside the transaction, so two devices saving at the same moment cannot get the same number. Times on records use the factory's time zone (`FACTORY_TIMEZONE`, default `Africa/Kampala`).
+Batch and lot numbers are generated inside the transaction, so two devices saving at the same moment cannot get the same number, and a number is never issued again once its batch or lot is removed (see section 8). Times on records use the factory's time zone (`FACTORY_TIMEZONE`, default `Africa/Kampala`).
 
 **Two people saving the same station.** A station form remembers the saved state it was opened on: `recordStamp()` in `src/lib/derive.ts` combines the record's ID, a revision that is new on every save (`rev`) and the number of corrections to it, or is `null` for a station not yet recorded. The form sends it as `expectRecord`, and the server refuses the save when the station's current stamp differs, whether someone else recorded it first, saved it again or corrected one of its weights. Because other devices' saves reach the form within about five seconds, it also shows the warning straight away, turns **Save** off and offers **See the saved weights**. Weights are never silently overwritten.
 
@@ -283,7 +283,7 @@ Defaults come from each output row's `to` in `src/lib/stations.ts`. Custom rows 
 
 It then builds the record, signed with the person recording and the factory time, and hands it to `commitRecord()`, which:
 
-1. creates or updates a lot for every output sent to `stock`, `sale` or `rework`, reusing the lot IDs this station created before;
+1. creates or updates a lot for every output sent to `stock`, `sale` or `rework`, reusing the lot IDs this station created before, and removes the lots of outputs it no longer stores (their numbers are not reused);
 2. replaces the station's record on the batch; and
 3. unless it is an early entry, sets `nextStation` to the first station in line order with continued material waiting (`pendingStations()`), or Completion when none is waiting.
 
@@ -343,7 +343,9 @@ Lots made by a batch show a printable label on their lot page, and a bean batch 
 
 Each lot records its source, received quantity, available quantity, and uses. When a source lot is selected for a new chocolate batch, the actual amount used is appended to the lot's use history and subtracted from availability. The lot page links upstream source lots, the creating batch/station, downstream batch uses, and lots made by those downstream batches.
 
-Lot IDs are generated in `nextLotId()` using material-specific prefixes such as `BEAN`, `WRB`, `NIB`, `SILK`, `BUT`, `PWD`, `LIQ`, `REW`, and `FIN`, followed by a four-digit sequence.
+Lot IDs are generated in `nextLotId()` using material-specific prefixes such as `BEAN`, `WRB`, `NIB`, `SILK`, `BUT`, `PWD`, `LIQ`, `REW`, and `FIN`, followed by a four-digit sequence. Batch IDs are generated in `nextBatchId()` from the product prefix and a three-digit sequence.
+
+**Numbers are never reused.** A lot or batch can be removed: an unused supplier lot or a blank batch can be deleted, and saving a station again removes the lots it made for outputs it no longer stores (the output now continues or goes to waste, or was renamed). Its number stays taken, so a printed label or QR code for it finds nothing instead of opening a different lot or batch, and traceability back to the supplier holds. The state keeps `idCounters`: the highest number issued for each batch prefix and each lot prefix, stored as a setting. After every command, `applyCommand()` raises the counters to cover every batch and lot ID from before and after the command, inside the same transaction. The next number is one above the counter or the highest ID in use, whichever is higher. A new lot made in the same save that drops another cannot take the dropped lot's number either. A database saved before the counters existed needs no migration step: its numbers continue from its highest IDs, and its counters fill in as commands run. Uploading records from an older browser keeps the server's counters, so numbers the server already issued stay taken.
 
 ## 9. Holds and corrections
 
