@@ -1,14 +1,20 @@
 export type OutputKind = 'useful' | 'byproduct' | 'waste';
 
 export type StationId =
-  | 'receiving' | 'roasting' | 'winnowing' | 'grinding'
-  | 'pressing'
+  | 'receiving' | 'sorting' | 'roasting' | 'winnowing'
+  | 'pressing' | 'sieving' | 'filtering' | 'powder-roasting' | 'powder-crushing'
+  | 'grinding'
   | 'mixing' | 'refining' | 'conching' | 'tempering'
   | 'moulding' | 'packaging' | 'completion';
 
-export type StationGroup = 'Bean processing' | 'Pressing' | 'Chocolate making' | 'Finishing';
+export type StationGroup = 'Bean processing' | 'Butter & powder' | 'Liquor' | 'Chocolate making' | 'Finishing';
 
-export interface OutputRowDef { name: string; kind: OutputKind }
+export interface OutputRowDef {
+  name: string;
+  kind: OutputKind;
+  /** Destination suggested when the row is first saved; must be allowed by the station */
+  to?: Destination;
+}
 
 export interface Station {
   id: StationId;
@@ -26,15 +32,15 @@ export interface Station {
   help: string;
 }
 
-/** Where a recorded output goes after the station is saved */
-export type Destination = `continue:${StationId}` | 'stock' | 'rework' | 'waste';
+/** Where a recorded output goes after the station is saved. 'sale' stores it as a finished-goods lot. */
+export type Destination = `continue:${StationId}` | 'stock' | 'sale' | 'rework' | 'waste';
 
 export interface RecordedOutput {
   name: string;
   kind: OutputKind;
   weight: number;
   destination: Destination;
-  /** Inventory lot created when the output was sent to stock or rework */
+  /** Inventory lot created when the output was sent to stock, sale or rework */
   lotId?: string;
 }
 
@@ -118,6 +124,8 @@ export interface Batch {
   /** Station that should be recorded next; null once the batch is completed */
   nextStation: StationId | null;
   startInput: { material: string; weight: number; lotIds: string[] };
+  /** Supplier of the delivered beans, so labels made from this batch trace back to them */
+  supplierId?: string;
   recipeId?: string;
   recipeVersion?: number;
   ingredients?: Ingredient[];

@@ -4,7 +4,9 @@ const { chromium } = require('@playwright/test');
 
 const BASE = 'http://127.0.0.1:3100';
 const SCREENSHOT_DIR = 'C:/Users/hp/Documents/Codex/2026-09-14/we/work/chocolate-checks';
-const STATIONS = ['receiving', 'roasting', 'winnowing', 'grinding', 'pressing', 'mixing', 'refining', 'conching', 'tempering', 'moulding', 'packaging', 'completion'];
+const STATIONS = ['receiving', 'sorting', 'roasting', 'winnowing', 'pressing', 'sieving', 'filtering', 'powder-roasting', 'powder-crushing', 'grinding', 'mixing', 'refining', 'conching', 'tempering', 'moulding', 'packaging', 'completion'];
+const STATION_NAMES = { sieving: 'Butter sieving', filtering: 'Filter pan', 'powder-roasting': 'Powder roasting', 'powder-crushing': 'Powder crushing', grinding: 'Liquor grinding' };
+const stationLabel = (id) => STATION_NAMES[id] ?? id.charAt(0).toUpperCase() + id.slice(1);
 const checked = [];
 const ok = (label) => checked.push(label);
 
@@ -62,12 +64,13 @@ async function expectText(page, text) {
   ok('active batch rows');
 
   // Each part of the line has its own sidebar entry and page; the production page itself stays short.
-  const PARTS = { 'bean-processing': ['receiving', 'roasting', 'winnowing', 'grinding'], pressing: ['pressing'], 'chocolate-making': ['mixing', 'refining', 'conching', 'tempering'], finishing: ['moulding', 'packaging', 'completion'] };
+  const PARTS = { 'bean-processing': ['receiving', 'sorting', 'roasting', 'winnowing'], 'butter-powder': ['pressing', 'sieving', 'filtering', 'powder-roasting', 'powder-crushing'], liquor: ['grinding'], 'chocolate-making': ['mixing', 'refining', 'conching', 'tempering'], finishing: ['moulding', 'packaging', 'completion'] };
+  const PART_LABELS = { 'bean-processing': 'Bean processing', 'butter-powder': 'Butter & powder', liquor: 'Liquor', 'chocolate-making': 'Chocolate making', finishing: 'Finishing' };
   const sidebarParts = page.getByRole('group', { name: 'Parts of the production line' });
   for (const [slug, ids] of Object.entries(PARTS)) {
-    const label = slug === 'pressing' ? 'Pressing' : slug === 'finishing' ? 'Finishing' : slug === 'bean-processing' ? 'Bean processing' : 'Chocolate making';
+    const label = PART_LABELS[slug];
     await page.goto(`${BASE}/production`);
-    await sidebarParts.getByRole('link', { name: new RegExp(`^\\d\\s*${label}`) }).click();
+    await sidebarParts.getByRole('link', { name: new RegExp(`^${label}`) }).click();
     await page.waitForURL(`**/production/parts/${slug}`);
     await page.getByRole('heading', { level: 1, name: label, exact: true }).waitFor();
     await sidebarParts.locator('[aria-current="page"]').filter({ hasText: label }).waitFor();
@@ -75,84 +78,95 @@ async function expectText(page, text) {
     // Every station in the part opens its queue directly.
     for (const id of ids) {
       await page.goto(`${BASE}/production/parts/${slug}`);
-      await page.getByRole('link', { name: new RegExp(`^\\d\\d\\s*${id.charAt(0).toUpperCase() + id.slice(1)}\\b`) }).click();
+      await page.getByRole('link', { name: new RegExp(`^\\d\\d\\s*${stationLabel(id)}\\b`) }).click();
       await page.waitForURL(`**/production/stations/${id}`);
       await page.getByRole('heading', { level: 1 }).waitFor();
     }
   }
-  await page.goto(`${BASE}/production/parts/pressing`);
-  await expectText(page, 'Branch from grinding');
-  await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-part-pressing.png`, fullPage: true });
+  await page.goto(`${BASE}/production/parts/butter-powder`);
+  await expectText(page, 'filter pan');
+  await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-part-butter-powder.png`, fullPage: true });
   await page.goto(`${BASE}/production`);
   if (await page.getByRole('link', { name: /Open station/ }).count()) throw new Error('Production page should not list stations (long scroll)');
-  ok('four parts as sidebar entries with their own pages; all 12 stations open their queues');
+  ok('five parts as sidebar entries with their own pages; all 17 stations open their queues');
 
-  // Winnowing: exact worked example.
+  // Winnowing: exact worked example. Crushed nibs are weighed in portions for liquor, butter and sale.
   await page.goto(`${BASE}/production/stations/winnowing`);
   await page.getByRole('link', { name: /CB-025/ }).click();
   await page.waitForURL('**/production/batches/CB-025/record/winnowing');
   await expectText(page, 'Roasted beans');
-  await expectText(page, '92.40 kg');
+  await expectText(page, '90.40 kg');
   await page.getByRole('button', { name: 'Confirm input' }).click();
-  for (const [name, value] of [['Nibs', '72'], ['Whole peeled beans', '5'], ['Husks', '13.8'], ['Unusable beans', '1.1']]) await page.getByRole('spinbutton', { name, exact: true }).fill(value);
-  await expectText(page, '91.90 kg of 92.40 kg');
+  for (const [name, value] of [['Nibs for liquor', '50'], ['Nibs for butter', '20'], ['Nibs for sale', '4'], ['Husks', '15.9']]) await page.getByRole('spinbutton', { name, exact: true }).fill(value);
+  await expectText(page, '89.90 kg of 90.40 kg');
   await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-record-winnowing.png`, fullPage: true });
   await page.getByRole('button', { name: 'Save measurements' }).click();
   await page.getByText('Winnowing saved.').waitFor();
   const balance = await page.locator('main').innerText();
-  const expected = [['Measured output', '91.90 kg'], ['Useful output', '77.00 kg'], ['Recorded waste / by-product', '14.90 kg'], ['Unaccounted variance', '0.50 kg'], ['Material accounted for', '99.46%'], ['Variance', '0.54%'], ['Yield', '83.33%']];
+  const expected = [['Measured output', '89.90 kg'], ['Useful output', '74.00 kg'], ['Recorded waste / by-product', '15.90 kg'], ['Unaccounted variance', '0.50 kg'], ['Material accounted for', '99.45%'], ['Variance', '0.55%'], ['Yield', '81.86%']];
   for (const [label, value] of expected) {
     const re = new RegExp(`${label.replace(/[/]/g, '\\/')}\\s*\\n?\\s*${value.replace('.', '\\.')}`);
     if (!re.test(balance)) throw new Error(`Balance missing "${label} ${value}"`);
   }
-  ok('winnowing mass balance example (91.90 / 77.00 / 14.90 / 0.50 / 99.46% / 0.54%)');
+  ok('winnowing mass balance example (89.90 / 74.00 / 15.90 / 0.50 / 99.45% / 0.55%)');
 
-  // Destinations: split outputs stay separate; nibs continue, peeled beans to rework, husks stored.
-  await page.getByLabel('Whole peeled beans destination').selectOption('rework');
-  await page.getByLabel('Husks destination').selectOption('stock');
+  // Destinations default from the process: nibs to pressing and grinding, nibs for sale, husks to waste.
+  for (const [name, value] of [['Nibs for liquor', 'continue:grinding'], ['Nibs for butter', 'continue:pressing'], ['Nibs for sale', 'sale'], ['Husks', 'waste']]) {
+    if ((await page.getByLabel(`${name} destination`).inputValue()) !== value) throw new Error(`${name} should default to ${value}`);
+  }
   await page.getByRole('button', { name: 'Save destinations' }).click();
-  await page.getByText('72.00 kg nibs available. Record grinding.').waitFor();
+  await page.getByText('20.00 kg nibs for butter available. Record pressing. Also waiting: liquor grinding.').waitFor();
   await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-winnowing-saved.png`, fullPage: true });
-  await page.getByRole('link', { name: /Record grinding/ }).click();
-  await page.waitForURL('**/record/grinding');
-  await expectText(page, '72.00 kg'); // only nibs became the grinding input
-  ok('destinations saved, only continued output becomes next input');
+  for (const id of ['pressing', 'grinding']) {
+    await page.goto(`${BASE}/production/stations/${id}`);
+    await page.getByRole('link', { name: /CB-025/ }).waitFor();
+  }
+  ok('nib split waits at pressing and liquor grinding at the same time');
 
-  // Grinding → pressing branch, custom output row.
+  // Pressing with a custom output row; butter stored, cake kept for sale so this batch ends after grinding.
+  await page.goto(`${BASE}/production/batches/CB-025/record/pressing`);
+  await expectText(page, '20.00 kg');
   await page.getByRole('button', { name: 'Confirm input' }).click();
-  await page.getByRole('spinbutton', { name: 'Liquor', exact: true }).fill('70.9');
+  await page.getByRole('spinbutton', { name: 'Brown butter', exact: true }).fill('9');
+  await page.getByRole('spinbutton', { name: 'Cocoa cake (powder)', exact: true }).fill('10.8');
   await page.getByRole('button', { name: 'Add another output' }).click();
-  await page.getByLabel('Output 5 name').fill('Screen residue');
-  await page.getByLabel('Output 5 type').selectOption('waste');
-  await page.getByLabel('Output 5 weight').fill('0.4');
-  await page.getByRole('button', { name: 'Save measurements' }).click();
-  await page.getByText('Grinding saved.').waitFor();
-  await page.getByLabel('Liquor destination').selectOption('continue:pressing');
-  await page.getByRole('button', { name: 'Save destinations' }).click();
-  await page.getByText('Record pressing.').waitFor();
-  await page.getByRole('link', { name: /Record pressing/ }).click();
-  await page.getByRole('button', { name: 'Confirm input' }).click();
-  await page.getByRole('spinbutton', { name: 'Cocoa butter', exact: true }).fill('32.1');
-  await page.getByRole('spinbutton', { name: 'Cocoa cake', exact: true }).fill('38.2');
+  await page.getByLabel('Output 4 name').fill('Screen residue');
+  await page.getByLabel('Output 4 type').selectOption('waste');
+  await page.getByLabel('Output 4 weight').fill('0.1');
   await page.getByRole('button', { name: 'Save measurements' }).click();
   await page.getByText('Pressing saved.').waitFor();
-  await page.getByLabel('Cocoa butter destination').selectOption('stock');
+  await page.getByLabel('Brown butter destination').selectOption('stock');
+  await page.getByLabel('Cocoa cake (powder) destination').selectOption('sale');
+  await page.getByRole('button', { name: 'Save destinations' }).click();
+  await page.getByText('Record liquor grinding.').waitFor();
+  await page.getByRole('link', { name: /Record liquor grinding/ }).click();
+  await page.waitForURL('**/record/grinding');
+  await expectText(page, '50.00 kg'); // only the nibs for liquor became the grinding input
+  ok('pressing with custom output row; only continued output becomes the next input');
+
+  // Liquor grinding: weighed after fine grinding, labelled with the batch name and supplier.
+  await page.getByRole('button', { name: 'Confirm input' }).click();
+  await page.getByRole('spinbutton', { name: 'Liquor', exact: true }).fill('49.8');
+  await page.getByRole('button', { name: 'Save measurements' }).click();
+  await page.getByText('Liquor grinding saved.').waitFor();
   await page.getByRole('button', { name: 'Save destinations' }).click();
   await page.getByText('Complete the batch.').waitFor();
-  ok('grinding → pressing branch with custom output row, butter and cake split');
+  await expectText(page, 'Liquor label');
+  await expectText(page, 'Kuapa Kokoo');
+  ok('liquor grinding stores labelled liquor; label carries the batch and supplier');
 
   // Batch timeline shows completed stations, next station, outputs, destinations, variance.
   await page.goto(`${BASE}/production/batches/CB-025`);
   await page.getByRole('heading', { name: 'Batch timeline' }).waitFor();
-  for (const t of ['Receiving', 'Roasting', 'Winnowing', 'Grinding', 'Pressing', 'Store as lot', 'Rework', 'Variance 0.50 kg (0.54%)', 'Completion']) await expectText(page, t);
+  for (const t of ['Receiving', 'Sorting', 'Roasting', 'Winnowing', 'Pressing', 'Liquor grinding', 'Store as lot', 'For sale (lot)', 'Variance 0.50 kg (0.55%)', 'Completion']) await expectText(page, t);
   await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-batch-timeline.png`, fullPage: true });
   // Correction and hold.
   await page.getByRole('button', { name: 'Add correction' }).click();
-  await page.getByLabel('Recorded output').selectOption({ label: 'Winnowing · Husks (13.80 kg)' });
-  await page.getByLabel('Corrected weight').fill('13.7');
+  await page.getByLabel('Recorded output').selectOption({ label: 'Winnowing · Husks (15.90 kg)' });
+  await page.getByLabel('Corrected weight').fill('15.8');
   await page.getByLabel('Correction reason').fill('Bin tare was wrong.');
   await page.getByRole('button', { name: 'Save correction' }).click();
-  await expectText(page, 'Corrected Husks: 13.80 → 13.70 kg');
+  await expectText(page, 'Corrected Husks: 15.90 → 15.80 kg');
   await page.getByRole('button', { name: 'Put on hold' }).click();
   await page.getByLabel('Hold reason').fill('Waiting for quality sign-off.');
   await page.getByRole('button', { name: 'Place hold' }).click();
@@ -211,7 +225,7 @@ async function expectText(page, text) {
   await page.goto(`${BASE}/materials`);
   await page.getByRole('link', { name: /LIQ-024/ }).click();
   await page.getByRole('heading', { name: 'Traceability' }).waitFor();
-  for (const t of ['CB-024', 'BEAN-0905', 'CL-007']) await expectText(page, t);
+  for (const t of ['CB-024', 'BEAN-0905', 'CH-018', 'Print label']) await expectText(page, t);
   await page.goto(`${BASE}/materials`);
   await page.getByRole('button', { name: 'Finished goods' }).click();
   await page.getByRole('link', { name: /FIN-0001/ }).click();
@@ -241,7 +255,7 @@ async function expectText(page, text) {
   ok('reports: waste & variance, batch history, corrections, holds');
 
   // Setup.
-  for (const [section, text] of [['products', 'Batch prefix'], ['pack-sizes', '45 g bar'], ['outputs', 'Whole peeled beans'], ['routes', 'Beans to liquor'], ['suppliers', 'Kuapa Kokoo'], ['users', 'Current user'], ['alerts', 'Variance limit per station']]) {
+  for (const [section, text] of [['products', 'Batch prefix'], ['pack-sizes', '45 g bar'], ['outputs', 'Nibs for liquor'], ['routes', 'Beans to liquor'], ['suppliers', 'Kuapa Kokoo'], ['users', 'Current user'], ['alerts', 'Variance limit per station']]) {
     await page.goto(`${BASE}/setup/${section}`);
     await expectText(page, text);
   }

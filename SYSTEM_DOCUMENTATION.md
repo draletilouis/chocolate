@@ -26,7 +26,7 @@ The main runtime layers are:
 | --- | --- | --- |
 | App shell | `src/app/layout.tsx`, `src/components/Shell.tsx` | Loads global styles, mounts the store, gates the app behind sign-in, and renders navigation. |
 | Shared UI | `src/components/ui.tsx` | Reusable headers, panels, buttons, fields, tables, badges, notices, stats, and navigation tabs. |
-| Domain configuration | `src/lib/stations.ts` | Defines the twelve stations, four line parts, station inputs/outputs, output rows, and allowed next stations. |
+| Domain configuration | `src/lib/stations.ts` | Defines the seventeen stations, five line parts, station inputs/outputs, output rows with default destinations, and allowed next stations. |
 | Domain types and state | `src/lib/types.ts`, `src/lib/seed.ts` | Defines the data model and supplies the initial sample data. |
 | Business calculations | `src/lib/balance.ts` | Calculates station balances, percentages, rounding, and packaging quantities. |
 | Derived workflow logic | `src/lib/derive.ts` | Builds queues, finds next inputs, creates alerts, resolves names, follows traceability, and generates IDs. |
@@ -48,30 +48,36 @@ The shell waits for hydration so the seed data does not briefly flash, then show
 
 Sample users are defined in `src/lib/seed.ts`; all seeded accounts use the password `cocoa123`. The login screen includes Alex Morgan's demo credentials.
 
-The `migrate()` function in `src/lib/store.tsx` upgrades older stored users that do not yet have email or password fields. It merges stored data over a fresh seed shape and fills missing user credentials from the matching seed user or a generated default.
+The `migrate()` function in `src/lib/store.tsx` upgrades older stored users that do not yet have email or password fields. It merges stored data over a fresh seed shape and fills missing user credentials from the matching seed user or a generated default. When stored data predates the current line layout (`workflowVersion`), it replaces the built-in output rows and seeded route station lists with the current ones, keeps output rows the user added, and fills variance limits for new stations.
 
 ## 4. Production line model
 
-The line is presented as four parts:
+The line is presented as five parts:
 
 | Part | Stations | Purpose |
 | --- | --- | --- |
-| Bean processing | Receiving → Roasting → Winnowing → Grinding | Turn delivered cocoa beans into liquor, with husks and other outputs separated. |
-| Pressing | Pressing | Optionally branch cocoa liquor into cocoa butter and cocoa cake. |
+| Bean processing | Receiving → Sorting → Roasting → Winnowing | Receive the beans, sort them by hand and reweigh, roast (whole beans can be taken off for sale), then winnow into nibs and husks. |
+| Butter & powder | Pressing → Butter sieving → Filter pan; Powder roasting → Powder crushing | Press nibs into brown butter and cake (powder). Butter is sieved (particles go to liquor grinding) and filtered into clear butter. Cake can be roasted again, then is crushed to fine powder for sale. |
+| Liquor | Liquor grinding | Grind nibs twice (coarse, then fine), weigh after fine grinding, and label the liquor with the batch name. |
 | Chocolate making | Mixing → Refining → Conching → Tempering | Combine recipe ingredients and develop the chocolate's texture and flavor. |
 | Finishing | Moulding → Packaging → Completion | Make finished chocolate, count accepted/rejected units, and close the batch. |
 
-The station definitions in `src/lib/stations.ts` are the source of truth for station names, groups, form type, help text, output rows, and allowed continuation stations.
+The station definitions in `src/lib/stations.ts` are the source of truth for station names, groups, form type, help text, output rows, each row's default destination, and allowed continuation stations. Station IDs `receiving`, `roasting`, `winnowing`, `grinding` and `pressing` are unchanged from the earlier layout, so older records keep working.
 
 ### Stations and continuation options
 
-| Station | Input | Outputs defined by default | Form | Allowed continuation |
+| Station | Input | Outputs defined by default (default destination) | Form | Allowed continuation |
 | --- | --- | --- | --- | --- |
-| Receiving | Cocoa beans delivered | Accepted beans; Rejected beans | Weights | Roasting |
-| Roasting | Accepted beans | Roasted beans; Unusable beans; Other measured loss | Weights | Winnowing |
-| Winnowing | Roasted beans | Nibs; Whole peeled beans; Husks; Unusable beans | Weights | Grinding |
-| Grinding | Nibs | Liquor; Butter; Powder; Waste | Weights | Pressing or Mixing |
-| Pressing | Cocoa liquor | Cocoa butter; Cocoa cake; Waste | Weights | Mixing |
+| Receiving | Cocoa beans delivered | Accepted beans (→ Sorting); Rejected beans (waste) | Weights | Sorting |
+| Sorting | Accepted beans | Sorted beans (→ Roasting); Sorted-out beans (waste) | Weights | Roasting |
+| Roasting | Sorted beans | Roasted beans (→ Winnowing); Whole roasted beans (for sale); Unusable beans (waste) | Weights | Winnowing |
+| Winnowing | Roasted beans | Nibs for liquor (→ Liquor grinding); Nibs for butter (→ Pressing); Nibs for sale (for sale); Husks (waste) | Weights | Pressing or Liquor grinding |
+| Pressing | Nibs for butter | Brown butter (→ Butter sieving); Cocoa cake (powder) (→ Powder roasting); Waste | Weights | Butter sieving, Powder roasting or Powder crushing |
+| Butter sieving | Brown butter | Sieved butter (→ Filter pan); Sieved particles (→ Liquor grinding); Waste | Weights | Filter pan or Liquor grinding |
+| Filter pan | Sieved butter | Silk butter (stored); Butter for sale (for sale); Cocoa butter for production (stored); Filter residue (waste) | Weights | Mixing |
+| Powder roasting | Cocoa cake (powder) | Roasted powder (→ Powder crushing); Waste | Weights | Powder crushing |
+| Powder crushing | Roasted powder | Fine cocoa powder (for sale); Waste | Weights | None |
+| Liquor grinding | Nibs for liquor + sieved particles | Liquor (stored, labelled); Waste | Weights | Mixing |
 | Mixing | Liquor + butter + sugar | Chocolate mix; Machine residue; Waste | Weights | Refining |
 | Refining | Chocolate mix | Refined chocolate; Machine residue; Waste | Weights | Conching |
 | Conching | Refined chocolate | Conched chocolate; Machine residue; Waste | Weights | Tempering |
@@ -82,11 +88,19 @@ The station definitions in `src/lib/stations.ts` are the source of truth for sta
 
 There are three seeded route definitions in `src/lib/seed.ts`:
 
-- `beans`: Receiving → Roasting → Winnowing → Grinding → Completion
-- `pressing`: Pressing → Completion
+- `beans` (Beans to liquor, butter and powder): Receiving → Sorting → Roasting → Winnowing → Pressing → Butter sieving → Filter pan → Powder roasting → Powder crushing → Liquor grinding → Completion
+- `pressing` (Nibs to butter and powder, for stored nibs): Pressing → Butter sieving → Filter pan → Powder roasting → Powder crushing → Completion
 - `chocolate`: Mixing → Refining → Conching → Tempering → Moulding → Packaging → Completion
 
-Routes provide the default path for a new batch. A station's destination choices provide the actual path for that batch. This is why Grinding can send liquor to Pressing, Mixing, or stock even though the bean route itself ends at Completion.
+Routes list the processes a batch may use. A station's destination choices provide the actual path for that batch; for example Powder roasting is skipped by sending the cake straight to Powder crushing.
+
+### Splits and parallel branches
+
+At Winnowing the crushed nibs are weighed as separate portions, so one batch can send nibs to Pressing and to Liquor grinding at the same time. `pendingStations()` in `src/lib/derive.ts` lists every station that has continued material waiting and no record yet. The batch appears in the queue of each of those stations, its next step is the first of them in line order, and the batch page lists the others as "Material waiting". `nextInput()` adds up everything continued to a station, which is how sieved butter particles join the nibs at Liquor grinding (record Liquor grinding after sieving when particles are added). A batch reaches Completion when no station has material waiting.
+
+### Labels
+
+Liquor is weighed once, after fine grinding. The Liquor grinding result screen shows a label with the batch name, batch ID, supplier(s), net weight, date and lot, with a **Print label** button. Every lot made by a batch has the same label on its lot page. Suppliers come from the batch's own supplier (chosen when a bean batch is started) and, through `batchSuppliers()`, from the suppliers behind the lots the batch started from.
 
 ## 5. Batch lifecycle
 
@@ -94,7 +108,7 @@ Routes provide the default path for a new batch. A station's destination choices
 
 `/production/new` creates a batch using a selected product. Products map to a route and, for chocolate products, to a recipe.
 
-For bean and pressing products, the worker enters a positive starting weight. For chocolate products, the worker selects a recipe version, enters a planned size, reviews the expected ingredient quantities, and records actual ingredient weights and optional source lots. The sum of actual ingredient weights becomes the mixing input. The worker also enters the calendar date on which the batch started; this defaults to today in the new-batch form and allows historical batches to be entered.
+For bean and stored-nib products, the worker enters a positive starting weight. Bean batches also record the supplier of the delivery, which is printed on labels. For chocolate products, the worker selects a recipe version, enters a planned size, reviews the expected ingredient quantities, and records actual ingredient weights and optional source lots. The sum of actual ingredient weights becomes the mixing input. The worker also enters the calendar date on which the batch started; this defaults to today in the new-batch form and allows historical batches to be entered.
 
 The worker may also enter an optional operator-facing batch name. It is trimmed and stored separately from the generated batch ID. The name is used in queues, alerts, records, and reports; the immutable ID remains the canonical key for URLs, lot uses, and traceability. Older batches without a name continue to display their ID.
 
@@ -105,6 +119,7 @@ The worker may also enter an optional operator-facing batch name. It is trimmed 
 - Stores the entered batch calendar date as `startedAt` (at noon local time); older callers without a date continue to use the current timestamp.
 - Sets status to `active`.
 - Sets `nextStation` to the first station in the route.
+- Stores the supplier for bean batches.
 - Stores the starting material, weight, source lot IDs, optional recipe snapshot, and note.
 - Draws down each selected lot by the actual quantity used, never below zero, while retaining the scale weight as entered.
 
@@ -160,12 +175,13 @@ Every saved output gets an individual destination:
 
 - `continue:<station>`: carry it to another permitted station in the batch;
 - `stock`: create an inventory lot;
+- `sale`: create a Finished goods lot for sale;
 - `rework`: create a rework lot; or
 - `waste`: send it to the waste record without creating a lot.
 
-Default destinations are assigned when a record is first saved: waste goes to the waste bin, by-products go to stock, and the first useful output continues to the station's default next station. The operator can change every destination before saving.
+Default destinations are assigned when a record is first saved from each output row's own default (see the station table). Custom rows fall back to: waste goes to the waste bin, by-products go to stock, and the first useful output continues to the station's default next station. The operator can change every destination before saving.
 
-When destinations are saved, the first continued output determines `batch.nextStation`; if no output continues, the next station becomes Completion. Only the output(s) explicitly continued to that station are used by `nextInput()`.
+When destinations are saved, `batch.nextStation` becomes the first station (in line order) with continued material waiting; if none is waiting, the next station becomes Completion. Only the output(s) explicitly continued to a station are used by `nextInput()` for that station.
 
 ### Step 4: Finish
 
@@ -209,11 +225,11 @@ The UI prevents rejected units from being greater than total units.
 
 Receiving material at `/materials/receive` always creates a kilogram supplier lot. Liquor is classified as an Intermediate; other received materials are classified as Raw material.
 
-Saving station destinations creates lots only for outputs sent to `stock` or `rework`. Continued outputs stay attached to the batch path, and waste outputs do not create lots. Packaging's accepted output creates a Finished goods lot measured in units and named with the product and pack size. Other stored/rework outputs create kilogram lots.
+Saving station destinations creates lots only for outputs sent to `stock`, `sale` or `rework`. Outputs sent to `sale` become Finished goods lots. Continued outputs stay attached to the batch path, and waste outputs do not create lots. Packaging's accepted output creates a Finished goods lot measured in units and named with the product and pack size. Other stored/rework outputs create kilogram lots.
 
 Each lot records its source, received quantity, available quantity, and uses. When a source lot is selected for a new chocolate batch, the actual amount used is appended to the lot's use history and subtracted from availability. The lot page links upstream source lots, the creating batch/station, downstream batch uses, and lots made by those downstream batches.
 
-Lot IDs are generated in `nextLotId()` using material-specific prefixes such as `BEAN`, `LIQ`, `HUSK`, `REW`, and `FIN`, followed by a four-digit sequence.
+Lot IDs are generated in `nextLotId()` using material-specific prefixes such as `BEAN`, `WRB`, `NIB`, `SILK`, `BUT`, `PWD`, `LIQ`, `REW`, and `FIN`, followed by a four-digit sequence.
 
 ## 9. Holds and corrections
 
@@ -253,15 +269,15 @@ Alerts appear in the Overview, in the production navigation counts, on batch pag
 | --- | --- |
 | `/` | Redirects to Production. |
 | `/overview` | Active-batch count, alert count, completed-today count, aggregate variance, alerts, and recent records. |
-| `/production` | Active batches, current/next stations, holds, and the four production parts. |
-| `/production/new` | Starts a bean, pressing, or chocolate batch. |
+| `/production` | Active batches, current/next stations (and any other station with material waiting), holds, and the five production parts. |
+| `/production/new` | Starts a bean (with supplier), stored-nib, or chocolate batch. |
 | `/production/parts/[part]` | Shows batches waiting in one line part and lists its stations. |
 | `/production/stations/[station]` | Shows a station's ready, held, and recently recorded queues. |
 | `/production/batches/[id]` | Shows process-by-process weights and statuses, the batch timeline, actions, recipe comparison, holds, corrections, and alerts. |
 | `/production/batches/[id]/record/[station]` | Records input, outputs/counts, destinations, and completion. |
 | `/materials` | Filters and lists all material lots. |
 | `/materials/receive` | Records a supplier delivery and creates a lot. |
-| `/materials/[lot]` | Shows lot quantities and upstream/downstream traceability; edits/deletes unused supplier lots only. |
+| `/materials/[lot]` | Shows lot quantities, a printable label for production lots, and upstream/downstream traceability; edits/deletes unused supplier lots only. |
 | `/recipes` | Lists recipes, current versions, and batch usage. |
 | `/recipes/[id]` | Edits recipe labels, adds immutable versions, deletes recipes unused by batches, and compares expected versus actual ingredients by batch. |
 | `/reports/losses` | Shows weight loss by batch/stage, follows one batch, and aggregates loss by process. |

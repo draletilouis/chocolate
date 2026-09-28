@@ -18,7 +18,7 @@ Your name is attached to measurements, holds, and corrections that you make. Sel
 The main navigation is:
 
 - **Overview** — production summary and alerts.
-- **Production line** — active batches, waiting work, and the four parts of the line.
+- **Production line** — active batches, waiting work, and the five parts of the line.
 - **Materials** — raw materials, intermediate products, by-products, rework, and finished-goods lots.
 - **Recipes** — recipe versions and ingredient comparisons.
 - **Reports** — losses, variance, batch history, corrections, and holds.
@@ -38,7 +38,7 @@ On a phone, use the bottom navigation bar. On a desktop, use the sidebar. Number
 8. Add an optional note.
 9. Select **Create batch and record…**.
 
-For cocoa beans or pressing liquor, enter the positive starting weight shown by the scale.
+For cocoa beans or stored nibs, enter the positive starting weight shown by the scale. For cocoa beans, also choose the **Supplier** who delivered them — it is printed on the liquor label so the liquor traces back to the supplier. Give the batch a name: the label shows it.
 
 For chocolate batches:
 
@@ -85,10 +85,13 @@ Choose a destination for every output:
 
 - **Continue to…** — send the output to another station in this batch.
 - **Store as a lot** — make it available as inventory.
+- **Store for sale** — make it a finished-goods lot for sale (for example whole roasted beans, nibs for sale, butter for sale, fine cocoa powder).
 - **Send to rework** — create a rework lot.
 - **Waste bin** — record it as waste without creating a lot.
 
-Only output assigned to **Continue to…** becomes the next station's input. Other useful outputs, such as husks, cocoa cake, or stored liquor, remain separate and do not get added to the next station automatically.
+Only output assigned to **Continue to…** becomes the next station's input. Other outputs, such as nibs for sale or stored liquor, remain separate and do not get added to the next station automatically. Each row suggests the usual destination for that output; change it if today is different.
+
+One batch can continue to more than one station. At winnowing, nibs for liquor go to liquor grinding while nibs for butter go to pressing; the batch then waits in both queues, and the saved screen says what else is waiting.
 
 Select **Save destinations** when the choices are correct.
 
@@ -127,12 +130,22 @@ Open a production part, then open a station to see:
 - **On hold at this station** — batches that must be reviewed before work continues.
 - **Recorded at this station** — recently completed records.
 
-The four production parts are:
+The five production parts are:
 
-1. **Bean processing:** Receiving, Roasting, Winnowing, Grinding.
-2. **Pressing:** Pressing.
-3. **Chocolate making:** Mixing, Refining, Conching, Tempering.
-4. **Finishing:** Moulding, Packaging, Completion.
+1. **Bean processing:** Receiving, Sorting, Roasting, Winnowing.
+   - Sort the beans by hand, then reweigh them at **Sorting**.
+   - Whole roasted beans taken off after roasting are weighed at **Roasting** and stored for sale.
+   - At **Winnowing**, weigh the crushed nibs in portions: nibs for liquor, nibs for butter, nibs for sale. Husks are waste.
+2. **Butter & powder:** Pressing, Butter sieving, Filter pan, Powder roasting, Powder crushing.
+   - **Pressing** turns nibs into brown butter and cake (powder).
+   - **Butter sieving**: the particles caught go to liquor grinding; the sieved butter goes to the filter pan.
+   - **Filter pan**: weigh the clear butter as silk butter, butter for sale, and cocoa butter kept for production.
+   - The cake can be roasted again at **Powder roasting** (or sent straight to crushing), then crushed, weighed and stored for sale at **Powder crushing**.
+3. **Liquor:** Liquor grinding.
+   - The nibs are ground twice, coarse then fine. Enter the liquor weight only **after fine grinding**. Sieved butter particles sent here are added to the input.
+   - After saving, select **Print label**. The label carries the batch name, batch ID and supplier.
+4. **Chocolate making:** Mixing, Refining, Conching, Tempering.
+5. **Finishing:** Moulding, Packaging, Completion.
 
 ## 7. Put a batch on hold or release it
 
@@ -204,7 +217,7 @@ Select a lot from **Materials** to see:
 - batches that used it; and
 - lots made by those downstream batches.
 
-This is the traceability path from a supplier delivery through production.
+This is the traceability path from a supplier delivery through production. Lots made by a batch also show a printable label with the batch name and supplier.
 
 ## 11. Manage recipes
 

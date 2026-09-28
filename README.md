@@ -28,11 +28,12 @@ node browser-check.cjs   # needs the dev server running; uses Playwright with Mi
 
 ## Layout
 
-- `src/lib/stations.ts` – the 12 stations, their groups, predefined output rows and default next stations
+- `src/lib/stations.ts` – the 17 stations, the five parts of the line, predefined output rows with their default destinations, and allowed next stations
 - `src/lib/balance.ts` – mass-balance and packaging calculations
 - `src/lib/store.tsx` – in-browser state and all recording actions (batches, lots, holds, corrections, recipes, setup)
-- `src/lib/derive.ts` – queues, next input, alerts, traceability helpers
+- `src/lib/derive.ts` – queues, next input, stations with material waiting after a split, alerts, traceability helpers
 - `src/components/Shell.tsx` – sidebar (desktop) and bottom navigation (mobile)
+- `src/components/BatchLabel.tsx` – printable label carrying the batch name and supplier (liquor after grinding, and any production lot)
 - `src/app/production/**` – production line, station queues, batch timeline, station recording flow
 - `src/app/materials`, `recipes`, `reports`, `setup` – supporting screens
 

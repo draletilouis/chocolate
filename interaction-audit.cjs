@@ -81,14 +81,15 @@ async function signIn(page) {
 async function productionLine(page) {
   const parts = [
     ['Bean processing', 'bean-processing'],
-    ['Pressing', 'pressing'],
+    ['Butter & powder', 'butter-powder'],
+    ['Liquor', 'liquor'],
     ['Chocolate making', 'chocolate-making'],
     ['Finishing', 'finishing'],
   ];
   for (let i = 0; i < parts.length; i += 1) {
     const [name, slug] = parts[i];
     await page.goto(`${BASE}/production`);
-    await action(page, `Open part ${i + 1} — ${name}`, page.locator('main').getByRole('link', { name: new RegExp(`${name}.*Open part`, 'i') }), async () => {
+    await action(page, `Open part ${i + 1} — ${name}`, page.locator('main').getByRole('link', { name: new RegExp(`^\\d+\\s*${name}\\b.*Open part`, 'i') }), async () => {
       await waitForUrl(page, `**/production/parts/${slug}`);
     });
   }
@@ -107,62 +108,59 @@ async function beanAndPressingFlow(page) {
     await waitForUrl(page, '**/production/batches/CB-025/record/winnowing');
   });
   await action(page, 'Confirm winnowing input', page.getByRole('button', { name: 'Confirm input' }), async () => {
-    await page.getByRole('spinbutton', { name: 'Nibs', exact: true }).waitFor();
+    await page.getByRole('spinbutton', { name: 'Nibs for liquor', exact: true }).waitFor();
   });
-  for (const [name, value] of [['Nibs', '72'], ['Whole peeled beans', '5'], ['Husks', '13.8'], ['Unusable beans', '1.1']]) {
+  for (const [name, value] of [['Nibs for liquor', '50'], ['Nibs for butter', '20'], ['Nibs for sale', '4'], ['Husks', '15.9']]) {
     await page.getByRole('spinbutton', { name, exact: true }).fill(value);
   }
   await action(page, 'Save winnowing measurements', page.getByRole('button', { name: 'Save measurements' }), async () => {
     await waitForText(page, 'Winnowing saved.');
   });
-  await page.getByLabel('Whole peeled beans destination').selectOption('rework');
-  await page.getByLabel('Husks destination').selectOption('stock');
   await action(page, 'Save winnowing destinations', page.getByRole('button', { name: 'Save destinations' }), async () => {
-    await waitForText(page, 'Record grinding.');
-  });
-  await action(page, 'Continue to grinding', page.getByRole('link', { name: /Record grinding/ }), async () => {
-    await waitForUrl(page, '**/record/grinding');
-  });
-  await action(page, 'Confirm grinding input', page.getByRole('button', { name: 'Confirm input' }), async () => {
-    await page.getByRole('spinbutton', { name: 'Liquor', exact: true }).waitFor();
-  });
-  await page.getByRole('spinbutton', { name: 'Liquor', exact: true }).fill('70.9');
-  await action(page, 'Add a custom grinding output', page.getByRole('button', { name: 'Add another output' }), async () => {
-    await page.getByLabel('Output 5 name').waitFor();
-  });
-  await page.getByLabel('Output 5 name').fill('Screen residue');
-  await page.getByLabel('Output 5 type').selectOption('waste');
-  await page.getByLabel('Output 5 weight').fill('0.4');
-  await action(page, 'Remove custom grinding output', page.getByRole('button', { name: 'Remove output' }).last(), async () => {
-    await page.getByLabel('Output 5 name').waitFor({ state: 'detached' });
-  });
-  await action(page, 'Add custom grinding output again', page.getByRole('button', { name: 'Add another output' }), async () => {
-    await page.getByLabel('Output 5 name').waitFor();
-  });
-  await page.getByLabel('Output 5 name').fill('Screen residue');
-  await page.getByLabel('Output 5 type').selectOption('waste');
-  await page.getByLabel('Output 5 weight').fill('0.4');
-  await action(page, 'Save grinding measurements', page.getByRole('button', { name: 'Save measurements' }), async () => {
-    await waitForText(page, 'Grinding saved.');
-  });
-  await page.getByLabel('Liquor destination').selectOption('continue:pressing');
-  await action(page, 'Save grinding destinations', page.getByRole('button', { name: 'Save destinations' }), async () => {
-    await waitForText(page, 'Record pressing.');
+    await waitForText(page, 'Also waiting: liquor grinding.');
   });
   await action(page, 'Continue to pressing', page.getByRole('link', { name: /Record pressing/ }), async () => {
     await waitForUrl(page, '**/record/pressing');
   });
   await action(page, 'Confirm pressing input', page.getByRole('button', { name: 'Confirm input' }), async () => {
-    await page.getByRole('spinbutton', { name: 'Cocoa butter', exact: true }).waitFor();
+    await page.getByRole('spinbutton', { name: 'Brown butter', exact: true }).waitFor();
   });
-  await page.getByRole('spinbutton', { name: 'Cocoa butter', exact: true }).fill('32.1');
-  await page.getByRole('spinbutton', { name: 'Cocoa cake', exact: true }).fill('38.2');
+  await page.getByRole('spinbutton', { name: 'Brown butter', exact: true }).fill('9');
+  await page.getByRole('spinbutton', { name: 'Cocoa cake (powder)', exact: true }).fill('10.8');
+  await action(page, 'Add a custom pressing output', page.getByRole('button', { name: 'Add another output' }), async () => {
+    await page.getByLabel('Output 4 name').waitFor();
+  });
+  await page.getByLabel('Output 4 name').fill('Temporary row');
+  await action(page, 'Remove custom pressing output', page.getByRole('button', { name: 'Remove output' }).last(), async () => {
+    if (await page.getByLabel('Output 4 name').count()) throw new Error('Custom output was not removed');
+  });
+  await action(page, 'Add custom pressing output again', page.getByRole('button', { name: 'Add another output' }), async () => {
+    await page.getByLabel('Output 4 name').waitFor();
+  });
+  await page.getByLabel('Output 4 name').fill('Screen residue');
+  await page.getByLabel('Output 4 type').selectOption('waste');
+  await page.getByLabel('Output 4 weight').fill('0.1');
   await action(page, 'Save pressing measurements', page.getByRole('button', { name: 'Save measurements' }), async () => {
     await waitForText(page, 'Pressing saved.');
   });
-  await page.getByLabel('Cocoa butter destination').selectOption('stock');
+  await page.getByLabel('Brown butter destination').selectOption('stock');
+  await page.getByLabel('Cocoa cake (powder) destination').selectOption('sale');
   await action(page, 'Save pressing destinations', page.getByRole('button', { name: 'Save destinations' }), async () => {
+    await waitForText(page, 'Record liquor grinding.');
+  });
+  await action(page, 'Continue to liquor grinding', page.getByRole('link', { name: /Record liquor grinding/ }), async () => {
+    await waitForUrl(page, '**/record/grinding');
+  });
+  await action(page, 'Confirm grinding input', page.getByRole('button', { name: 'Confirm input' }), async () => {
+    await page.getByRole('spinbutton', { name: 'Liquor', exact: true }).waitFor();
+  });
+  await page.getByRole('spinbutton', { name: 'Liquor', exact: true }).fill('49.8');
+  await action(page, 'Save grinding measurements', page.getByRole('button', { name: 'Save measurements' }), async () => {
+    await waitForText(page, 'Liquor grinding saved.');
+  });
+  await action(page, 'Save grinding destinations', page.getByRole('button', { name: 'Save destinations' }), async () => {
     await waitForText(page, 'Complete the batch.');
+    await waitForText(page, 'Liquor label');
   });
 }
 
@@ -171,11 +169,11 @@ async function batchControls(page) {
   await action(page, 'Open correction form', page.getByRole('button', { name: 'Add correction' }), async () => {
     await page.getByLabel('Recorded output').waitFor();
   });
-  await page.getByLabel('Recorded output').selectOption({ label: 'Winnowing · Husks (13.80 kg)' });
-  await page.getByLabel('Corrected weight').fill('13.7');
+  await page.getByLabel('Recorded output').selectOption({ label: 'Winnowing · Husks (15.90 kg)' });
+  await page.getByLabel('Corrected weight').fill('15.8');
   await page.getByLabel('Correction reason').fill('Bin tare was wrong.');
   await action(page, 'Save correction', page.getByRole('button', { name: 'Save correction' }), async () => {
-    await waitForText(page, 'Corrected Husks: 13.80 → 13.70 kg');
+    await waitForText(page, 'Corrected Husks: 15.90 → 15.80 kg');
   });
   await action(page, 'Open hold form', page.getByRole('button', { name: 'Put on hold' }), async () => {
     await page.getByLabel('Hold reason').waitFor();
@@ -189,7 +187,7 @@ async function batchControls(page) {
   });
   await page.getByLabel('Release note').fill('Approved.');
   await action(page, 'Release batch hold', page.getByRole('button', { name: 'Release', exact: true }), async () => {
-    await page.getByRole('link', { name: /Review & complete/ }).waitFor();
+    await page.getByRole('link', { name: /Review & complete/ }).first().waitFor();
   });
   await action(page, 'Review completion', page.getByRole('link', { name: /Review & complete/ }).first(), async () => {
     await waitForUrl(page, '**/record/completion');
@@ -229,7 +227,7 @@ async function chocolateFinishingFlow(page) {
     await waitForText(page, 'Packaging saved.');
   });
   await action(page, 'Save packaging destinations', page.getByRole('button', { name: 'Save destinations' }), async () => {
-    await waitForText(page, 'Review & complete batch.');
+    await waitForText(page, 'Complete the batch.');
   });
   await action(page, 'Review CH-018 completion', page.getByRole('link', { name: /Review & complete batch/ }), async () => {
     await waitForUrl(page, '**/record/completion');
