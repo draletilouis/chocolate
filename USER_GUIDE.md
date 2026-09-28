@@ -270,7 +270,7 @@ Changes are saved on the server and reach every device within a few seconds. Bus
 
 Setup rows can be edited with the pencil action and deleted with the trash action. Deletion is deliberately guarded: products used by recipes or batches, pack sizes used by packaging records, suppliers referenced by lots, routes used by products or batches, and users referenced by audit history cannot be deleted. Output rows can be removed, but this only changes the rows shown on future station forms; old records remain unchanged.
 
-Other editable areas follow the same traceability rule. Recipe names and batch names/notes can be changed; recipe versions, measured station records, holds, corrections, and production-created lots remain immutable history. Supplier lots can have their descriptive details corrected, and a lot can be deleted only when it is completely unused. A blank, unrecorded batch can be deleted; a batch with production history cannot.
+Other editable areas follow the same traceability rule. Recipe names and batch names/notes can be changed; recipe versions, measured station records, holds, corrections, and production-created lots remain immutable history. Supplier lots can have their descriptive details corrected, and a lot can be deleted only when it is completely unused. A blank, unrecorded batch can be deleted; a batch with production history cannot. The ID of a deleted or removed lot or batch is never given to a new one, so a printed label never opens a different record; the numbering simply skips it.
 
 ## 15. Important operating notes
 

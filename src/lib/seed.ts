@@ -1,6 +1,6 @@
 import { stations } from './stations';
 import type {
-  Batch, Container, Destination, Lot, OutputCategory, OutputKind, PackSize, Product, Recipe, RecordedOutput, Route,
+  Batch, Container, Destination, IdCounters, Lot, OutputCategory, OutputKind, PackSize, Product, Recipe, RecordedOutput, Route,
   StationId, StationRecord, Supplier, Thresholds, User, BusinessDetails,
 } from './types';
 
@@ -22,6 +22,8 @@ export interface State {
   idleMinutes: number;
   /** Version of the line layout the stored rows and routes were made for */
   workflowVersion: number;
+  /** Highest batch and lot numbers ever issued, so none is issued twice (see nextBatchId() and nextLotId()) */
+  idCounters: IdCounters;
 }
 
 /** 2: sorting, butter & powder and liquor as separate parts of the line */
@@ -238,6 +240,8 @@ export function seedState(): State {
   return structuredClone({
     batches, lots, recipes, products, routes, packSizes, suppliers, users,
     thresholds, outputCategories, business, containers, idleMinutes: 10, workflowVersion: WORKFLOW_VERSION,
+    // Empty: numbers continue from the sample IDs, and applyCommand() fills the counters in.
+    idCounters: { batches: {}, lots: {} },
   });
 }
 
