@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { ArrowDown, Pencil, Trash2 } from 'lucide-react';
 import { Back, Badge, Button, Empty, Field, Input, Notice, PageHeader, Panel, Select, Stat } from '@/components/ui';
+import { BatchLabel } from '@/components/BatchLabel';
 import { batchById, lotOrigin, recordBalance } from '@/lib/derive';
 import { dateTime } from '@/lib/format';
 import { useStore } from '@/lib/store';
@@ -51,6 +52,8 @@ export default function LotPage() {
           </form>
         </Panel>
       )}
+
+      {sourceBatch && <BatchLabel batch={sourceBatch} material={lot.material} quantity={`${lot.received} ${lot.unit}`} madeAt={lot.receivedAt} lotId={lot.id} />}
 
       <Panel title="Traceability" subtitle="Where this lot came from and where it went.">
         <ol className="px-5 py-3 text-[13px]">

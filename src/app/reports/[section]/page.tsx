@@ -266,7 +266,7 @@ export default function ReportsPage() {
                 )}
               </Table>
             )}
-            <p className="px-5 py-3 text-[12px] text-muted">Lost this step = went in − useful out (by-product + waste + unaccounted). Useful material stored or sent to rework still counts as useful; only what is carried forward becomes the next input, so a split (for example nibs and peeled beans) shows as a drop in the next row.</p>
+            <p className="px-5 py-3 text-[12px] text-muted">Lost this step = went in − useful out (by-product + waste + unaccounted). Useful material stored or sent to rework still counts as useful; only what is carried forward becomes the next input, so a split (for example nibs for liquor, butter and sale) shows as a drop in the next row.</p>
           </Panel>
 
           <Panel title="Loss at each process, all batches" subtitle="Where the weight goes across the whole line. Use it to see which process loses the most.">

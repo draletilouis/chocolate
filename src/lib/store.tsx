@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { calculatePackaging, round2 } from './balance';
-import { nextBatchId, nextLotId } from './derive';
+import { nextBatchId, nextInput, nextLotId, pendingStations } from './derive';
 import { seedState, type State } from './seed';
 import { stationById } from './stations';
 import type {
@@ -29,6 +29,8 @@ export interface NewBatchInput {
   /** Calendar date on which the batch was started; defaults to today for older callers. */
   batchDate?: string;
   startWeight: number;
+  /** Supplier of the delivered beans, for traceability on labels */
+  supplierId?: string;
   lotUses: { lotId: string; quantity: number }[];
   recipeVersion?: number;
   ingredients?: Ingredient[];
@@ -108,9 +110,22 @@ function migrate(stored: State): State {
   const business = { ...seed.business, ...(stored.business ?? {}) };
   if (business.name === 'Cocoa Factory') business.name = seed.business.name;
   const { paperCatalog: _legacyPaperCatalog, ...storedWithoutLegacyCatalog } = stored as State & { paperCatalog?: unknown };
+  // The line was reorganised (sorting, butter & powder, liquor). Built-in output rows and route
+  // station lists follow the new stations once; rows a user added themselves are kept.
+  const upgradeWorkflow = (stored.workflowVersion ?? 1) < seed.workflowVersion;
+  const outputCategories = upgradeWorkflow
+    ? [...seed.outputCategories, ...(stored.outputCategories ?? []).filter((c) => c.custom && c.station in seed.thresholds.variancePct)]
+    : stored.outputCategories ?? seed.outputCategories;
+  const routes = upgradeWorkflow
+    ? [...seed.routes, ...(stored.routes ?? []).filter((r) => !seed.routes.some((seedRoute) => seedRoute.id === r.id))]
+    : stored.routes ?? seed.routes;
   return {
     ...seed,
     ...storedWithoutLegacyCatalog,
+    workflowVersion: seed.workflowVersion,
+    outputCategories,
+    routes,
+    thresholds: { ...seed.thresholds, ...(stored.thresholds ?? {}), variancePct: { ...seed.thresholds.variancePct, ...(stored.thresholds?.variancePct ?? {}) } },
     users,
     business,
     // Keep user-created entries while adding any new seed entries to an older browser profile.
@@ -120,8 +135,10 @@ function migrate(stored: State): State {
 }
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
-/** Default destination for each output kind when a station is first saved */
-function defaultDestination(station: StationId, kind: OutputKind, index: number): Destination {
+/** Default destination for an output when a station is first saved: the row's own default, else by kind */
+function defaultDestination(station: StationId, name: string, kind: OutputKind, index: number): Destination {
+  const suggested = stationById[station].rows.find((row) => row.name === name)?.to;
+  if (suggested) return suggested;
   const next = stationById[station].next[0];
   if (kind === 'waste') return 'waste';
   if (kind === 'byproduct') return 'stock';
@@ -170,6 +187,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           id, name: input.name?.trim() || undefined, productId: product.id, product: product.name, route: route.id, startedAt: stamp, status: 'active',
           nextStation: route.stations[0],
           startInput: { material: route.startMaterial, weight: round2(input.startWeight), lotIds: input.lotUses.map((u) => u.lotId) },
+          supplierId: input.supplierId || undefined,
           recipeId: product.recipeId, recipeVersion: input.recipeVersion, ingredients: input.ingredients,
           records: [], holds: [], corrections: [], note: input.note,
         };
@@ -192,10 +210,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           .filter((o) => o.weight > 0)
           .map((o, i) => ({
             name: o.name, kind: o.kind, weight: round2(o.weight),
-            destination: existing?.outputs.find((e) => e.name === o.name)?.destination ?? defaultDestination(station, o.kind, i),
+            destination: existing?.outputs.find((e) => e.name === o.name)?.destination ?? defaultDestination(station, o.name, o.kind, i),
           }));
         const record: StationRecord = {
-          id: existing?.id ?? recordId, station, inputMaterial: existing?.inputMaterial ?? options?.inputMaterial ?? (b.records.length ? b.records.at(-1)!.outputs.filter((o) => o.destination === `continue:${station}`).map((o) => o.name).join(' + ') || stationById[station].input : b.startInput.material),
+          id: existing?.id ?? recordId, station, inputMaterial: existing?.inputMaterial ?? options?.inputMaterial ?? (nextInput(b, station).weight > 0 ? nextInput(b, station).material : stationById[station].input),
           inputWeight: round2(inputWeight), inputLotIds: existing?.inputLotIds ?? (options?.inputMaterial ? [] : b.records.length ? [] : b.startInput.lotIds),
           outputs: recorded, recordedAt: now(), recordedBy: state.currentUserId, note, destinationsSaved: false,
         };
@@ -232,19 +250,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const record = b.records.find((r) => r.id === recordId);
         if (!record) return b;
         const outputs = record.outputs.map((o) => ({ ...o, destination: destinations[o.name] ?? o.destination, lotId: undefined }));
-        const continued = outputs.map((o) => o.destination).find((d): d is `continue:${StationId}` => d.startsWith('continue:'));
-        const nextStation: StationId = continued ? (continued.slice(9) as StationId) : 'completion';
-        return { ...b, ...(options?.advanceWorkflow === false ? {} : { nextStation }), records: b.records.map((r) => (r.id === recordId ? { ...r, outputs, destinationsSaved: true } : r)) };
+        const updated = { ...b, records: b.records.map((r) => (r.id === recordId ? { ...r, outputs, destinationsSaved: true } : r)) };
+        // A split can leave material waiting at several stations; the first one in line order is next.
+        const nextStation: StationId = pendingStations(updated)[0] ?? 'completion';
+        return options?.advanceWorkflow === false ? updated : { ...updated, nextStation };
       }, (s, batch) => {
         const record = batch.records.find((r) => r.id === recordId)!;
-        // Replace lots this record created before, then create lots for outputs stored or sent to rework.
+        // Replace lots this record created before, then create lots for outputs stored, kept for sale or sent to rework.
         const kept = s.lots.filter((l) => !(l.source.type === 'batch' && l.source.batchId === batchId && l.source.station === record.station));
         const created: Lot[] = [];
         const outputs = record.outputs.map((o) => {
-          if (o.destination !== 'stock' && o.destination !== 'rework') return o;
+          if (o.destination !== 'stock' && o.destination !== 'sale' && o.destination !== 'rework') return o;
           const isUnits = record.station === 'packaging' && o.name === 'Accepted units';
           const id = nextLotId({ ...s, lots: kept }, o.name, created.map((l) => l.id));
-          const category: LotCategory = o.destination === 'rework' ? 'Rework' : isUnits ? 'Finished goods' : o.kind === 'byproduct' ? 'By-product' : 'Intermediate';
+          const category: LotCategory = o.destination === 'rework' ? 'Rework' : isUnits || o.destination === 'sale' ? 'Finished goods' : o.kind === 'byproduct' ? 'By-product' : 'Intermediate';
           const quantity = isUnits ? record.packaging!.acceptedUnits : o.weight;
           created.push({
             id, material: isUnits ? `${batch.product} · ${s.packSizes.find((p) => p.id === record.packaging!.packSizeId)?.name ?? ''}` : o.name,

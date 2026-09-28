@@ -26,7 +26,7 @@ export default function StationPage() {
       <Panel title={station.form === 'completion' ? 'Ready to complete' : `Ready to record ${station.name.toLowerCase()}`} subtitle={station.help}>
         {queue.ready.length === 0 && <Empty>No batches are waiting at {station.name.toLowerCase()}.</Empty>}
         {queue.ready.map((batch) => {
-          const input = nextInput(batch);
+          const input = nextInput(batch, station.id);
           return (
             <RowLink key={batch.id} href={`/production/batches/${batch.id}/record/${station.id}`}>
               <span className="min-w-0 flex-1">

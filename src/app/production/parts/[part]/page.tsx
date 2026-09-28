@@ -2,12 +2,21 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import type { ReactNode } from 'react';
 import { ArrowLeft, ArrowRight, GitBranch } from 'lucide-react';
 import { Back, Badge, Empty, LinkButton, PageHeader, Panel, RowLink, SubNav } from '@/components/ui';
-import { activeBatches, batchDisplayName, nextInput, stationQueue } from '@/lib/derive';
+import { activeBatches, batchDisplayName, nextInput, pendingStations, stationQueue } from '@/lib/derive';
 import { kg } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { groupBySlug, stationGroups, stationName, stations } from '@/lib/stations';
+import type { StationId } from '@/lib/types';
+
+/** How material splits inside a part, shown above its station list */
+const branchNotes: Record<string, ReactNode> = {
+  'bean-processing': <>Whole roasted beans can be taken off after <strong className="text-ink">roasting</strong> for sale. At <strong className="text-ink">winnowing</strong> the crushed nibs are weighed in portions: for liquor, for butter and for sale. Husks are waste.</>,
+  'butter-powder': <>Nibs are pressed into <strong className="text-ink">brown butter</strong> and <strong className="text-ink">cake (powder)</strong>. The butter is sieved (particles go to liquor grinding), then passed through the filter pan into clear butter: silk butter, for sale, or cocoa butter for production. The cake can be roasted again, then is crushed to fine powder for sale.</>,
+  liquor: <>Nibs are ground twice, coarse then fine; sieved butter particles are added at grinding. The liquor is weighed <strong className="text-ink">after fine grinding</strong> and labelled with the <strong className="text-ink">batch name</strong> so it traces back to the supplier.</>,
+};
 
 export default function PartPage() {
   const { part } = useParams<{ part: string }>();
@@ -18,14 +27,16 @@ export default function PartPage() {
   const index = stationGroups.indexOf(group);
   const partStations = stations.filter((s) => s.group === group.name);
   const ids = partStations.map((s) => s.id);
-  const batches = activeBatches(store).filter((b) => b.nextStation && ids.includes(b.nextStation));
+  // A batch is in this part when its next station, or any station with material waiting, is here.
+  const hereFor = (b: (typeof store.batches)[number]) => [b.nextStation, ...pendingStations(b)].find((s): s is StationId => !!s && ids.includes(s));
+  const batches = activeBatches(store).filter((b) => hereFor(b));
   const previous = stationGroups[index - 1];
   const next = stationGroups[index + 1];
 
   return (
     <>
       <Back href="/production" label="Production line" />
-      <PageHeader eyebrow={`Part ${index + 1} of 4 · Production line`} title={group.name}
+      <PageHeader eyebrow={`Part ${index + 1} of ${stationGroups.length} · Production line`} title={group.name}
         subtitle={<><strong className="text-ink">{group.from}</strong> <ArrowRight size={12} className="inline" /> <strong className="text-ink">{group.to}</strong> · {group.note}</>} />
 
       {/* Part switcher for small screens; the sidebar covers this on desktop */}
@@ -36,26 +47,27 @@ export default function PartPage() {
       <Panel title="Batches in this part" subtitle={batches.length ? 'Ready to record at one of these stations.' : undefined}>
         {batches.length === 0 && <Empty>No batches are waiting in {group.name.toLowerCase()} right now.</Empty>}
         {batches.map((batch) => {
-          const input = nextInput(batch);
+          const here = hereFor(batch)!;
+          const input = nextInput(batch, here);
           const onHold = batch.status === 'hold';
           return (
             <div key={batch.id} className="grid grid-cols-[1fr_auto] items-center gap-3 border-b border-line px-4 py-3 last:border-b-0 md:px-5">
               <span className="min-w-0">
                 <span className="flex flex-wrap items-center gap-2"><Link href={`/production/batches/${batch.id}`} className="font-bold text-green hover:underline">{batchDisplayName(batch)}</Link>{batch.name && <span className="text-[11px] text-muted">ID {batch.id}</span>}<span>{batch.product}</span>{onHold && <Badge tone="danger">On hold</Badge>}</span>
-                <span className="block text-[12px] text-muted">Next: {stationName(batch.nextStation)}{batch.nextStation !== 'completion' ? (input.weight > 0 ? ` · ${kg(input.weight)} ${input.material.toLowerCase()} ready` : ' · input to be confirmed') : ''}</span>
+                <span className="block text-[12px] text-muted">Next: {stationName(here)}{here !== 'completion' ? (input.weight > 0 ? ` · ${kg(input.weight)} ${input.material.toLowerCase()} ready` : ' · input to be confirmed') : ''}</span>
               </span>
               {onHold
                 ? <LinkButton variant="secondary" href={`/production/batches/${batch.id}`}>Review hold</LinkButton>
-                : <LinkButton href={`/production/batches/${batch.id}/record/${batch.nextStation}`} aria-label={`Continue ${batchDisplayName(batch)}`}>{batch.nextStation === 'completion' ? 'Complete' : `Record ${stationName(batch.nextStation).toLowerCase()}`} <ArrowRight size={15} /></LinkButton>}
+                : <LinkButton href={`/production/batches/${batch.id}/record/${here}`} aria-label={`Continue ${batchDisplayName(batch)}`}>{here === 'completion' ? 'Complete' : `Record ${stationName(here).toLowerCase()}`} <ArrowRight size={15} /></LinkButton>}
             </div>
           );
         })}
       </Panel>
 
-      {group.slug === 'pressing' && (
+      {branchNotes[group.slug] && (
         <div className="mb-4 flex items-start gap-2 rounded-lg bg-paper px-4 py-2.5 text-[12px] text-muted">
           <GitBranch size={14} className="mt-0.5 shrink-0 text-accent" />
-          <span>Branch from grinding: <strong className="text-ink">cocoa liquor</strong> splits into <strong className="text-ink">cocoa butter</strong> (continues to mixing or is stored) and <strong className="text-ink">cocoa cake</strong> (stored as its own lot). Liquor not pressed goes straight to mixing.</span>
+          <span>{branchNotes[group.slug]}</span>
         </div>
       )}
 

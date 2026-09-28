@@ -11,4 +11,5 @@ export const kindLabel = { useful: 'Useful output', byproduct: 'By-product', was
 export const destinationLabel = (destination: string, stationName: (id: string) => string) =>
   destination.startsWith('continue:') ? `Continue to ${stationName(destination.slice(9))}` :
   destination === 'stock' ? 'Store as lot' :
+  destination === 'sale' ? 'For sale (lot)' :
   destination === 'rework' ? 'Rework' : 'Waste bin';

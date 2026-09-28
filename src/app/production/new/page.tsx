@@ -17,6 +17,7 @@ export default function NewBatchPage() {
   const [batchDate, setBatchDate] = useState(new Date().toISOString().slice(0, 10));
   const [weight, setWeight] = useState('');
   const [note, setNote] = useState('');
+  const [supplierId, setSupplierId] = useState(() => store.suppliers.find((s) => /bean/i.test(s.supplies))?.id ?? '');
   const [batchSize, setBatchSize] = useState('100');
   const [version, setVersion] = useState<number | null>(null);
   const [actuals, setActuals] = useState<Record<string, string>>({});
@@ -29,7 +30,7 @@ export default function NewBatchPage() {
   const route = store.routes.find((r) => r.id === product?.route);
   const recipe = store.recipes.find((r) => r.id === product?.recipeId);
   const recipeVersion = recipe?.versions.find((v) => v.version === (version ?? recipe.currentVersion));
-  const sourceMaterial = route?.id === 'beans' ? 'Cocoa beans' : route?.id === 'pressing' ? 'Liquor' : null;
+  const sourceMaterial = route?.id === 'beans' ? 'Cocoa beans' : route?.id === 'pressing' ? 'Nibs for butter' : null;
 
   const ingredients = useMemo(() => {
     if (!recipeVersion) return [];
@@ -59,7 +60,7 @@ export default function NewBatchPage() {
     }
     const startWeight = Number(weight);
     if (!(startWeight > 0)) return setError('Enter the weight from the scale.');
-    const id = store.createBatch({ productId, name: batchName, batchDate, startWeight, note, lotUses: [] });
+    const id = store.createBatch({ productId, name: batchName, batchDate, startWeight, note, lotUses: [], supplierId: route.id === 'beans' ? supplierId : undefined });
     router.push(`/production/batches/${id}/record/${route.stations[0]}`);
   }
 
@@ -78,7 +79,7 @@ export default function NewBatchPage() {
             <Field label="Route" hint={route?.note}>
               <div className="rounded-lg border border-line bg-paper px-3 py-2.5 text-[13px]">{route?.name} · starts at {stationName(route?.stations[0])}</div>
             </Field>
-            <Field label="Batch name (optional)" hint="Use a memorable name for the production run. The system ID is kept automatically.">
+            <Field label="Batch name (optional)" hint="Printed on the liquor label so it traces back to the supplier. The system ID is kept automatically.">
               <Input value={batchName} onChange={(e) => setBatchName(e.target.value)} maxLength={80} placeholder="e.g. Monday morning roast" />
             </Field>
             <Field label="Batch date" hint="Use the production date so past batches appear in the correct report period.">
@@ -89,10 +90,18 @@ export default function NewBatchPage() {
 
         {sourceMaterial && (
           <Panel title="Starting material" subtitle="Enter the weight from the scale before the first station.">
-            <div className="p-5">
+            <div className="grid gap-4 p-5 md:grid-cols-2">
               <Field label="Starting weight" hint="Whatever the scale shows before the first station.">
                 <UnitInput unit="kg" value={weight} onChange={(e) => setWeight(e.target.value)} aria-label="Starting weight" required autoFocus />
               </Field>
+              {route?.id === 'beans' && (
+                <Field label="Supplier" hint="Who delivered these beans. Labels made from this batch trace back to them.">
+                  <Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} aria-label="Supplier">
+                    <option value="">Not recorded</option>
+                    {store.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </Select>
+                </Field>
+              )}
             </div>
           </Panel>
         )}

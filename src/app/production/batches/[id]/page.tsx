@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { AlertTriangle, ArrowRight, Check, Circle, Pause, PenLine, Pencil, Play, Trash2 } from 'lucide-react';
 import { Back, Badge, Button, Empty, Field, Input, LinkButton, Notice, PageHeader, Panel, Select, Textarea, UnitInput } from '@/components/ui';
-import { batchAlerts, batchById, batchDisplayName, nextInput, recordBalance, recordFor, userName } from '@/lib/derive';
+import { batchAlerts, batchById, batchDisplayName, batchSuppliers, nextInput, pendingStations, recordBalance, recordFor, userName } from '@/lib/derive';
 import { dateTime, destinationLabel, kg, kindLabel, num, pct } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { stationById, stationName } from '@/lib/stations';
@@ -26,10 +26,11 @@ export default function BatchPage() {
   const activeHold = batch.holds.find((h) => !h.releasedAt);
   const ready = nextInput(batch);
 
-  // Upcoming stations: follow the default path from the next station until completion.
-  const upcoming: StationId[] = [];
-  let cursor = batch.nextStation ? stationById[batch.nextStation].next[0] : undefined;
-  while (cursor && upcoming.length < 12) { upcoming.push(cursor); cursor = stationById[cursor].next[0]; }
+  // Other stations with material waiting (after a split), then route stations not reached yet.
+  const waiting = pendingStations(batch).filter((s) => s !== batch.nextStation);
+  const route = store.routes.find((r) => r.id === batch.route);
+  const upcoming: StationId[] = batch.status === 'completed' ? [] : (route?.stations ?? []).filter((s) => s !== batch.nextStation && !waiting.includes(s) && !recordFor(batch, s));
+  const suppliers = batchSuppliers(store, batch);
 
   const correctable = batch.records.flatMap((r) => r.outputs.map((o) => ({ recordId: r.id, station: r.station, output: o.name, weight: o.weight })));
   const canDelete = batch.records.length === 0 && batch.holds.length === 0 && batch.corrections.length === 0 && !store.lots.some((lot) => lot.source.type === 'batch' && lot.source.batchId === batch.id);
@@ -54,7 +55,7 @@ export default function BatchPage() {
     <>
       <Back href="/production" label="Production line" />
       <PageHeader eyebrow={`Batch ${batch.id}`} title={`${batchDisplayName(batch)} · ${batch.product}`}
-        subtitle={<span className="flex flex-wrap items-center gap-2">{statusBadge}<span>ID {batch.id}</span><span>Started {dateTime(batch.startedAt)}</span>{batch.recipeId && <span>· Recipe {batch.recipeId} v{batch.recipeVersion}</span>}</span>}
+        subtitle={<span className="flex flex-wrap items-center gap-2">{statusBadge}<span>ID {batch.id}</span><span>Started {dateTime(batch.startedAt)}</span>{suppliers.length > 0 && <span>· Supplier {suppliers.join(', ')}</span>}{batch.recipeId && <span>· Recipe {batch.recipeId} v{batch.recipeVersion}</span>}</span>}
         action={<div className="flex flex-wrap justify-end gap-2"><Button variant="secondary" onClick={() => setEditingDetails((value) => !value)}><Pencil size={14} /> Edit details</Button><Button variant="danger" disabled={!canDelete} title={canDelete ? 'Delete blank batch' : 'Batches with history cannot be deleted.'} onClick={() => { if (canDelete && window.confirm(`Delete blank batch ${batch.id}?`)) { store.deleteBatch(batch.id); router.push('/production'); } }}><Trash2 size={14} /> Delete</Button>{batch.status === 'active' && batch.nextStation ? <LinkButton href={`/production/batches/${batch.id}/record/${batch.nextStation}`}>{batch.nextStation === 'completion' ? 'Review & complete' : `Record ${stationName(batch.nextStation).toLowerCase()}`} <ArrowRight size={15} /></LinkButton> : null}</div>} />
 
       {activeHold && <Notice tone="danger" icon={Pause}><strong>On hold</strong> since {dateTime(activeHold.placedAt)} by {userName(store, activeHold.placedBy)}: {activeHold.reason}</Notice>}
@@ -119,6 +120,19 @@ export default function BatchPage() {
                   </div>
                 </li>
               )}
+              {waiting.map((s) => {
+                const input = nextInput(batch, s);
+                return (
+                  <li key={s} className="flex gap-3 border-t border-line py-3">
+                    <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 border-green text-green"><Play size={11} /></span>
+                    <div className="text-[13px]">
+                      <div className="flex flex-wrap items-center gap-2"><strong className="text-[14px]">{stationName(s)}</strong><Badge tone={batch.status === 'hold' ? 'danger' : 'green'}>Material waiting</Badge></div>
+                      <div className="text-muted">Input ready: <strong className="text-ink tabular-nums">{kg(input.weight)}</strong> {input.material.toLowerCase()}</div>
+                      {batch.status === 'active' && <LinkButton variant="secondary" className="mt-2" href={`/production/batches/${batch.id}/record/${s}`}>Record {stationName(s).toLowerCase()} <ArrowRight size={14} /></LinkButton>}
+                    </div>
+                  </li>
+                );
+              })}
               {upcoming.map((s) => (
                 <li key={s} className="flex gap-3 border-t border-line py-2.5 text-[13px] text-faint">
                   <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center"><Circle size={12} /></span>
@@ -193,7 +207,8 @@ function ProcessWeights({ batch }: { batch: NonNullable<ReturnType<typeof batchB
   const store = useStore();
   const route = store.routes.find((item) => item.id === batch.route);
   const routeStations = route?.stations.filter((station) => station !== 'completion') ?? [];
-  const processIds = [...routeStations, ...batch.records.map((record) => record.station), batch.nextStation]
+  const pending = pendingStations(batch);
+  const processIds = [...routeStations, ...batch.records.map((record) => record.station), batch.nextStation, ...pending]
     .filter((station): station is StationId => Boolean(station) && station !== 'completion')
     .filter((station, index, all) => all.indexOf(station) === index);
   const recorded = processIds.filter((station) => Boolean(batch.records.find((record) => record.station === station))).length;
@@ -205,8 +220,8 @@ function ProcessWeights({ batch }: { batch: NonNullable<ReturnType<typeof batchB
           const station = stationById[stationId];
           const record = recordFor(batch, stationId);
           const balance = record ? recordBalance(record) : undefined;
-          const isNext = batch.nextStation === stationId;
-          const ready = isNext ? nextInput(batch) : undefined;
+          const isNext = batch.nextStation === stationId || pending.includes(stationId);
+          const ready = isNext ? nextInput(batch, stationId) : undefined;
           const canEnter = !record && batch.status === 'active';
           const href = `/production/batches/${batch.id}/record/${stationId}${isNext ? '' : '?mode=independent'}`;
 

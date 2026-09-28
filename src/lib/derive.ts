@@ -1,5 +1,5 @@
 import { calculateBalance } from './balance';
-import { stationById, stationName } from './stations';
+import { stationById, stationName, stations } from './stations';
 import { routes, type State } from './seed';
 import type { Alert, Batch, Lot, StationId, StationRecord } from './types';
 
@@ -13,19 +13,31 @@ export const lastRecord = (batch: Batch) => batch.records.at(-1);
 /** Station the batch was last recorded at */
 export const currentStation = (batch: Batch): StationId | null => lastRecord(batch)?.station ?? null;
 
-/** Material and weight that will be the input of the batch's next station */
-export function nextInput(batch: Batch): { material: string; weight: number; lotIds: string[] } {
-  if (!batch.nextStation) return { material: 'No material carried forward', weight: 0, lotIds: [] };
+/** Outputs from saved records that were sent on to this station of the same batch */
+export const carriedTo = (batch: Batch, station: StationId) =>
+  batch.records.filter((r) => r.destinationsSaved).flatMap((r) => r.outputs.filter((o) => o.destination === `continue:${station}`));
 
-  // Find the record that explicitly feeds the next station. This stays correct when a
-  // batch has a later process entered independently from its batch view.
-  const carriedFrom = batch.records.filter((r) => r.outputs.some((o) => o.destination === `continue:${batch.nextStation}`)).at(-1);
+/**
+ * Stations with material waiting for this batch: an output was continued there but the station
+ * is not recorded yet. A split (nibs to both pressing and grinding) leaves several waiting at once.
+ */
+export const pendingStations = (batch: Batch): StationId[] =>
+  stations.map((s) => s.id).filter((id) => id !== 'completion' && !recordFor(batch, id) && carriedTo(batch, id).length > 0);
+
+/** Whether the batch can be recorded at this station in the normal flow */
+export const isReadyAt = (batch: Batch, station: StationId) => batch.nextStation === station || pendingStations(batch).includes(station);
+
+/** Material and weight that will be the input of a station (the batch's next station by default) */
+export function nextInput(batch: Batch, station: StationId | null = batch.nextStation): { material: string; weight: number; lotIds: string[] } {
+  if (!station) return { material: 'No material carried forward', weight: 0, lotIds: [] };
+
+  // Everything sent to this station is added up, so sieved particles join the nibs at grinding.
+  const carried = carriedTo(batch, station);
   const firstStation = routes.find((route) => route.id === batch.route)?.stations[0];
-  if (!carriedFrom && (batch.records.length === 0 || firstStation === batch.nextStation)) return batch.startInput;
-  const carried = carriedFrom?.outputs.filter((o) => o.destination === `continue:${batch.nextStation}`) ?? [];
+  if (carried.length === 0 && (batch.records.length === 0 || firstStation === station)) return batch.startInput;
   if (carried.length === 0) return { material: 'No material carried forward', weight: 0, lotIds: [] };
   return {
-    material: carried.map((o) => o.name).join(' + '),
+    material: Array.from(new Set(carried.map((o) => o.name))).join(' + '),
     weight: Math.round(carried.reduce((sum, o) => sum + o.weight, 0) * 100) / 100,
     lotIds: [],
   };
@@ -37,8 +49,8 @@ export const activeBatches = (state: State) => state.batches.filter((b) => b.sta
 
 /** Batches whose next step is this station (ready) and batches on hold at this station */
 export function stationQueue(state: State, station: StationId) {
-  const ready = state.batches.filter((b) => b.status === 'active' && b.nextStation === station);
-  const held = state.batches.filter((b) => b.status === 'hold' && b.nextStation === station);
+  const ready = state.batches.filter((b) => b.status === 'active' && isReadyAt(b, station));
+  const held = state.batches.filter((b) => b.status === 'hold' && isReadyAt(b, station));
   const done = state.batches.filter((b) => b.records.some((r) => r.station === station)).sort((a, b) => (recordFor(b, station)!.recordedAt.localeCompare(recordFor(a, station)!.recordedAt)));
   return { ready, held, done };
 }
@@ -76,6 +88,23 @@ export const batchById = (state: State, id: string): Batch | undefined => state.
 export const userName = (state: State, id: string) => state.users.find((u) => u.id === id)?.name ?? id;
 export const supplierName = (state: State, id: string) => state.suppliers.find((s) => s.id === id)?.name ?? id;
 
+/** Suppliers a batch traces back to: its own supplier, and the suppliers behind the lots it started from */
+export function batchSuppliers(state: State, batch: Batch, seen = new Set<string>()): string[] {
+  if (seen.has(batch.id)) return [];
+  seen.add(batch.id);
+  const ids = new Set<string>(batch.supplierId ? [batch.supplierId] : []);
+  const names: string[] = [];
+  for (const lotId of [...batch.startInput.lotIds, ...batch.records.flatMap((r) => r.inputLotIds)]) {
+    const source = lotById(state, lotId)?.source;
+    if (source?.type === 'supplier') ids.add(source.supplierId);
+    if (source?.type === 'batch') {
+      const upstream = batchById(state, source.batchId);
+      if (upstream) names.push(...batchSuppliers(state, upstream, seen));
+    }
+  }
+  return Array.from(new Set([...[...ids].map((id) => supplierName(state, id)), ...names]));
+}
+
 /** Plain description of the step that produced a lot */
 export function lotOrigin(state: State, lot: Lot) {
   const source = lot.source;
@@ -91,7 +120,10 @@ export function nextBatchId(state: State, prefix: string) {
 }
 
 const lotPrefixes: Record<string, string> = {
-  'Cocoa beans': 'BEAN', 'Accepted beans': 'BEAN', 'Roasted beans': 'RST', Nibs: 'NIB', 'Whole peeled beans': 'REW', Husks: 'HUSK',
+  'Cocoa beans': 'BEAN', 'Accepted beans': 'BEAN', 'Sorted beans': 'BEAN', 'Roasted beans': 'RST', 'Whole roasted beans': 'WRB',
+  Nibs: 'NIB', 'Nibs for liquor': 'NIB', 'Nibs for butter': 'NIB', 'Nibs for sale': 'NIB', 'Whole peeled beans': 'REW', Husks: 'HUSK',
+  'Brown butter': 'BRB', 'Sieved butter': 'BRB', 'Sieved particles': 'PRT', 'Silk butter': 'SILK', 'Butter for sale': 'BUT',
+  'Cocoa cake (powder)': 'CAKE', 'Roasted powder': 'PWD', 'Fine cocoa powder': 'PWD',
   Liquor: 'LIQ', Butter: 'BUT', 'Cocoa butter': 'BUT', Powder: 'PWD', 'Cocoa cake': 'CAKE', Sugar: 'SUG', Lecithin: 'LEC', 'Milk powder': 'MLK',
   'Machine residue': 'REW', 'Recoverable chocolate': 'REW', 'Finished chocolate': 'FIN', 'Accepted units': 'FIN', 'Rejected units': 'REJ',
 };

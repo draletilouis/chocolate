@@ -5,8 +5,9 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { AlertTriangle, ArrowRight, Check, CheckCircle2, Plus, Trash2 } from 'lucide-react';
 import { Back, Badge, Button, Empty, Field, LinkButton, Notice, PageHeader, Panel, Select, UnitInput, inputClass } from '@/components/ui';
+import { BatchLabel } from '@/components/BatchLabel';
 import { calculateBalance, calculatePackaging, round2 } from '@/lib/balance';
-import { batchById, batchDisplayName, nextInput, recordBalance, recordFor } from '@/lib/derive';
+import { batchById, batchDisplayName, isReadyAt, nextInput, pendingStations, recordBalance, recordFor } from '@/lib/derive';
 import { destinationLabel, kg, kindLabel, num, pct } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { isStationId, stationById, stationName } from '@/lib/stations';
@@ -39,7 +40,7 @@ export default function RecordPage() {
   if (batch.status === 'completed' && station.form !== 'completion' && !record) {
     return <><Back href={`/production/batches/${batch.id}`} label={`Batch ${batchDisplayName(batch)}`} /><Notice tone="neutral">{batchDisplayName(batch)} is completed. Nothing more can be recorded.</Notice></>;
   }
-  if (!record && batch.nextStation !== station.id && !independent) {
+  if (!record && !isReadyAt(batch, station.id) && !independent) {
     return (
       <>
         <Back href={`/production/stations/${station.id}`} label={station.name} />
@@ -56,7 +57,7 @@ export default function RecordPage() {
 function StationForm({ batch, station, record, independent }: { batch: Batch; station: Station; record?: StationRecord; independent: boolean }) {
   const store = useStore();
   const router = useRouter();
-  const ready = nextInput(batch);
+  const ready = nextInput(batch, station.id);
   const [step, setStep] = useState<Step>(record ? (record.destinationsSaved ? 'done' : 'destinations') : 'input');
   const [inputWeight, setInputWeight] = useState(String(record?.inputWeight ?? (independent ? '' : ready.weight)));
   const [adjusting, setAdjusting] = useState(false);
@@ -222,6 +223,7 @@ function StationForm({ batch, station, record, independent }: { batch: Batch; st
                   <Select value={destinations[o.name] ?? o.destination} onChange={(e) => setDestinations({ ...destinations, [o.name]: e.target.value as Destination })} aria-label={`${o.name} destination`}>
                     {station.next.map((n) => <option key={n} value={`continue:${n}`}>Continue to {stationName(n).toLowerCase()} (this batch)</option>)}
                     <option value="stock">Store as a lot</option>
+                    <option value="sale">Store for sale</option>
                     <option value="rework">Send to rework</option>
                     <option value="waste">Waste bin</option>
                   </Select>
@@ -230,6 +232,9 @@ function StationForm({ batch, station, record, independent }: { batch: Batch; st
             ))}
             {step === 'destinations' && <div className="flex justify-end px-5 py-3"><Button onClick={saveDestinations}><Check size={15} /> Save destinations</Button></div>}
           </Panel>
+          {step === 'done' && station.id === 'grinding' && record.outputs.filter((o) => o.name === 'Liquor').map((o) => (
+            <BatchLabel key={o.name} title="Liquor label" batch={batch} material="Cocoa liquor" quantity={kg(o.weight)} madeAt={record.recordedAt} lotId={o.lotId} />
+          ))}
           {step === 'done' && <NextActions batch={batch} record={record} station={station} onRecordAgain={() => { setStep('outputs'); }} />}
         </>
       )}
@@ -248,7 +253,8 @@ function SavedNotice({ batch, station, record, done, independent }: { batch: Bat
   const store = useStore();
   const fresh = batchById(store, batch.id) ?? batch;
   const next = fresh.nextStation;
-  const nextText = next === 'completion' ? 'Complete the batch.' : next ? `Record ${stationName(next).toLowerCase()}.` : '';
+  const also = pendingStations(fresh).filter((s) => s !== next);
+  const nextText = `${next === 'completion' ? 'Complete the batch.' : next ? `Record ${stationName(next).toLowerCase()}.` : ''}${also.length ? ` Also waiting: ${also.map((s) => stationName(s).toLowerCase()).join(', ')}.` : ''}`;
   return (
     <Notice tone="green" icon={CheckCircle2}>
       <strong>{station.name} saved{independent ? ' independently' : ''}.</strong> {done ? independent ? `The batch remains ready for ${next ? stationName(next).toLowerCase() : 'its next step'}. ${nextText}` : `${availableText(record, next)} ${nextText}` : 'Check the balance, then choose where each output goes.'}
