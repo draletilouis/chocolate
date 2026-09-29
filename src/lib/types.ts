@@ -29,6 +29,8 @@ export interface Station {
   /** Stations a carried-forward output can continue to (first is the default) */
   next: StationId[];
   form: 'weights' | 'mixing' | 'pieces' | 'completion';
+  /** What this station's unaccounted weight usually is, where it has a known cause (roasting: moisture driven off) */
+  lossLabel?: string;
   help: string;
   /** No longer part of the line; kept so older records still show */
   retired?: boolean;

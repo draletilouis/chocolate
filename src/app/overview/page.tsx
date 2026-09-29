@@ -3,12 +3,25 @@
 import Link from 'next/link';
 import { AlertTriangle, ArrowRight, Target } from 'lucide-react';
 import { Empty, LinkButton, PageHeader, Panel, RowLink, Stat } from '@/components/ui';
-import { round2 } from '@/lib/balance';
+import { percentOf, round2 } from '@/lib/balance';
+import { startName, startWeight } from '@/lib/outcomes';
+import type { Balance, Batch, StationRecord } from '@/lib/types';
 import { activeBatches, allAlerts, batchDisplayName, recordBalance } from '@/lib/derive';
 import { kg, pct } from '@/lib/format';
 import { planProgress } from '@/lib/plan';
 import { useStore } from '@/lib/store';
 import { stationName } from '@/lib/stations';
+
+/**
+ * One recorded station in a line: its input and good outputs as shares of the batch's starting weight.
+ * Mixing also weighs in sugar and milk powder from store, so a sack's mixing is shown in kg.
+ */
+function recentLine(batch: Batch, record: StationRecord, balance: Balance) {
+  const start = startWeight(batch);
+  if (record.station === 'mixing' && batch.startInput.weight > 0) return `input ${kg(balance.input)} with ingredients from store · variance ${pct(balance.variancePct)}`;
+  const outputs = record.outputs.filter((o) => o.kind === 'useful').map((o) => `${o.name.toLowerCase()} ${pct(percentOf(o.weight, start))}`).join(' · ') || 'no good output';
+  return `input ${kg(balance.input)} (${pct(percentOf(balance.input, start))} of the ${startName(batch)}) · ${outputs} · unaccounted ${pct(percentOf(balance.variance, start))}`;
+}
 
 export default function OverviewPage() {
   const store = useStore();
@@ -56,7 +69,7 @@ export default function OverviewPage() {
       <Panel title="Recently recorded">
         {recent.map(({ batch, record, balance }) => (
           <RowLink key={record.id} href={`/production/batches/${batch.id}`}>
-            <span className="flex-1 text-[13px]"><strong>{batchDisplayName(batch)}</strong>{batch.name && <span className="ml-2 text-[11px] text-muted">ID {batch.id}</span>} · {stationName(record.station)} <span className="block text-muted">input {kg(balance.input)} · useful {kg(balance.useful)} · variance {pct(balance.variancePct)}</span></span>
+            <span className="flex-1 text-[13px]"><strong>{batchDisplayName(batch)}</strong>{batch.name && <span className="ml-2 text-[11px] text-muted">ID {batch.id}</span>} · {stationName(record.station)} <span className="block text-muted">{recentLine(batch, record, balance)}</span></span>
           </RowLink>
         ))}
       </Panel>
