@@ -64,6 +64,8 @@ interface Actions {
   updateLot: (lotId: string, patch: { material: string; category: LotCategory; supplierId?: string; reference?: string }) => Promise<boolean>;
   deleteLot: (lotId: string) => Promise<boolean>;
   addRecipeVersion: (recipeId: string, ingredients: RecipeIngredient[], note: string) => Promise<boolean>;
+  /** A new chocolate type with the first version of its recipe; answers the recipe ID */
+  addChocolateType: (type: { name: string; ingredients: RecipeIngredient[]; note?: string }) => Promise<string | undefined>;
   updateRecipe: (recipeId: string, patch: { name: string }) => Promise<boolean>;
   deleteRecipe: (recipeId: string) => Promise<boolean>;
   addProduct: (product: Omit<Product, 'id'>) => Promise<boolean>;
@@ -288,6 +290,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateLot: (lotId, patch) => done({ type: 'updateLot', lotId, ...patch }),
       deleteLot: (lotId) => done({ type: 'deleteLot', lotId }),
       addRecipeVersion: (recipeId, ingredients, note) => done({ type: 'addRecipeVersion', recipeId, ingredients, note }),
+      addChocolateType: (type) => value<string>({ type: 'addChocolateType', ...type }),
       updateRecipe: (recipeId, patch) => done({ type: 'updateRecipe', recipeId, name: patch.name }),
       deleteRecipe: (recipeId) => done({ type: 'deleteRecipe', recipeId }),
       addProduct: (product) => done({ type: 'addProduct', product }),

@@ -12,7 +12,7 @@ Chocolate Factory records the movement of material through a chocolate-productio
 4. Continued material becomes the next station's input; stored, for-sale and rejected outputs become separate lots or waste records.
 5. A batch is reviewed and closed at Completion.
 
-The app also provides material-lot traceability, recipe versioning, alerts, holds, corrections, reports, and factory setup screens.
+The app also provides material-lot traceability, chocolate types with versioned recipes, alerts, holds, corrections, reports, and factory setup screens.
 
 ## 2. Runtime architecture
 
@@ -200,6 +200,22 @@ Liquor is weighed once, after fine grinding. The Liquor grinding result screen s
 - **Save delivery** calls `createBatch()` and then `saveRecord()` for Receiving, then opens the saved receiving screen with the printable batch card.
 
 For stored-nib products the worker enters a starting weight. For chocolate products, the worker picks a recipe version and planned size, then records actual ingredient weights and source lots.
+
+**Chocolate types.** Each chocolate type is a product on the `chocolate` route with its own recipe (`src/lib/seed.ts`). The nine types and their recipes come from the factory's "Dark Chocolate types & Changeover Recipes" sheet, as percentages of the batch weight; ingredients at 0% are left out, and none uses lecithin:
+
+| Type | Liquor | Cocoa butter | Sugar | Milk powder |
+| --- | --- | --- | --- | --- |
+| 34% White | — | 35 | 35 | 30 |
+| 40% Milk | 11 | 30 | 34 | 25 |
+| 50% Milk | 25 | 25 | 25 | 25 |
+| 54% Dark | 44 | 10 | 46 | — |
+| 55% Dark | 45 | 10 | 45 | — |
+| 56% Dark | 50 | 10 | 40 | — |
+| 70% Dark | 60 | 10 | 30 | — |
+| 85% Dark | 75 | 10 | 15 | — |
+| 100% Dark | 90 | 10 | — | — |
+
+Ingredient names are the material names of the lots weighed in (`chocolateIngredients`): liquor from Liquor grinding, cocoa butter from the Filter pan or a supplier, sugar and milk powder from suppliers. **New chocolate type** (`addChocolateType`, managers only) creates the product (batch prefix `CH`) and version 1 of its recipe together. Renaming a type renames its own product; deleting a type unused by batches removes its product too.
 
 `/production/new?lot=<id>` pre-selects that lot for the matching ingredient and picks a chocolate product whose recipe uses it; lot pages link here with **Use in a chocolate batch**. The worker also enters the calendar date on which the batch started. It defaults to today, so historical batches can be entered.
 
@@ -398,8 +414,9 @@ Alerts appear in the Overview, in the production navigation counts, on batch pag
 | `/materials` | Filters and lists all material lots. |
 | `/materials/receive` | Records a supplier delivery and creates a lot. |
 | `/materials/[lot]` | Shows lot quantities, a printable label for production lots, and upstream/downstream traceability; edits/deletes unused supplier lots only. |
-| `/recipes` | Lists recipes, current versions, and batch usage. |
-| `/recipes/[id]` | Edits recipe labels, adds immutable versions, deletes recipes unused by batches, and compares expected versus actual ingredients by batch. |
+| `/recipes` | **Chocolate types**: lists each type's current recipe, versions, and batch usage. |
+| `/recipes/new` | Adds a chocolate type: its product and the first version of its recipe, in one step. |
+| `/recipes/[id]` | Renames a type (with its product), adds immutable versions, deletes types unused by batches (with their product), and compares expected versus actual ingredients by batch. |
 | `/reports/losses` | Shows weight loss by batch/stage, follows one batch, and aggregates loss by process. |
 | `/reports/variance` | Filters station records and compares waste, by-products, variance, and limits. |
 | `/reports/batches` | Lists all batches and their routes/statuses/summary quantities. |
@@ -443,20 +460,20 @@ The Setup screens send commands to the server like the production screens, so a 
 - Pack sizes receive generated IDs based on grams and list position.
 - Suppliers receive generated IDs based on a slugged name.
 - Users receive generated IDs and initials.
-- Recipe versions must total exactly 100% (within 0.01 percentage points) before saving.
+- Recipe versions must total exactly 100% (within 0.01 percentage points) and name each ingredient once before saving.
 - Output categories are the rows shown on station recording forms and can be extended with custom rows.
 - Setup edits preserve entity IDs so existing references remain valid. Delete actions are checked on the server (a supplier with lots, a product with batches, a person in the audit history and so on cannot be deleted) as well as disabled in the screens.
 - Passwords and PINs are sent once and stored only as hashes; the forms never show them. Leaving **New PIN** or **New password** blank keeps the current one.
 - Routes keep their station sequence fixed because station IDs are part of production and report logic; only route descriptive fields are editable.
 - Recipe version history, station measurements, holds, corrections, and production-created lots are audit data, not disposable setup rows.
 
-A real factory starts with the line configuration from `configState()`: the bean and liquor products, three verified chocolate products and recipes, the paper pack sizes (7 g, 45 g, 80 g, 200 g sachet, and 1 kg), three routes, the containers, output rows and threshold values. It has no batches, lots, suppliers or people until they are entered, and its contact details in Setup → Business details start blank. The demo (`seedState()`) adds three suppliers, five staff, sample lots and sample batches.
+A real factory starts with the line configuration from `configState()`: the bean and liquor products, the nine chocolate types from the factory's changeover recipes sheet (section 5), the paper pack sizes (7 g, 45 g, 80 g, 200 g sachet, and 1 kg), three routes, the containers, output rows and threshold values. It has no batches, lots, suppliers or people until they are entered, and its contact details in Setup → Business details start blank. The demo (`seedState()`) adds three suppliers, five staff, sample lots and sample batches.
 
 ## 13. Navigation and visual system
 
 `Shell.tsx` provides:
 
-- a menu that depends on access: operators get **My work** and **Production line**; managers get Overview, Production line, Materials, Recipes, Reports and Setup, plus **My work** when they have their own stations;
+- a menu that depends on access: operators get **My work** and **Production line**; managers get Overview, Production line, Materials, Chocolate types, Reports and Setup, plus **My work** when they have their own stations;
 - production part links with waiting counts;
 - a desktop top bar with the current page and a search box;
 - a mobile header with the person's name, search and sign-out; and
@@ -492,7 +509,7 @@ node browser-check.cjs
 node interaction-audit.cjs
 ```
 
-Both browser scripts expect a demo instance to be running on port 3100: they sign in as the sample manager and reset the demo data first. They use Playwright with Microsoft Edge. The browser check covers PIN and email sign-in, all 17 station queues, one-screen recording with the live check, the nib split, labels, receiving a delivery in one form, the batch steps with inline corrections, holds, completion, reports, setup, the phone layout and operator menus. `interaction-audit.cjs` clicks through the same flows, saving before/after screenshots and a report under its configured output directory.
+Both browser scripts expect a demo instance to be running on port 3100: they sign in as the sample manager and reset the demo data first. They use Playwright with Microsoft Edge. The browser check covers PIN and email sign-in, all 17 station queues, one-screen recording with the live check, the nib split, labels, receiving a delivery in one form, the batch steps with inline corrections, holds, completion, the chocolate types and adding a new one, reports, setup, the phone layout and operator menus. `interaction-audit.cjs` clicks through the same flows, saving before/after screenshots and a report under its configured output directory.
 
 ## 15. Current scope and limitations
 

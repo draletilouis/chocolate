@@ -19,7 +19,7 @@ export default function RecipePage() {
   const [editingName, setEditingName] = useState(false);
   const [draft, setDraft] = useState<{ name: string; percent: string }[]>([]);
   const [note, setNote] = useState('');
-  if (!recipe) return <Empty>Recipe {id} was not found.</Empty>;
+  if (!recipe) return <Empty>Chocolate type {id} was not found.</Empty>;
 
   const product = store.products.find((p) => p.id === recipe.productId);
   const allRecipeBatches = store.batches.filter((b) => b.recipeId === recipe.id);
@@ -41,13 +41,13 @@ export default function RecipePage() {
 
   return (
     <>
-      <Back href="/recipes" label="Recipes" />
-      <PageHeader eyebrow="Recipe" title={recipe.name} subtitle={`Product: ${product?.name ?? recipe.productId} · current version v${recipe.currentVersion}`}
-        action={<div className="flex flex-wrap justify-end gap-2"><LinkButton variant="secondary" href="/production/new">Start a batch</LinkButton><Button variant="secondary" onClick={() => setEditingName((value) => !value)}><Pencil size={14} /> Edit name</Button><Button variant="danger" disabled={!canDelete} title={canDelete ? 'Delete recipe' : 'Recipes used by batches cannot be deleted.'} onClick={async () => { if (canDelete && window.confirm(`Delete recipe ${recipe.name}?`) && await store.deleteRecipe(recipe.id)) router.push('/recipes'); }}><Trash2 size={14} /> Delete</Button>{!adding && <Button onClick={startDraft}><Plus size={15} /> New version</Button>}</div>} />
+      <Back href="/recipes" label="Chocolate types" />
+      <PageHeader eyebrow="Chocolate type" title={recipe.name} subtitle={`Product: ${product?.name ?? recipe.productId} · current version v${recipe.currentVersion}`}
+        action={<div className="flex flex-wrap justify-end gap-2"><LinkButton variant="secondary" href="/production/new">Start a batch</LinkButton><Button variant="secondary" onClick={() => setEditingName((value) => !value)}><Pencil size={14} /> Edit name</Button><Button variant="danger" disabled={!canDelete} title={canDelete ? 'Delete chocolate type' : 'Chocolate types used by batches cannot be deleted.'} onClick={async () => { if (canDelete && window.confirm(`Delete chocolate type ${recipe.name}?`) && await store.deleteRecipe(recipe.id)) router.push('/recipes'); }}><Trash2 size={14} /> Delete</Button>{!adding && <Button onClick={startDraft}><Plus size={15} /> New version</Button>}</div>} />
 
-      {editingName && <Panel title="Edit recipe" subtitle="This changes the recipe label only. Existing version history remains unchanged.">
+      {editingName && <Panel title="Rename chocolate type" subtitle="The new name is used for new batches. Batches already made and the version history keep their names.">
         <form className="flex flex-wrap items-end gap-3 p-5" onSubmit={async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); if (await store.updateRecipe(recipe.id, { name: String(form.get('name')) })) setEditingName(false); }}>
-          <Field label="Recipe name" className="min-w-[240px] flex-1"><Input name="name" defaultValue={recipe.name} required /></Field>
+          <Field label="Chocolate type name" className="min-w-[240px] flex-1"><Input name="name" defaultValue={recipe.name} required /></Field>
           <div className="flex gap-2"><Button variant="secondary" onClick={() => setEditingName(false)}>Cancel</Button><Button type="submit">Save changes</Button></div>
         </form>
       </Panel>}

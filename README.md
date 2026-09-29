@@ -13,7 +13,7 @@ The UI follows the StockMaster (Lefori) design system: Montserrat, navy primary 
 - **First start of a real factory:** the app opens on **Set up your factory**. The first person creates the manager account (name, email, password, PIN), and that device is set up for quick sign-in.
 - **Quick sign-in** on shared tablets and PCs a manager has set up: **Who is recording?** – tap your name and enter your 4-digit PIN.
 - **Email and password** everywhere else, such as a personal phone. A manager signing in can tick **Set up this device for quick sign-in**.
-- Operators land on **My work**, the batches waiting at their own stations. Managers also get reports, recipes and setup. The server checks access on every change.
+- Operators land on **My work**, the batches waiting at their own stations. Managers also get reports, chocolate types and setup. The server checks access on every change.
 - Sessions end after 10 idle minutes (adjustable in Setup → Users). Five wrong PINs lock PIN sign-in for 15 minutes.
 
 Manage people, PINs, access, stations and set-up devices under **Setup → Users**. The signed-in person is recorded on every measurement.

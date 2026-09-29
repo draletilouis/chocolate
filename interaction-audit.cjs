@@ -258,16 +258,24 @@ async function materialsAndRecipes(page) {
 
   await page.goto(`${BASE}/recipes/R-70`);
   await action(page, 'Open new recipe version', page.getByRole('button', { name: 'New version' }), async () => {
-    await page.getByText('New version v4').waitFor();
+    await page.getByText('New version v2').waitFor();
   });
   await action(page, 'Add recipe ingredient row', page.getByRole('button', { name: '+ Add ingredient' }), async () => {
-    await page.getByLabel('Ingredient 5', { exact: true }).waitFor();
+    await page.getByLabel('Ingredient 4', { exact: true }).waitFor();
   });
-  await page.getByLabel('Ingredient 5', { exact: true }).fill('Vanilla');
-  await page.getByLabel('Ingredient 5 percent').fill('0');
+  await page.getByLabel('Ingredient 4', { exact: true }).fill('Vanilla');
+  await page.getByLabel('Ingredient 4 percent').fill('0');
   await page.getByLabel('What changed?').fill('Demo audit version.');
   await action(page, 'Save recipe version', page.getByRole('button', { name: 'Save version' }), async () => {
-    await waitForText(page, 'v4');
+    await waitForText(page, 'v2');
+  });
+
+  await page.goto(`${BASE}/recipes/new`);
+  await page.getByLabel('Chocolate type name').fill('45% Milk');
+  for (const [ingredient, percent] of [['Liquor', '15'], ['Cocoa butter', '30'], ['Sugar', '30'], ['Milk powder', '25']]) await page.getByLabel(`${ingredient} percent`).fill(percent);
+  await action(page, 'Save new chocolate type', page.getByRole('button', { name: 'Save chocolate type' }), async () => {
+    await waitForUrl(page, '**/recipes/R-45-MILK');
+    await waitForText(page, 'Liquor 15% · Cocoa butter 30% · Sugar 30% · Milk powder 25%');
   });
 }
 
@@ -292,7 +300,7 @@ async function setupControls(page) {
     if (section === 'users') await page.getByLabel(/^PIN/).fill('4321');
     if (section === 'outputs') {
       await page.getByLabel('Station').selectOption('winnowing');
-      await page.getByLabel('Type').selectOption('waste');
+      await page.getByRole('combobox', { name: /^Type/ }).selectOption('waste');
     }
     await action(page, `Save ${title}`, page.getByRole('button', { name: 'Add', exact: true }), async () => {
       await page.getByText(fields[0][1], { exact: false }).first().waitFor();
@@ -309,7 +317,7 @@ async function navigationAndFilters(page) {
     ['Overview', '/overview', 'How production is doing'],
     ['Production line', '/production', 'Which batch needs attention?'],
     ['Materials', '/materials', 'Material lots'],
-    ['Recipes', '/recipes', 'Recipes'],
+    ['Chocolate types', '/recipes', 'Chocolate types'],
     ['Reports', '/reports', 'Reports'],
     ['Setup', '/setup', 'Setup'],
   ]) {

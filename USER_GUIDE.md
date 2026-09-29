@@ -30,7 +30,7 @@ You are signed out on your own after a few minutes without use (10 by default; a
 What you see depends on your access:
 
 - **Operators** see **My work** and **Production line**.
-- **Managers** also see **Overview**, **Materials**, **Recipes**, **Reports** and **Setup**.
+- **Managers** also see **Overview**, **Materials**, **Chocolate types**, **Reports** and **Setup**.
   - A manager who has their own stations also gets **My work**.
 
 The sections are:
@@ -39,7 +39,7 @@ The sections are:
 - **Overview** — production summary and alerts.
 - **Production line** — every active batch, where it is waiting, and the five parts of the line.
 - **Materials** — raw materials, intermediate products, by-products, rework and finished-goods lots.
-- **Recipes** — recipe versions and ingredient comparisons.
+- **Chocolate types** — each type's recipe, its versions and ingredient comparisons.
 - **Reports** — losses, missing weight, batch history, corrections and holds.
 - **Setup** — products, pack sizes, containers, output rows, routes, suppliers, users and thresholds.
 
@@ -210,13 +210,35 @@ This is the traceability path from a supplier delivery through production.
 
 Lots made by a batch also show a printable **label** with the batch name, supplier, weight and a QR code; scanning the code opens the lot. Lots used in chocolate recipes (for example liquor or cocoa butter) have a **Use in a chocolate batch** button that starts a batch with that lot already chosen.
 
-## 11. Manage recipes
+## 11. Manage chocolate types and recipes
 
-Open **Recipes** to see current versions and how many batches used each recipe.
+Open **Chocolate types** to see every type with its current recipe and how many batches used it. The factory starts with the types from its changeover recipes sheet:
 
-To add a recipe version:
+| Type | Liquor | Cocoa butter | Sugar | Milk powder |
+| --- | --- | --- | --- | --- |
+| 34% White | — | 35% | 35% | 30% |
+| 40% Milk | 11% | 30% | 34% | 25% |
+| 50% Milk | 25% | 25% | 25% | 25% |
+| 54% Dark | 44% | 10% | 46% | — |
+| 55% Dark | 45% | 10% | 45% | — |
+| 56% Dark | 50% | 10% | 40% | — |
+| 70% Dark | 60% | 10% | 30% | — |
+| 85% Dark | 75% | 10% | 15% | — |
+| 100% Dark | 90% | 10% | — | — |
 
-1. Open a recipe.
+To add a chocolate type:
+
+1. Select **New chocolate type**.
+2. Enter its name, for example `60% Dark`.
+3. Enter the percentage of each ingredient it uses and leave the others empty. Select **+ Add another ingredient** for anything else.
+4. Make sure the total is exactly 100%.
+5. Select **Save chocolate type**. It can now be chosen when a chocolate batch is started.
+
+Renaming a type (**Edit name**) also renames it in the batch selector; batches already made keep the name they were made under. A type can be deleted only while no batch has used it.
+
+To change a type's recipe, add a version:
+
+1. Open the chocolate type.
 2. Select **New version**.
 3. Update ingredient names and percentages.
 4. Make sure the total is exactly 100%.

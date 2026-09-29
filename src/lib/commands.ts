@@ -37,6 +37,8 @@ const newBatch = z.object({
   note: text(1000).optional(),
 });
 
+const recipeIngredients = z.array(z.object({ name: text(80).min(1), percent: z.number().finite().min(0).max(100) })).min(1).max(30);
+
 const product = z.object({ name: text(80).min(1), prefix: text(3).min(1).transform((p) => p.toUpperCase()), route: z.enum(['beans', 'pressing', 'chocolate']), recipeId: text(80).optional() });
 const userFields = { name: text(80).min(1), role: text(80).min(1), email, access: z.enum(['operator', 'manager']), stations: z.array(station).max(stationIds.length) };
 
@@ -55,7 +57,9 @@ export const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('receiveLot'), input: z.object({ material: text(80).min(1), category: lotCategory, quantity: qty, unit: z.enum(['kg', 'units']), supplierId: id, reference: text(120).optional() }) }),
   z.object({ type: z.literal('updateLot'), lotId: id, material: text(80).min(1), category: lotCategory, supplierId: text(80).optional(), reference: text(120).optional() }),
   z.object({ type: z.literal('deleteLot'), lotId: id }),
-  z.object({ type: z.literal('addRecipeVersion'), recipeId: id, ingredients: z.array(z.object({ name: text(80).min(1), percent: z.number().finite().min(0).max(100) })).min(1).max(30), note: text(500) }),
+  z.object({ type: z.literal('addRecipeVersion'), recipeId: id, ingredients: recipeIngredients, note: text(500) }),
+  // A new chocolate type: its product and the first version of its recipe, made together.
+  z.object({ type: z.literal('addChocolateType'), name: text(80).min(1), ingredients: recipeIngredients, note: text(500).optional() }),
   z.object({ type: z.literal('updateRecipe'), recipeId: id, name: text(80).min(1) }),
   z.object({ type: z.literal('deleteRecipe'), recipeId: id }),
   z.object({ type: z.literal('addProduct'), product }),

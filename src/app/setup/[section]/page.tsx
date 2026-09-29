@@ -60,7 +60,7 @@ function UserFields({ user }: { user?: User }) {
   return (
     <>
       <Field label={user ? 'New PIN (4 digits)' : 'PIN (4 digits)'} hint={user ? 'Leave blank to keep the current PIN.' : 'Used for quick sign-in on shared devices.'}><Input name="pin" type="password" inputMode="numeric" pattern="\d{4}" maxLength={4} required={!user} autoComplete="new-password" /></Field>
-      <Field label="Access" hint="Operators see My work and the production line. Managers also see reports, recipes and setup.">
+      <Field label="Access" hint="Operators see My work and the production line. Managers also see reports, chocolate types and setup.">
         <Select name="access" defaultValue={user?.access ?? 'operator'}><option value="operator">Operator</option><option value="manager">Manager</option></Select>
       </Field>
       <fieldset className="md:col-span-2">

@@ -17,7 +17,7 @@ const navItems: NavItem[] = [
   { href: '/overview', label: 'Overview', icon: LayoutDashboard, count: 'alerts', managers: true },
   { href: '/production', label: 'Production line', short: 'Production', icon: ClipboardList, count: 'batches' },
   { href: '/materials', label: 'Materials', icon: Package, managers: true },
-  { href: '/recipes', label: 'Recipes', icon: FlaskConical, managers: true },
+  { href: '/recipes', label: 'Chocolate types', short: 'Chocolate', icon: FlaskConical, managers: true },
   { href: '/reports', label: 'Reports', icon: BarChart3, managers: true },
   { href: '/setup', label: 'Setup', icon: Settings2, managers: true },
 ];

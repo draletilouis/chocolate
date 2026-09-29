@@ -1,13 +1,15 @@
 'use client';
 
-import { Badge, PageHeader, Panel, RowLink } from '@/components/ui';
+import { Plus } from 'lucide-react';
+import { Badge, LinkButton, PageHeader, Panel, RowLink } from '@/components/ui';
 import { useStore } from '@/lib/store';
 
 export default function RecipesPage() {
   const store = useStore();
   return (
     <>
-      <PageHeader eyebrow="Recipes" title="Recipes" subtitle="Each recipe keeps its versions. Batches record which version they used and what was actually weighed in." />
+      <PageHeader eyebrow="Recipes" title="Chocolate types" subtitle="Each type keeps its recipe versions. Batches record which version they used and what was actually weighed in."
+        action={<LinkButton href="/recipes/new"><Plus size={15} /> New chocolate type</LinkButton>} />
       <Panel>
         {store.recipes.map((recipe) => {
           const current = recipe.versions.find((v) => v.version === recipe.currentVersion)!;

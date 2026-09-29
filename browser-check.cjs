@@ -67,7 +67,7 @@ async function expectText(page, text) {
 
   // Sidebar: six destinations, active state, counts, no "All screens".
   const nav = page.getByRole('navigation', { name: 'Main navigation' });
-  for (const label of ['Overview', 'Production line', 'Materials', 'Recipes', 'Reports', 'Setup']) await nav.getByRole('link', { name: label }).waitFor();
+  for (const label of ['Overview', 'Production line', 'Materials', 'Chocolate types', 'Reports', 'Setup']) await nav.getByRole('link', { name: label }).waitFor();
   if (await nav.getByText('All screens').count()) throw new Error('"All screens" link still present');
   const active = await nav.locator('[aria-current="page"]').innerText();
   if (!active.includes('Production line')) throw new Error(`Expected Production line active, got ${active}`);
@@ -253,15 +253,33 @@ async function expectText(page, text) {
   await expectText(page, 'Kuapa Kokoo');
   ok('materials list, lot traceability (upstream and downstream), receive material');
 
-  // Recipes: versions and expected vs actual.
+  // Chocolate types: the sheet's recipes, versions and expected vs actual.
   await page.goto(`${BASE}/recipes`);
-  await page.getByRole('link', { name: /70% Dark chocolate/ }).click();
-  for (const t of ['v3', 'Expected vs actual', 'CH-018', '+0.10 kg']) await expectText(page, t);
+  for (const t of ['34% White', '50% Milk', '55% Dark', '100% Dark', 'Liquor 44% · Cocoa butter 10% · Sugar 46%']) await expectText(page, t);
+  await page.getByRole('link', { name: /70% Dark/ }).click();
+  for (const t of ['v1', 'Liquor 60% · Cocoa butter 10% · Sugar 30%', 'Expected vs actual', 'CH-018', '+0.10 kg']) await expectText(page, t);
   await page.getByRole('button', { name: 'New version' }).click();
   await page.getByLabel('What changed?').fill('Trial.');
   await page.getByRole('button', { name: 'Save version' }).click();
-  await expectText(page, 'v4');
-  ok('recipe versions and expected vs actual');
+  await expectText(page, 'v2');
+  ok('chocolate types from the sheet, recipe versions and expected vs actual');
+
+  // A new chocolate type: product and recipe in one form, then offered when starting a batch.
+  await page.goto(`${BASE}/recipes`);
+  await page.getByRole('link', { name: 'New chocolate type' }).click();
+  await page.getByLabel('Chocolate type name').fill('60% Dark');
+  await page.getByLabel('Liquor percent').fill('50');
+  await page.getByLabel('Cocoa butter percent').fill('10');
+  await expectText(page, 'Total 60.00%');
+  if (await page.getByRole('button', { name: 'Save chocolate type' }).isEnabled()) throw new Error('A recipe below 100% should not be saveable');
+  await page.getByLabel('Sugar percent').fill('40');
+  await page.getByRole('button', { name: 'Save chocolate type' }).click();
+  await page.waitForURL('**/recipes/R-60-DARK');
+  await expectText(page, 'Liquor 50% · Cocoa butter 10% · Sugar 40%');
+  await page.goto(`${BASE}/production/new`);
+  await page.getByLabel('Product', { exact: true }).selectOption({ label: '60% Dark' });
+  await expectText(page, 'Recipe ingredients');
+  ok('new chocolate type saved and offered for a new batch');
 
   // Reports.
   for (const [section, text] of [['losses', 'Weigh-in at each stage, every batch'], ['losses', 'Lost this step'], ['losses', 'Loss at each process, all batches'], ['variance', 'Unaccounted variance'], ['batches', 'All batches'], ['corrections', 'Bin tare was wrong.'], ['holds', 'Waiting for quality sign-off.']]) {

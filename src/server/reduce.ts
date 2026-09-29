@@ -3,7 +3,7 @@ import type { Command } from '@/lib/commands';
 import { batchDisplayName, isReadyAt, issuedNumbers, nextBatchId, nextInput, nextLotId, pendingStations, recordStamp, waitingAt } from '@/lib/derive';
 import { demoCredentials, seedState, type State } from '@/lib/seed';
 import { stationById, stationName } from '@/lib/stations';
-import type { Batch, Lot, LotCategory, OutputCategory, RecordedOutput, StationId, StationRecord, User } from '@/lib/types';
+import type { Batch, Lot, LotCategory, OutputCategory, Recipe, RecipeIngredient, RecordedOutput, StationId, StationRecord, User } from '@/lib/types';
 
 /** A command that cannot be applied; the message is shown to the person who tried */
 export class CommandError extends Error {}
@@ -162,6 +162,17 @@ function savePackaging(s: State, cmd: SavePackaging, ctx: CommandContext): State
   return commitRecord(s, b.id, draft, !early, ctx.now);
 }
 
+/** A recipe's ingredients must have different names and add up to 100% */
+function checkIngredients(ingredients: RecipeIngredient[]) {
+  const names = new Set<string>();
+  for (const i of ingredients) {
+    if (names.has(i.name.toLowerCase())) fail(`${i.name} is listed twice. Give it one line.`);
+    names.add(i.name.toLowerCase());
+  }
+  const total = ingredients.reduce((sum, i) => sum + i.percent, 0);
+  if (Math.abs(total - 100) > 0.01) fail(`The ingredients add up to ${round2(total)}%. They must add up to 100%.`);
+}
+
 function usedInAudit(s: State, userId: string) {
   return s.batches.some((b) => b.records.some((r) => r.recordedBy === userId) || b.holds.some((h) => h.placedBy === userId) || b.corrections.some((c) => c.correctedBy === userId));
 }
@@ -265,20 +276,37 @@ function runCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
     }
     case 'addRecipeVersion': {
       const recipe = s.recipes.find((r) => r.id === cmd.recipeId) ?? fail('That recipe was not found.');
-      const total = cmd.ingredients.reduce((sum, i) => sum + i.percent, 0);
-      if (Math.abs(total - 100) > 0.01) fail(`The ingredients add up to ${round2(total)}%. They must add up to 100%.`);
+      checkIngredients(cmd.ingredients);
       const version = recipe.versions.length + 1;
       const next = { ...recipe, currentVersion: version, versions: [...recipe.versions, { version, createdAt: ctx.now, ingredients: cmd.ingredients, note: cmd.note }] };
       return { state: { ...s, recipes: s.recipes.map((r) => (r.id === recipe.id ? next : r)) } };
     }
+    case 'addChocolateType': {
+      const name = cmd.name.trim();
+      if ([...s.recipes, ...s.products].some((x) => x.name.trim().toLowerCase() === name.toLowerCase())) fail(`There is already a chocolate type called “${name}”.`);
+      if (!s.routes.some((r) => r.id === 'chocolate')) fail('The chocolate-making route is missing. Check Setup → Routes.');
+      // Ingredients left at 0% are not part of the recipe.
+      const ingredients = cmd.ingredients.filter((i) => i.percent > 0);
+      checkIngredients(ingredients);
+      const productId = uniqueId(s.products, `P-${slug(name).toUpperCase()}`);
+      const recipeId = uniqueId(s.recipes, `R-${slug(name).toUpperCase()}`);
+      const recipe: Recipe = { id: recipeId, name, productId, currentVersion: 1, versions: [{ version: 1, createdAt: ctx.now, ingredients, note: cmd.note || undefined }] };
+      return { state: { ...s, products: [...s.products, { id: productId, name, prefix: 'CH', route: 'chocolate', recipeId }], recipes: [...s.recipes, recipe] }, result: recipeId };
+    }
     case 'updateRecipe': {
       const recipe = s.recipes.find((r) => r.id === cmd.recipeId) ?? fail('That recipe was not found.');
-      return { state: { ...s, recipes: s.recipes.map((r) => (r.id === recipe.id ? { ...r, name: cmd.name } : r)) } };
+      const name = cmd.name.trim();
+      // A chocolate type's own product carries the same name, so it is renamed with it. Batches keep the name they were made under.
+      const own = (p: { id: string; name: string }) => p.id === recipe.productId && p.name === recipe.name;
+      if ([...s.recipes.filter((r) => r.id !== recipe.id), ...s.products.filter((p) => !own(p))].some((x) => x.name.trim().toLowerCase() === name.toLowerCase())) fail(`There is already a chocolate type called “${name}”.`);
+      return { state: { ...s, recipes: s.recipes.map((r) => (r.id === recipe.id ? { ...r, name } : r)), products: s.products.map((p) => (own(p) ? { ...p, name } : p)) } };
     }
     case 'deleteRecipe': {
-      if (s.batches.some((b) => b.recipeId === cmd.recipeId)) fail('Recipes used by batches cannot be deleted.');
-      // Products keep existing without the recipe; they must get one before they can be batched.
-      return { state: { ...s, recipes: s.recipes.filter((r) => r.id !== cmd.recipeId), products: s.products.map((p) => (p.recipeId === cmd.recipeId ? { ...p, recipeId: undefined } : p)) } };
+      const recipe = s.recipes.find((r) => r.id === cmd.recipeId) ?? fail('That recipe was not found.');
+      if (s.batches.some((b) => b.recipeId === recipe.id)) fail('Recipes used by batches cannot be deleted.');
+      // The chocolate type's own product goes with it. Other products keep existing without the recipe; they must get one before they can be batched.
+      const products = s.products.filter((p) => p.id !== recipe.productId || s.batches.some((b) => b.productId === p.id));
+      return { state: { ...s, recipes: s.recipes.filter((r) => r.id !== recipe.id), products: products.map((p) => (p.recipeId === recipe.id ? { ...p, recipeId: undefined } : p)) } };
     }
     case 'addProduct':
     case 'updateProduct': {
