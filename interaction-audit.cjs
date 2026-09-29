@@ -172,8 +172,24 @@ async function beanAndPressingFlow(page) {
   });
   await page.getByRole('spinbutton', { name: 'Liquor', exact: true }).fill('49.8');
   await action(page, 'Save liquor grinding', page.getByRole('button', { name: 'Save liquor grinding' }), async () => {
-    await waitForText(page, 'Complete the batch.');
+    await waitForText(page, 'Sent on: 49.80 kg liquor to mixing.');
     await waitForText(page, 'Liquor label');
+  });
+  await action(page, 'Continue to mixing', page.getByRole('link', { name: /Record mixing/ }), async () => {
+    await waitForUrl(page, '**/record/mixing');
+    await waitForText(page, 'The mixer holds');
+  });
+  await page.getByLabel('Chocolate type', { exact: true }).selectOption({ label: '70% Dark' });
+  await page.getByLabel('Kg to run').fill('30');
+  await waitForText(page, 'Add 16.50 kg');
+  await action(page, 'Save a 70% Dark run on the 85% in the mixer', page.getByRole('button', { name: 'Save 70% Dark' }), async () => {
+    await waitForText(page, 'made as lot D70-0002');
+  });
+  await action(page, 'Open finish mixing', page.getByRole('button', { name: 'Finish mixing' }), async () => {
+    await page.getByLabel('Mixing note').waitFor();
+  });
+  await action(page, 'Finish mixing', page.getByRole('button', { name: 'Finish mixing' }).last(), async () => {
+    await waitForText(page, 'Mixing finished.');
   });
 }
 
@@ -213,27 +229,40 @@ async function batchControls(page) {
   });
 }
 
-async function chocolateFinishingFlow(page) {
-  await page.goto(`${BASE}/production/stations/moulding`);
-  await action(page, 'Choose CH-018 for moulding', page.getByRole('link', { name: /CH-018/ }), async () => {
-    await waitForUrl(page, '**/production/batches/CH-018/record/moulding');
-    await page.getByRole('spinbutton', { name: 'Finished chocolate', exact: true }).waitFor();
+async function chocolateFromStoreFlow(page) {
+  await page.goto(`${BASE}/production/stations/mixing`);
+  await action(page, 'Choose CH-018 for mixing', page.getByRole('link', { name: /CH-018/ }), async () => {
+    await waitForUrl(page, '**/production/batches/CH-018/record/mixing');
+    await page.getByLabel('Kg to run').waitFor();
   });
-  await page.getByRole('spinbutton', { name: 'Finished chocolate', exact: true }).fill('94.8');
-  await page.getByRole('spinbutton', { name: 'Recoverable chocolate', exact: true }).fill('1.2');
-  await action(page, 'Save moulding', page.getByRole('button', { name: 'Save moulding' }), async () => {
-    await waitForText(page, 'Moulding saved.');
+  await page.getByLabel('Chocolate type', { exact: true }).selectOption({ label: '100% Dark' });
+  await page.getByLabel('Kg to run').fill('20');
+  await waitForText(page, 'take the chocolate out of the mixer first');
+  page.once('dialog', (d) => d.accept());
+  await action(page, 'Take the leftover out of the mixer', page.getByRole('button', { name: 'Take it out of the mixer' }), async () => {
+    await waitForText(page, 'The mixer is empty.');
   });
-  await action(page, 'Continue to packaging', page.getByRole('link', { name: /Record packaging/ }), async () => {
-    await waitForUrl(page, '**/record/packaging');
-    await page.getByLabel('Pack size').waitFor();
+  await page.getByLabel('Chocolate type', { exact: true }).selectOption({ label: '100% Dark' });
+  await page.getByLabel('Kg to run').fill('20');
+  await page.getByLabel('Kept in the mixer').fill('0');
+  await action(page, 'Save a 100% Dark run from an empty mixer', page.getByRole('button', { name: 'Save 100% Dark' }), async () => {
+    await waitForText(page, 'made as lot D100-0001');
   });
-  await page.getByLabel('Pack size').selectOption({ label: '45 g bar' });
-  await page.getByLabel('Total units made').fill('2090');
-  await page.getByLabel('Rejected units').fill('14');
-  await action(page, 'Save packaging', page.getByRole('button', { name: 'Save packaging' }), async () => {
-    await waitForText(page, 'Packaging saved.');
-    await waitForText(page, 'Complete the batch.');
+  page.once('dialog', (d) => d.accept());
+  await action(page, 'Undo the 100% Dark run', page.getByRole('button', { name: 'Undo the 100% Dark run' }), async () => {
+    await waitForText(page, 'The 100% Dark run was undone.');
+  });
+  await page.getByLabel('Chocolate type', { exact: true }).selectOption({ label: '100% Dark' });
+  await page.getByLabel('Kg to run').fill('20');
+  await page.getByLabel('Kept in the mixer').fill('0');
+  await action(page, 'Save the 100% Dark run again', page.getByRole('button', { name: 'Save 100% Dark' }), async () => {
+    await waitForText(page, 'made as lot D100-0002');
+  });
+  await action(page, 'Open finish mixing for CH-018', page.getByRole('button', { name: 'Finish mixing' }), async () => {
+    await page.getByLabel('Mixing note').waitFor();
+  });
+  await action(page, 'Finish mixing for CH-018', page.getByRole('button', { name: 'Finish mixing' }).last(), async () => {
+    await waitForText(page, 'Mixing finished.');
   });
   await action(page, 'Review CH-018 completion', page.getByRole('link', { name: /Review & complete batch/ }), async () => {
     await waitForUrl(page, '**/record/completion');
@@ -246,8 +275,8 @@ async function chocolateFinishingFlow(page) {
 
 async function materialsAndRecipes(page) {
   await page.goto(`${BASE}/materials`);
-  await action(page, 'Filter finished goods', page.getByRole('button', { name: 'Finished goods' }), async () => {
-    await waitForText(page, 'FIN-0001');
+  await action(page, 'Filter intermediate lots', page.getByRole('button', { name: 'Intermediate' }), async () => {
+    await waitForText(page, 'D70-0001');
   });
   await page.goto(`${BASE}/materials/receive`);
   await page.getByLabel('Measured weight').fill('120');
@@ -295,7 +324,6 @@ async function setupControls(page) {
     for (const [label, value] of fields) await page.getByLabel(label, { exact: true }).fill(value);
     if (section === 'products') {
       await page.getByLabel('Route').selectOption('beans');
-      await page.getByLabel('Recipe (chocolate only)').selectOption('');
     }
     if (section === 'users') await page.getByLabel(/^PIN/).fill('4321');
     if (section === 'outputs') {
@@ -349,7 +377,7 @@ async function navigationAndFilters(page) {
     await productionLine(page);
     await beanAndPressingFlow(page);
     await batchControls(page);
-    await chocolateFinishingFlow(page);
+    await chocolateFromStoreFlow(page);
     await materialsAndRecipes(page);
     await setupControls(page);
     await navigationAndFilters(page);

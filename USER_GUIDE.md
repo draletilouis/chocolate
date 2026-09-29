@@ -64,14 +64,14 @@ The batch and its receiving record are saved together. The next screen shows the
 
 ### Other batches
 
-For stored nibs (butter & powder) or chocolate:
+For stored nibs (butter & powder), or to make chocolate from liquor and cocoa butter already in store:
 
-1. Choose the product.
+1. Choose the product: **Stored nibs (butter & powder)** or **Chocolate from store**.
 2. Enter the batch date and an optional name.
-3. Enter the starting weight, or for chocolate the recipe version and the ingredient weights and lots.
+3. For stored nibs, enter the starting weight. Chocolate from store needs none: its ingredients are weighed in at mixing.
 4. Select **Create batch and record…**.
 
-To start a chocolate batch from a lot, open the lot (or scan its label) and select **Use in a chocolate batch**. That lot is already chosen for its ingredient.
+You can also start Chocolate from store from the Mixing queue (**Mix from store**) or from a liquor, cocoa butter, sugar or milk powder lot (**Mix chocolate from store**).
 
 The system keeps a unique batch ID such as `CH-019` for links and traceability.
 
@@ -132,8 +132,26 @@ The five production parts are:
 3. **Liquor:** Liquor grinding.
    - The nibs are ground twice, coarse then fine. Enter the liquor weight only **after fine grinding**. Sieved butter particles sent here are added to the input.
    - After saving, select **Print label**. The label carries the batch name, batch ID and supplier.
-4. **Chocolate making:** Mixing, Refining, Conching, Tempering.
-5. **Finishing:** Moulding, Packaging, Completion.
+4. **Chocolate making:** Mixing — the chocolate types are made one after another (see "Make chocolate at mixing").
+5. **Finishing:** Completion.
+
+### Make chocolate at mixing
+
+Liquor from liquor grinding and cocoa butter from the filter pan go on to **Mixing**. There the chocolate types are made one after another, in **runs**. The mixer keeps some chocolate between types (10 kg to start; set in **Setup → Containers**), and each run is made on top of it. The screen works out what to add, as in the changeover sheet.
+
+1. Open the batch at **Mixing**. The top shows what **the mixer holds**, for example *10.00 kg of 85% Dark*, and what this batch brought (for example *49.80 kg liquor left*).
+2. Choose the **Chocolate type** and enter the **Fresh ingredients to run** in kg.
+3. For each ingredient the screen shows what the mixer already holds and what to **add**. For 30 kg of 70% Dark on 10 kg of 85% Dark: add 16.50 kg liquor, 3.00 kg cocoa butter and 10.50 kg sugar.
+4. Weigh each ingredient in and enter the weight. Choose where it comes from: **This batch** (its own liquor or cocoa butter) or a lot in store.
+5. Enter the **Chocolate taken out** and what is **Kept in the mixer for the next run** (0 if you run the mixer empty). The bar at the bottom checks the balance.
+6. Select **Save** (for example **Save 70% Dark**). The chocolate becomes a lot, such as `D70-0002`.
+
+Repeat for the next type. Some changeovers are not possible on top of what the mixer holds:
+
+- **Too small a run:** for example 85% Dark on 15 kg of 55% Dark needs at least 30 kg, because the sugar already in the mixer cannot be taken out again. The screen tells you the smallest run.
+- **An ingredient the new type has none of:** 100% Dark after a sweetened chocolate, or a dark chocolate after milk chocolate. Select **Take it out of the mixer** first; what you take out becomes a lot of that chocolate.
+
+Made a mistake in the last run? Select **Undo** on it and enter it again. When the last type for the batch is made, select **Finish mixing**. Liquor or cocoa butter the batch did not use is kept in store as a lot, and the batch is ready to complete.
 
 ## 7. Put a batch on hold or release it
 
@@ -208,11 +226,11 @@ Select a lot from **Materials** to see:
 
 This is the traceability path from a supplier delivery through production.
 
-Lots made by a batch also show a printable **label** with the batch name, supplier, weight and a QR code; scanning the code opens the lot. Lots used in chocolate recipes (for example liquor or cocoa butter) have a **Use in a chocolate batch** button that starts a batch with that lot already chosen.
+Lots made by a batch also show a printable **label** with the batch name, supplier, weight and a QR code; scanning the code opens the lot. Lots of chocolate ingredients (liquor, cocoa butter, sugar or milk powder) have a **Mix chocolate from store** button that starts a Chocolate from store batch.
 
 ## 11. Manage chocolate types and recipes
 
-Open **Chocolate types** to see every type with its current recipe and how many batches used it. The factory starts with the types from its changeover recipes sheet:
+Open **Chocolate types** to see every type with its current recipe and how many mixing runs made it. The factory starts with the types from its changeover recipes sheet:
 
 | Type | Liquor | Cocoa butter | Sugar | Milk powder |
 | --- | --- | --- | --- | --- |
@@ -232,9 +250,9 @@ To add a chocolate type:
 2. Enter its name, for example `60% Dark`.
 3. Enter the percentage of each ingredient it uses and leave the others empty. Select **+ Add another ingredient** for anything else.
 4. Make sure the total is exactly 100%.
-5. Select **Save chocolate type**. It can now be chosen when a chocolate batch is started.
+5. Select **Save chocolate type**. It can now be chosen for a run at mixing.
 
-Renaming a type (**Edit name**) also renames it in the batch selector; batches already made keep the name they were made under. A type can be deleted only while no batch has used it.
+Renaming a type (**Edit name**) changes it for new runs; runs and lots already made keep the name they were made under. A type can be deleted only while it has never been made.
 
 To change a type's recipe, add a version:
 
@@ -245,7 +263,7 @@ To change a type's recipe, add a version:
 5. Enter what changed.
 6. Select **Save version**.
 
-Older versions stay available. A batch keeps the recipe version and expected-versus-actual ingredient weights that were used when it started.
+Older versions stay available. Each mixing run keeps the recipe version it used and its expected-versus-actual ingredient weights.
 
 ## 12. Use reports
 
@@ -292,7 +310,7 @@ Changes are saved on the server and reach every device within a few seconds. Bus
 
 Setup rows can be edited with the pencil action and deleted with the trash action. Deletion is deliberately guarded: products used by recipes or batches, pack sizes used by packaging records, suppliers referenced by lots, routes used by products or batches, and users referenced by audit history cannot be deleted. Output rows can be removed, but this only changes the rows shown on future station forms; old records remain unchanged.
 
-Other editable areas follow the same traceability rule. Recipe names and batch names/notes can be changed; recipe versions, measured station records, holds, corrections, and production-created lots remain immutable history. Supplier lots can have their descriptive details corrected, and a lot can be deleted only when it is completely unused. A blank, unrecorded batch can be deleted; a batch with production history cannot. The ID of a deleted or removed lot or batch is never given to a new one, so a printed label never opens a different record; the numbering simply skips it.
+Other editable areas follow the same traceability rule. Mixing runs are changed by undoing the last run before mixing is finished. Recipe names and batch names/notes can be changed; recipe versions, measured station records, holds, corrections, and production-created lots remain immutable history. Supplier lots can have their descriptive details corrected, and a lot can be deleted only when it is completely unused. A blank, unrecorded batch can be deleted; a batch with production history cannot. The ID of a deleted or removed lot or batch is never given to a new one, so a printed label never opens a different record; the numbering simply skips it.
 
 ## 15. Important operating notes
 

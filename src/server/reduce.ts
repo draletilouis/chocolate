@@ -1,9 +1,11 @@
-import { calculatePackaging, round2 } from '@/lib/balance';
+import { round2 } from '@/lib/balance';
 import type { Command } from '@/lib/commands';
-import { batchDisplayName, isReadyAt, issuedNumbers, nextBatchId, nextInput, nextLotId, pendingStations, recordStamp, waitingAt } from '@/lib/derive';
+import { batchDisplayName, isReadyAt, issuedNumbers, nextBatchId, nextInput, nextLotId, pendingStations, recordFor, recordStamp, waitingAt } from '@/lib/derive';
+import { kg } from '@/lib/format';
+import { batchMaterialAtMixing, changeover, ingredientsOf, mixerStamp, mixingTotals, storedAtMixing, versionOf } from '@/lib/mixing';
 import { demoCredentials, seedState, type State } from '@/lib/seed';
 import { stationById, stationName } from '@/lib/stations';
-import type { Batch, Lot, LotCategory, OutputCategory, Recipe, RecipeIngredient, RecordedOutput, StationId, StationRecord, User } from '@/lib/types';
+import type { Batch, Lot, LotCategory, Mixer, MixingRun, OutputCategory, Recipe, RecipeIngredient, RecordedOutput, RunIngredient, StationId, StationRecord, User } from '@/lib/types';
 
 /** A command that cannot be applied; the message is shown to the person who tried */
 export class CommandError extends Error {}
@@ -38,8 +40,8 @@ type NewBatch = Extract<Command, { type: 'createBatch' }>['input'];
 function createBatch(s: State, input: NewBatch, ctx: CommandContext): { state: State; id: string } {
   const product = s.products.find((p) => p.id === input.productId) ?? fail('That product no longer exists.');
   const route = s.routes.find((r) => r.id === product.route) ?? fail('This product has no route. Check it in Setup → Products.');
-  if (product.route === 'chocolate' && !product.recipeId) fail('This product has no recipe yet.');
-  if (!(input.startWeight > 0)) fail('Enter the starting weight.');
+  // A batch that starts at mixing (chocolate from stored liquor and butter) weighs its ingredients in runs instead.
+  if (!(input.startWeight > 0) && route.stations[0] !== 'mixing') fail('Enter the starting weight.');
   if (input.supplierId && !s.suppliers.some((x) => x.id === input.supplierId)) fail('That supplier was not found.');
   for (const use of input.lotUses) if (!s.lots.some((l) => l.id === use.lotId)) fail(`Lot ${use.lotId} was not found.`);
   const id = nextBatchId(s, product.prefix);
@@ -139,27 +141,140 @@ function saveRecord(s: State, cmd: SaveRecord, ctx: CommandContext): State {
   return commitRecord(s, b.id, draft, !early, ctx.now);
 }
 
-type SavePackaging = Extract<Command, { type: 'savePackaging' }>;
+type SaveMixingRun = Extract<Command, { type: 'saveMixingRun' }>;
 
-function savePackaging(s: State, cmd: SavePackaging, ctx: CommandContext): State {
-  const b = findBatch(s, cmd.batchId);
-  const early = cmd.options?.advanceWorkflow === false;
-  const existing = checkStation(b, 'packaging', cmd.expectRecord, early);
-  const pack = s.packSizes.find((p) => p.id === cmd.packSizeId) ?? fail('That pack size no longer exists.');
-  if (!(cmd.inputWeight > 0)) fail('Enter the input weight.');
-  if (!(cmd.totalUnits > 0)) fail('Enter the total units made.');
-  if (cmd.rejectedUnits > cmd.totalUnits) fail('Rejected units cannot be more than the total made.');
-  const { acceptedUnits, acceptedWeight } = calculatePackaging(cmd.totalUnits, cmd.rejectedUnits, pack.grams);
-  const outputs: RecordedOutput[] = [
-    { name: 'Accepted units', kind: 'useful' as const, weight: acceptedWeight, destination: 'stock' as const },
-    { name: 'Rejected units', kind: 'waste' as const, weight: round2((cmd.rejectedUnits * pack.grams) / 1000), destination: 'waste' as const },
-  ].filter((o) => o.weight > 0 || o.name === 'Accepted units');
-  const draft: StationRecord = {
-    id: existing?.id ?? `packaging-${ctx.now}`, station: 'packaging', inputMaterial: existing?.inputMaterial ?? cmd.options?.inputMaterial ?? 'Finished chocolate', inputWeight: round2(cmd.inputWeight), inputLotIds: [],
-    outputs, packaging: { packSizeId: pack.id, packGrams: pack.grams, totalUnits: cmd.totalUnits, rejectedUnits: cmd.rejectedUnits, acceptedUnits, acceptedWeight },
-    recordedAt: ctx.now, recordedBy: ctx.userId, rev: ctx.newId(), note: cmd.note || undefined, destinationsSaved: true,
+/** A batch whose mixing can still take runs: not completed or on hold, waiting at mixing, not finished */
+function mixingBatch(s: State, batchId: string) {
+  const b = findBatch(s, batchId);
+  const name = batchDisplayName(b);
+  if (b.status === 'completed') fail(`${name} is completed.`);
+  if (b.status === 'hold') fail(`${name} is on hold. Release the hold before mixing.`);
+  const record = recordFor(b, 'mixing');
+  if (record?.destinationsSaved) fail(`Mixing for ${name} is finished. Start a “Chocolate from store” batch to mix more.`);
+  if (!record && !isReadyAt(b, 'mixing')) fail(`${name} is not waiting at mixing.`);
+  return { b, name, record };
+}
+
+/** Puts the mixing record, worked out from its runs, on the batch; a record with no runs left is removed */
+function withMixingRecord(s: State, b: Batch, runs: MixingRun[], ctx: CommandContext, previous?: StationRecord): State {
+  const record: StationRecord | undefined = runs.length === 0 ? undefined : {
+    id: previous?.id ?? `mixing-${ctx.now}`, station: 'mixing', inputMaterial: 'Chocolate ingredients', ...mixingTotals(runs),
+    inputLotIds: Array.from(new Set(runs.flatMap((r) => r.ingredients.flatMap((i) => (i.lotId ? [i.lotId] : []))))),
+    runs, recordedAt: runs.at(-1)!.recordedAt, recordedBy: runs.at(-1)!.recordedBy, rev: ctx.newId(), note: previous?.note, destinationsSaved: false,
   };
-  return commitRecord(s, b.id, draft, !early, ctx.now);
+  const records = [...b.records.filter((r) => r.station !== 'mixing'), ...(record ? [record] : [])];
+  return replaceBatch(s, { ...b, records });
+}
+
+/**
+ * One chocolate type made at mixing. The run is made on top of what the mixer holds: the ingredients to
+ * add follow the changeover sheet, and a run that cannot reach the recipe on top of it is refused. The
+ * chocolate taken out becomes a lot; what is kept in the mixer is held for the next run, whichever batch
+ * it belongs to.
+ */
+function saveMixingRun(s: State, cmd: SaveMixingRun, ctx: CommandContext): Outcome {
+  const { b, name, record } = mixingBatch(s, cmd.batchId);
+  if (mixerStamp(s.mixer) !== cmd.expectMixer) fail('Someone else just used the mixer. Check what it holds now, then enter the run again.');
+  const recipe = s.recipes.find((r) => r.id === cmd.recipeId) ?? fail('That chocolate type was not found.');
+  const version = versionOf(recipe) ?? fail(`${recipe.name} has no current recipe.`);
+  if (!(cmd.toRun > 0)) fail('Enter how many kg to run.');
+  const held = s.mixer.holds && s.mixer.holds.kg > 0 ? s.mixer.holds : undefined;
+  const plan = changeover(version.ingredients, cmd.toRun, held && { kg: held.kg, ingredients: ingredientsOf(s, held.recipeId, held.recipeVersion) });
+  if (held && plan.blocked.length) fail(`The mixer holds ${kg(held.kg)} of ${held.type}, which has ${plan.blocked.join(' and ').toLowerCase()}. ${recipe.name} has none: take the chocolate out of the mixer first.`);
+  if (held && plan.lines.some((l) => l.add < -0.005)) fail(`With ${kg(held.kg)} of ${held.type} in the mixer, run at least ${kg(plan.minRun)} of ${recipe.name}.`);
+
+  const left = new Map(batchMaterialAtMixing(b).map((m) => [m.name, m.left]));
+  const seen = new Set<string>();
+  for (const given of cmd.ingredients) {
+    if (!version.ingredients.some((i) => i.name === given.name)) fail(`${given.name} is not in ${recipe.name}.`);
+    if (seen.has(given.name)) fail(`${given.name} is listed twice.`);
+    seen.add(given.name);
+    if (given.lotId) {
+      const lot = s.lots.find((l) => l.id === given.lotId) ?? fail(`Lot ${given.lotId} was not found.`);
+      if (lot.material !== given.name) fail(`Lot ${lot.id} is ${lot.material.toLowerCase()}, not ${given.name.toLowerCase()}.`);
+    } else if (given.actual > (left.get(given.name) ?? 0) + 0.005) {
+      fail(`Only ${kg(left.get(given.name) ?? 0)} of ${given.name.toLowerCase()} from ${name} is left. Take the rest from a lot.`);
+    }
+  }
+  const toAdd = new Map(plan.lines.map((l) => [l.name, Math.max(0, l.add)]));
+  const ingredients: RunIngredient[] = version.ingredients.map((i) => {
+    const given = cmd.ingredients.find((g) => g.name === i.name);
+    return { name: i.name, expected: toAdd.get(i.name) ?? 0, actual: round2(given?.actual ?? 0), lotId: given?.lotId || undefined };
+  });
+  if (!(ingredients.reduce((sum, i) => sum + i.actual, 0) > 0)) fail('Enter the ingredients weighed in.');
+  if (!(cmd.made > 0)) fail('Enter the chocolate taken out.');
+
+  const runId = `run-${ctx.newId()}`;
+  const lotId = nextLotId(s, recipe.name);
+  const run: MixingRun = { id: runId, recipeId: recipe.id, type: recipe.name, recipeVersion: version.version, toRun: round2(cmd.toRun), held, ingredients, made: round2(cmd.made), kept: round2(cmd.kept), lotId, recordedAt: ctx.now, recordedBy: ctx.userId };
+  // The scale weight is recorded as-is; a lot record can only be drawn down to zero.
+  const lots = s.lots.map((lot) => {
+    const drawn = ingredients.filter((i) => i.lotId === lot.id && i.actual > 0);
+    if (!drawn.length) return lot;
+    const quantity = drawn.reduce((sum, i) => sum + i.actual, 0);
+    return { ...lot, available: Math.max(0, round2(lot.available - quantity)), uses: [...lot.uses, ...drawn.map((i) => ({ batchId: b.id, quantity: i.actual, station: 'mixing' as const, at: ctx.now, runId }))] };
+  });
+  const chocolate: Lot = { id: lotId, material: recipe.name, category: 'Intermediate', received: run.made, available: run.made, unit: 'kg', source: { type: 'batch', batchId: b.id, station: 'mixing' }, receivedAt: ctx.now, uses: [], chocolate: { type: recipe.name, recipeId: recipe.id, recipeVersion: version.version, runId } };
+  const mixer: Mixer = { holds: run.kept > 0 ? { kg: run.kept, type: recipe.name, recipeId: recipe.id, recipeVersion: version.version, batchId: b.id, runId, lotId } : null, lastRunId: runId };
+  const next = withMixingRecord({ ...s, lots: [...lots, chocolate], mixer }, b, [...(record?.runs ?? []), run], ctx, record);
+  return { state: next, result: lotId };
+}
+
+/** Takes back the last run made on the mixer, while its chocolate is untouched and mixing is not finished */
+function undoMixingRun(s: State, batchId: string, runId: string, ctx: CommandContext): State {
+  const { b, record } = mixingBatch(s, batchId);
+  const run = record?.runs?.find((r) => r.id === runId) ?? fail('That run was not found.');
+  if (s.mixer.lastRunId !== run.id) fail('Only the last run made on the mixer can be undone.');
+  const chocolate = s.lots.find((l) => l.id === run.lotId);
+  if (chocolate && (chocolate.uses.length || chocolate.available !== chocolate.received)) fail(`Lot ${chocolate.id} from this run is already in use.`);
+  const lots = s.lots.filter((l) => l.id !== run.lotId).map((lot) => {
+    const returned = lot.uses.filter((u) => u.runId === run.id).reduce((sum, u) => sum + u.quantity, 0);
+    return returned ? { ...lot, available: Math.min(lot.received, round2(lot.available + returned)), uses: lot.uses.filter((u) => u.runId !== run.id) } : lot;
+  });
+  return withMixingRecord({ ...s, lots, mixer: { holds: run.held ?? null, lastRunId: null } }, b, record!.runs!.filter((r) => r.id !== run.id), ctx, record);
+}
+
+/**
+ * The chocolate in the mixer is taken out, for example before a type that cannot be made on top of it.
+ * It becomes a lot of that chocolate, traced to the batch whose run left it there.
+ */
+function emptyMixer(s: State, expectMixer: string | null, ctx: CommandContext): Outcome {
+  if (mixerStamp(s.mixer) !== expectMixer) fail('Someone else just used the mixer. Check what it holds now.');
+  const held = s.mixer.holds ?? fail('The mixer is already empty.');
+  const id = nextLotId(s, held.type);
+  const lot: Lot = { id, material: held.type, category: 'Intermediate', received: held.kg, available: held.kg, unit: 'kg', source: { type: 'batch', batchId: held.batchId, station: 'mixing' }, receivedAt: ctx.now, uses: [], chocolate: { type: held.type, recipeId: held.recipeId, recipeVersion: held.recipeVersion, runId: held.runId } };
+  // The run that kept it now shows the lot instead of chocolate left in the mixer, even on a completed batch.
+  const batches = s.batches.map((b) => {
+    const record = recordFor(b, 'mixing');
+    if (!record?.runs?.some((r) => r.id === held.runId)) return b;
+    const runs = record.runs.map((r) => (r.id === held.runId ? { ...r, takenOut: id } : r));
+    const totals = mixingTotals(runs, storedAtMixing(record.outputs, record.runs));
+    return { ...b, records: b.records.map((r) => (r.station === 'mixing' ? { ...record, ...totals, runs } : r)) };
+  });
+  return { state: { ...s, batches, lots: [...s.lots, lot], mixer: { holds: null, lastRunId: null } }, result: id };
+}
+
+/**
+ * Closes mixing for a batch. Liquor or cocoa butter it sent to mixing that no run used is kept in store
+ * as a lot, so nothing goes missing from the balance, and the batch moves on (usually to completion).
+ */
+function finishMixing(s: State, batchId: string, note: string | undefined, ctx: CommandContext): State {
+  const { b, name, record } = mixingBatch(s, batchId);
+  const runs = record?.runs ?? [];
+  const unused = batchMaterialAtMixing(b).filter((m) => m.left > 0.005);
+  if (runs.length === 0 && unused.length === 0) fail(`Nothing was mixed for ${name}. Record a run first.`);
+  const made: Lot[] = [];
+  const stored = unused.map((m): RecordedOutput => {
+    const id = nextLotId(s, m.name, made.map((l) => l.id));
+    made.push({ id, material: m.name, category: 'Intermediate', received: m.left, available: m.left, unit: 'kg', source: { type: 'batch', batchId: b.id, station: 'mixing' }, receivedAt: ctx.now, uses: [] });
+    return { name: `${m.name} kept in store`, kind: 'useful', weight: m.left, destination: 'stock', lotId: id };
+  });
+  const finished: StationRecord = {
+    id: record?.id ?? `mixing-${ctx.now}`, station: 'mixing', inputMaterial: 'Chocolate ingredients', ...mixingTotals(runs, stored),
+    inputLotIds: record?.inputLotIds ?? [], runs, recordedAt: ctx.now, recordedBy: ctx.userId, rev: ctx.newId(), note: note || record?.note, destinationsSaved: true,
+  };
+  const updated = { ...b, records: [...b.records.filter((r) => r.station !== 'mixing'), finished] };
+  return replaceBatch({ ...s, lots: [...s.lots, ...made] }, { ...updated, nextStation: pendingStations(updated)[0] ?? 'completion' });
 }
 
 /** A recipe's ingredients must have different names and add up to 100% */
@@ -204,7 +319,11 @@ function runCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
       return { state: withRecord, result: id };
     }
     case 'saveRecord': return { state: saveRecord(s, cmd, ctx) };
-    case 'savePackaging': return { state: savePackaging(s, cmd, ctx) };
+    case 'saveMixingRun': return saveMixingRun(s, cmd, ctx);
+    case 'undoMixingRun': return { state: undoMixingRun(s, cmd.batchId, cmd.runId, ctx) };
+    case 'emptyMixer': return emptyMixer(s, cmd.expectMixer, ctx);
+    case 'finishMixing': return { state: finishMixing(s, cmd.batchId, cmd.note, ctx) };
+    case 'setMixerKeeps': return { state: { ...s, mixerKeepsKg: round2(cmd.kg) } };
     case 'completeBatch': {
       const b = findBatch(s, cmd.batchId);
       if (b.status === 'completed') fail(`${batchDisplayName(b)} is already completed.`);
@@ -245,6 +364,7 @@ function runCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
       const record = b.records.find((r) => r.id === cmd.recordId) ?? fail('That record was not found.');
       const target = record.outputs.find((o) => o.name === cmd.output) ?? fail(`${cmd.output} was not found on that record.`);
       if (record.packaging) fail('Packaging counts are corrected by saving packaging again.');
+      if (record.runs) fail('Mixing runs are changed by undoing the last run and entering it again, before mixing is finished.');
       const corrected = round2(cmd.corrected);
       const delta = round2(corrected - target.weight);
       const records = b.records.map((r) => (r.id === record.id ? { ...r, outputs: r.outputs.map((o) => (o.name === cmd.output ? { ...o, weight: corrected } : o)) } : r));
@@ -283,30 +403,26 @@ function runCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
     }
     case 'addChocolateType': {
       const name = cmd.name.trim();
-      if ([...s.recipes, ...s.products].some((x) => x.name.trim().toLowerCase() === name.toLowerCase())) fail(`There is already a chocolate type called “${name}”.`);
-      if (!s.routes.some((r) => r.id === 'chocolate')) fail('The chocolate-making route is missing. Check Setup → Routes.');
+      if (s.recipes.some((r) => r.name.trim().toLowerCase() === name.toLowerCase())) fail(`There is already a chocolate type called “${name}”.`);
       // Ingredients left at 0% are not part of the recipe.
       const ingredients = cmd.ingredients.filter((i) => i.percent > 0);
       checkIngredients(ingredients);
-      const productId = uniqueId(s.products, `P-${slug(name).toUpperCase()}`);
-      const recipeId = uniqueId(s.recipes, `R-${slug(name).toUpperCase()}`);
-      const recipe: Recipe = { id: recipeId, name, productId, currentVersion: 1, versions: [{ version: 1, createdAt: ctx.now, ingredients, note: cmd.note || undefined }] };
-      return { state: { ...s, products: [...s.products, { id: productId, name, prefix: 'CH', route: 'chocolate', recipeId }], recipes: [...s.recipes, recipe] }, result: recipeId };
+      const recipe: Recipe = { id: uniqueId(s.recipes, `R-${slug(name).toUpperCase()}`), name, currentVersion: 1, versions: [{ version: 1, createdAt: ctx.now, ingredients, note: cmd.note || undefined }] };
+      return { state: { ...s, recipes: [...s.recipes, recipe] }, result: recipe.id };
     }
     case 'updateRecipe': {
-      const recipe = s.recipes.find((r) => r.id === cmd.recipeId) ?? fail('That recipe was not found.');
+      const recipe = s.recipes.find((r) => r.id === cmd.recipeId) ?? fail('That chocolate type was not found.');
       const name = cmd.name.trim();
-      // A chocolate type's own product carries the same name, so it is renamed with it. Batches keep the name they were made under.
-      const own = (p: { id: string; name: string }) => p.id === recipe.productId && p.name === recipe.name;
-      if ([...s.recipes.filter((r) => r.id !== recipe.id), ...s.products.filter((p) => !own(p))].some((x) => x.name.trim().toLowerCase() === name.toLowerCase())) fail(`There is already a chocolate type called “${name}”.`);
-      return { state: { ...s, recipes: s.recipes.map((r) => (r.id === recipe.id ? { ...r, name } : r)), products: s.products.map((p) => (own(p) ? { ...p, name } : p)) } };
+      if (s.recipes.some((r) => r.id !== recipe.id && r.name.trim().toLowerCase() === name.toLowerCase())) fail(`There is already a chocolate type called “${name}”.`);
+      // Runs and lots keep the name they were made under.
+      return { state: { ...s, recipes: s.recipes.map((r) => (r.id === recipe.id ? { ...r, name } : r)) } };
     }
     case 'deleteRecipe': {
-      const recipe = s.recipes.find((r) => r.id === cmd.recipeId) ?? fail('That recipe was not found.');
-      if (s.batches.some((b) => b.recipeId === recipe.id)) fail('Recipes used by batches cannot be deleted.');
-      // The chocolate type's own product goes with it. Other products keep existing without the recipe; they must get one before they can be batched.
-      const products = s.products.filter((p) => p.id !== recipe.productId || s.batches.some((b) => b.productId === p.id));
-      return { state: { ...s, recipes: s.recipes.filter((r) => r.id !== recipe.id), products: products.map((p) => (p.recipeId === recipe.id ? { ...p, recipeId: undefined } : p)) } };
+      const recipe = s.recipes.find((r) => r.id === cmd.recipeId) ?? fail('That chocolate type was not found.');
+      const mixed = s.batches.some((b) => b.recipeId === recipe.id || b.records.some((r) => r.runs?.some((run) => run.recipeId === recipe.id))) || s.mixer.holds?.recipeId === recipe.id;
+      if (mixed) fail('Chocolate types already made cannot be deleted.');
+      // Products from before chocolate was made in runs keep existing without the recipe.
+      return { state: { ...s, recipes: s.recipes.filter((r) => r.id !== recipe.id), products: s.products.map((p) => (p.recipeId === recipe.id ? { ...p, recipeId: undefined } : p)) } };
     }
     case 'addProduct':
     case 'updateProduct': {
@@ -415,6 +531,8 @@ export function migrateLegacy(stored: Record<string, unknown>): { state: State; 
     business: { ...seed.business, ...(data.business ?? {}) }, idleMinutes: data.idleMinutes ?? seed.idleMinutes, workflowVersion: seed.workflowVersion,
     // Browsers kept no counters: numbers continue from the highest IDs, and applyCommand() keeps the server's.
     idCounters: { batches: {}, lots: {} },
+    // Browsers made chocolate the older way, without mixing runs.
+    mixer: { holds: null, lastRunId: null }, mixerKeepsKg: seed.mixerKeepsKg,
   };
   return { state, secrets };
 }

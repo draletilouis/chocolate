@@ -34,7 +34,7 @@ export default function NewChocolateTypePage() {
   return (
     <>
       <Back href="/recipes" label="Chocolate types" />
-      <PageHeader eyebrow="Recipes" title="New chocolate type" subtitle="Give the type a name and its recipe as a share of the batch weight. It can then be chosen when a chocolate batch is started." />
+      <PageHeader eyebrow="Recipes" title="New chocolate type" subtitle="Give the type a name and its recipe as a share of the batch weight. It can then be chosen for a run at mixing." />
       <form onSubmit={submit}>
         <Panel title="Chocolate type">
           <div className="p-5">

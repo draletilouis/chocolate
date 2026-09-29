@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { ArrowRight, Plus } from 'lucide-react';
-import { Back, Badge, Empty, LinkButton, PageHeader, Panel, RowLink } from '@/components/ui';
+import { Back, Badge, Empty, LinkButton, Notice, PageHeader, Panel, RowLink } from '@/components/ui';
 import { batchDisplayName, nextInput, recordBalance, recordFor, stationQueue } from '@/lib/derive';
 import { dateTime, kg, kindLabel } from '@/lib/format';
 import { useStore } from '@/lib/store';
@@ -21,8 +21,10 @@ export default function StationPage() {
     <>
       <Back href={`/production/parts/${groupOf(station.id).slug}`} label={station.group} />
       <PageHeader eyebrow={station.group} title={station.name} subtitle={<>{station.input} <ArrowRight size={12} className="inline" /> {station.output}</>}
-        action={station.id === 'receiving' ? <LinkButton href="/production/new"><Plus size={16} /> Receive a delivery</LinkButton> : undefined} />
+        action={station.id === 'receiving' ? <LinkButton href="/production/new"><Plus size={16} /> Receive a delivery</LinkButton> : station.form === 'mixing' ? <LinkButton variant="secondary" href="/production/new?chocolate=1"><Plus size={16} /> Mix from store</LinkButton> : undefined} />
 
+      {station.retired && <Notice tone="neutral">{station.name} is no longer part of the line: chocolate is made in mixing runs. Older batches still show it.</Notice>}
+      {station.form === 'mixing' && <Notice tone="neutral">The mixer holds {store.mixer.holds ? <strong>{kg(store.mixer.holds.kg)} of {store.mixer.holds.type}</strong> : <strong>nothing</strong>}{store.mixer.holds ? ` (left by ${store.mixer.holds.batchId})` : ''}. The next run is made on top of it.</Notice>}
       <Panel title={station.form === 'completion' ? 'Ready to complete' : `Ready to record ${station.name.toLowerCase()}`} subtitle={station.help}>
         {queue.ready.length === 0 && <Empty>No batches are waiting at {station.name.toLowerCase()}.</Empty>}
         {queue.ready.map((batch) => {
@@ -31,7 +33,7 @@ export default function StationPage() {
             <RowLink key={batch.id} href={`/production/batches/${batch.id}/record/${station.id}`}>
               <span className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-center gap-2"><strong>{batchDisplayName(batch)}</strong>{batch.name && <span className="text-[11px] text-muted">ID {batch.id}</span>}<span className="text-muted">{batch.product}</span></span>
-                <span className="text-[12px] text-muted">{station.form === 'completion' ? `${batch.records.length} stations recorded` : `Input ready: ${kg(input.weight)} ${input.material.toLowerCase()}`}</span>
+                <span className="text-[12px] text-muted">{station.form === 'completion' ? `${batch.records.length} stations recorded` : input.weight > 0 ? `Input ready: ${kg(input.weight)} ${input.material.toLowerCase()}` : station.form === 'mixing' ? 'Mix from liquor and cocoa butter in store' : 'Weigh the input to start'}</span>
               </span>
               <span className="text-[13px] font-semibold text-green">{station.form === 'completion' ? 'Review & complete' : 'Record'}</span>
             </RowLink>

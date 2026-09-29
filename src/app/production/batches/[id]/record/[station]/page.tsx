@@ -4,10 +4,11 @@ import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { AlertTriangle, ArrowRight, Check, CheckCircle2, Pencil, Plus, Trash2 } from 'lucide-react';
-import { Back, Button, Empty, Field, LinkButton, Notice, PageHeader, Panel, Select, UnitInput, inputClass } from '@/components/ui';
+import { Back, Button, Empty, LinkButton, Notice, PageHeader, Panel, inputClass } from '@/components/ui';
 import { BatchLabel } from '@/components/BatchLabel';
+import { MixingScreen } from '@/components/MixingScreen';
 import { BalanceVerdict, DestinationSelect, LiveBalance, WeightField, emptyWeight, netWeight, weightFrom, type WeightValue } from '@/components/weighing';
-import { calculateBalance, calculatePackaging, round2 } from '@/lib/balance';
+import { calculateBalance, round2 } from '@/lib/balance';
 import { batchById, batchDisplayName, defaultDestination, isReadyAt, lastContainerId, nextInput, recordBalance, recordFor, recordStamp, userName, waitingAt } from '@/lib/derive';
 import { dateTime, destinationLabel, kg, pct } from '@/lib/format';
 import { useStore } from '@/lib/store';
@@ -42,7 +43,10 @@ export default function RecordPage() {
   if (batch.status === 'completed' && station.form !== 'completion' && !record) {
     return <><Back href={`/production/batches/${batch.id}`} label={`Batch ${batchDisplayName(batch)}`} /><Notice tone="neutral">{batchDisplayName(batch)} is completed. Nothing more can be recorded.</Notice></>;
   }
-  if (!record && !isReadyAt(batch, station.id) && !independent) {
+  if (station.retired && !record) {
+    return <><Back href={`/production/batches/${batch.id}`} label={`Batch ${batchDisplayName(batch)}`} /><Notice tone="neutral">{station.name} is no longer part of the line. Chocolate is made in mixing runs.</Notice></>;
+  }
+  if (!record && !isReadyAt(batch, station.id) && (!independent || station.form === 'mixing')) {
     const waiting = waitingAt(batch);
     return (
       <>
@@ -50,21 +54,22 @@ export default function RecordPage() {
         <PageHeader eyebrow={eyebrowFor(batch, station)} title={`${batchDisplayName(batch)} is not waiting at ${station.name.toLowerCase()}`} subtitle={waiting.length ? `It is waiting at ${waiting.map((s) => stationName(s).toLowerCase()).join(' and ')}.` : 'Nothing is waiting for this batch.'} />
         <div className="flex flex-wrap gap-2">
           {waiting.map((s) => <LinkButton key={s} href={`/production/batches/${batch.id}/record/${s}`}>{s === 'completion' ? 'Review & complete' : `Record ${stationName(s).toLowerCase()}`} <ArrowRight size={15} /></LinkButton>)}
-          {station.form !== 'completion' && batch.status === 'active' && <LinkButton variant="secondary" href={`/production/batches/${batch.id}/record/${station.id}?mode=independent`}>Enter {station.name.toLowerCase()} early</LinkButton>}
+          {station.form === 'weights' && batch.status === 'active' && <LinkButton variant="secondary" href={`/production/batches/${batch.id}/record/${station.id}?mode=independent`}>Enter {station.name.toLowerCase()} early</LinkButton>}
         </div>
       </>
     );
   }
 
   if (station.form === 'completion') return <CompletionScreen batch={batch} />;
+  if (station.form === 'mixing') return <MixingScreen batch={batch} station={station} record={record} />;
   return <StationScreen key={`${batch.id}-${station.id}-${independent ? 'early' : 'flow'}`} batch={batch} station={station} record={record} independent={independent} justCreated={searchParams.get('saved') === '1'} />;
 }
 
 /** Shows the saved result, or the form while a station is being entered or edited */
 function StationScreen({ batch, station, record, independent, justCreated }: { batch: Batch; station: Station; record?: StationRecord; independent: boolean; justCreated: boolean }) {
-  const [editing, setEditing] = useState(!record || !record.destinationsSaved);
+  const [editing, setEditing] = useState((!record || !record.destinationsSaved) && !station.retired);
   const [justSaved, setJustSaved] = useState(justCreated);
-  if (record && !editing) return <SavedView batch={batch} station={station} record={record} independent={independent} justSaved={justSaved} onEdit={() => { setEditing(true); setJustSaved(false); }} />;
+  if (record && !editing) return <SavedView batch={batch} station={station} record={record} independent={independent} justSaved={justSaved} onEdit={station.retired ? undefined : () => { setEditing(true); setJustSaved(false); }} />;
   return (
     <StationForm batch={batch} station={station} record={record} independent={independent}
       onSaved={() => { setEditing(false); setJustSaved(true); window.scrollTo({ top: 0 }); }}
@@ -100,9 +105,6 @@ function StationForm({ batch, station, record, independent, onSaved, onShowSaved
       ...(record?.outputs ?? []).filter((o) => !names.has(o.name)).map((o): Row => ({ name: o.name, kind: o.kind, custom: true, weight: weightFrom(o.weight, o.container, containers), destination: o.destination })),
     ];
   });
-  const [pack, setPack] = useState(() => record?.packaging
-    ? { packSizeId: record.packaging.packSizeId, totalUnits: String(record.packaging.totalUnits), rejectedUnits: String(record.packaging.rejectedUnits) }
-    : { packSizeId: store.packSizes[0]?.id ?? '', totalUnits: '', rejectedUnits: '0' });
   const [note, setNote] = useState(record?.note ?? '');
   const [showNote, setShowNote] = useState(Boolean(record?.note));
   const [error, setError] = useState('');
@@ -111,7 +113,6 @@ function StationForm({ batch, station, record, independent, onSaved, onShowSaved
   const inputNet = netWeight(input, containers);
   const nets = rows.map((r) => netWeight(r.weight, containers));
   const balance = calculateBalance(inputNet.net, rows.map((r, i) => ({ kind: r.kind, weight: nets[i].net })));
-  const packCalc = calculatePackaging(Number(pack.totalUnits) || 0, Number(pack.rejectedUnits) || 0, store.packSizes.find((p) => p.id === pack.packSizeId)?.grams ?? 0);
   const limit = store.thresholds.variancePct[station.id] ?? 0;
   const update = (index: number, patch: Partial<Row>) => setRows(rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
 
@@ -121,19 +122,10 @@ function StationForm({ batch, station, record, independent, onSaved, onShowSaved
     setError('');
     if (!(inputNet.net > 0)) { setChangingInput(true); return setError('Enter the input weight.'); }
     const options = independent ? { advanceWorkflow: false, inputMaterial: station.input } : undefined;
-    let saved: boolean;
-    if (station.form === 'packaging') {
-      const total = Number(pack.totalUnits), rejected = Number(pack.rejectedUnits) || 0;
-      if (!(total > 0)) return setError('Enter the total units made.');
-      if (rejected > total) return setError('Rejected units cannot be more than the total made.');
-      setSaving(true);
-      saved = await store.savePackaging(batch.id, inputNet.net, pack.packSizeId, total, rejected, note || undefined, options, startedFrom);
-    } else {
-      const outputs = rows.map((r, i) => ({ name: r.name.trim() || 'Other output', kind: r.kind, weight: nets[i].net, destination: r.destination, container: nets[i].container })).filter((o) => o.weight > 0);
-      if (outputs.length === 0) return setError('Enter at least one weight.');
-      setSaving(true);
-      saved = await store.saveRecord(batch.id, station.id, { weight: inputNet.net, container: inputNet.container }, outputs, note || undefined, options, startedFrom);
-    }
+    const outputs = rows.map((r, i) => ({ name: r.name.trim() || 'Other output', kind: r.kind, weight: nets[i].net, destination: r.destination, container: nets[i].container })).filter((o) => o.weight > 0);
+    if (outputs.length === 0) return setError('Enter at least one weight.');
+    setSaving(true);
+    const saved = await store.saveRecord(batch.id, station.id, { weight: inputNet.net, container: inputNet.container }, outputs, note || undefined, options, startedFrom);
     setSaving(false);
     // On failure the weights stay on screen; the reason is shown at the top.
     if (saved) onSaved();
@@ -162,54 +154,38 @@ function StationForm({ batch, station, record, independent, onSaved, onShowSaved
         )}
       </section>
 
-      {station.form === 'packaging' ? (
-        <Panel title="Count the units" subtitle="Accepted units are worked out: total made minus rejected.">
-          <div className="grid gap-4 p-5 sm:grid-cols-3">
-            <Field label="Pack size">
-              <Select value={pack.packSizeId} onChange={(e) => setPack({ ...pack, packSizeId: e.target.value })} aria-label="Pack size">
-                {store.packSizes.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </Select>
-            </Field>
-            <Field label="Total units made"><UnitInput unit="units" step="1" value={pack.totalUnits} onChange={(e) => setPack({ ...pack, totalUnits: e.target.value })} aria-label="Total units made" placeholder="0" autoFocus={!changingInput} /></Field>
-            <Field label="Rejected units"><UnitInput unit="units" step="1" value={pack.rejectedUnits} onChange={(e) => setPack({ ...pack, rejectedUnits: e.target.value })} aria-label="Rejected units" placeholder="0" /></Field>
-          </div>
-        </Panel>
-      ) : (
-        <Panel title="Weigh the outputs" subtitle="Leave a row empty if there was none. If you weigh in a container, pick it and its empty weight is taken off. Each output shows where it goes; tap to change.">
-          {rows.map((row, index) => {
-            const label = row.custom ? `Output ${index + 1}` : row.name;
-            return (
-              <div key={index} className="weigh-row">
-                <div className="weigh-row-head">
-                  {row.custom ? (
-                    <span className="flex min-w-0 flex-1 flex-wrap gap-2">
-                      <input className={`${inputClass} min-w-[140px] flex-1`} placeholder="Output name" value={row.name} onChange={(e) => update(index, { name: e.target.value })} aria-label={`${label} name`} />
-                      <select className={`${inputClass} w-auto`} value={row.kind} onChange={(e) => update(index, { kind: e.target.value as OutputKind })} aria-label={`${label} type`}>
-                        <option value="useful">Good output</option><option value="byproduct">By-product</option><option value="waste">Waste</option>
-                      </select>
-                      <button type="button" className="icon-button" onClick={() => setRows(rows.filter((_, i) => i !== index))} aria-label="Remove output"><Trash2 size={18} /></button>
-                    </span>
-                  ) : (
-                    <span className="weigh-row-name">{row.name}{row.kind === 'waste' && <span className="kind-tag">waste</span>}</span>
-                  )}
-                  <DestinationSelect station={station} value={row.destination} onChange={(destination) => update(index, { destination })} label={label} />
-                </div>
-                <WeightField value={row.weight} onChange={(weight) => update(index, { weight })} containers={containers} label={row.custom ? `${label} weight` : row.name} autoFocus={index === 0 && !changingInput && !record} />
+      <Panel title="Weigh the outputs" subtitle="Leave a row empty if there was none. If you weigh in a container, pick it and its empty weight is taken off. Each output shows where it goes; tap to change.">
+        {rows.map((row, index) => {
+          const label = row.custom ? `Output ${index + 1}` : row.name;
+          return (
+            <div key={index} className="weigh-row">
+              <div className="weigh-row-head">
+                {row.custom ? (
+                  <span className="flex min-w-0 flex-1 flex-wrap gap-2">
+                    <input className={`${inputClass} min-w-[140px] flex-1`} placeholder="Output name" value={row.name} onChange={(e) => update(index, { name: e.target.value })} aria-label={`${label} name`} />
+                    <select className={`${inputClass} w-auto`} value={row.kind} onChange={(e) => update(index, { kind: e.target.value as OutputKind })} aria-label={`${label} type`}>
+                      <option value="useful">Good output</option><option value="byproduct">By-product</option><option value="waste">Waste</option>
+                    </select>
+                    <button type="button" className="icon-button" onClick={() => setRows(rows.filter((_, i) => i !== index))} aria-label="Remove output"><Trash2 size={18} /></button>
+                  </span>
+                ) : (
+                  <span className="weigh-row-name">{row.name}{row.kind === 'waste' && <span className="kind-tag">waste</span>}</span>
+                )}
+                <DestinationSelect station={station} value={row.destination} onChange={(destination) => update(index, { destination })} label={label} />
               </div>
-            );
-          })}
-          <button type="button" className="add-row" onClick={() => setRows([...rows, { name: '', kind: 'useful', weight: emptyWeight, destination: defaultDestination(station.id, '', 'useful', rows.length), custom: true }])}><Plus size={16} /> Add another output</button>
-        </Panel>
-      )}
+              <WeightField value={row.weight} onChange={(weight) => update(index, { weight })} containers={containers} label={row.custom ? `${label} weight` : row.name} autoFocus={index === 0 && !changingInput && !record} />
+            </div>
+          );
+        })}
+        <button type="button" className="add-row" onClick={() => setRows([...rows, { name: '', kind: 'useful', weight: emptyWeight, destination: defaultDestination(station.id, '', 'useful', rows.length), custom: true }])}><Plus size={16} /> Add another output</button>
+      </Panel>
 
       {showNote
         ? <Panel title="Note"><div className="p-5"><input className={inputClass} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Anything unusual at this station?" aria-label="Note" autoFocus={!record?.note} /></div></Panel>
         : <button type="button" className="add-note" onClick={() => setShowNote(true)}><Plus size={15} /> Add a note</button>}
 
       <div className="save-bar">
-        {station.form === 'packaging'
-          ? <div className="live-balance is-neutral" role="status"><strong>{packCalc.acceptedUnits} accepted units</strong><span className="live-balance-total">{kg(packCalc.acceptedWeight)} nominal</span></div>
-          : <LiveBalance balance={balance} limit={limit} wasteLimit={store.thresholds.wastePct} />}
+        <LiveBalance balance={balance} limit={limit} wasteLimit={store.thresholds.wastePct} />
         {error && !changedElsewhere && <div className="save-bar-error" role="alert">{error}</div>}
         {changedElsewhere && (
           <div className="save-bar-error" role="alert">
@@ -227,7 +203,7 @@ function StationForm({ batch, station, record, independent, onSaved, onShowSaved
 }
 
 /** After saving: what happens next comes first, then the result in one line, then the details */
-function SavedView({ batch, station, record, independent, justSaved, onEdit }: { batch: Batch; station: Station; record: StationRecord; independent: boolean; justSaved: boolean; onEdit: () => void }) {
+function SavedView({ batch, station, record, independent, justSaved, onEdit }: { batch: Batch; station: Station; record: StationRecord; independent: boolean; justSaved: boolean; onEdit?: () => void }) {
   const store = useStore();
   const fresh = batchById(store, batch.id) ?? batch;
   const waiting = waitingAt(fresh);
@@ -286,7 +262,7 @@ function SavedView({ batch, station, record, independent, justSaved, onEdit }: {
           <LinkButton variant="secondary" href={`/production/batches/${fresh.id}`}>View batch {batchDisplayName(fresh)}</LinkButton>
           <LinkButton variant="ghost" href="/work">My work</LinkButton>
         </div>
-        {fresh.status !== 'completed' && <Button variant="secondary" onClick={onEdit}><Pencil size={14} /> Edit weights</Button>}
+        {fresh.status !== 'completed' && onEdit && <Button variant="secondary" onClick={onEdit}><Pencil size={14} /> Edit weights</Button>}
       </div>
     </>
   );
@@ -302,6 +278,9 @@ function CompletionScreen({ batch }: { batch: Batch }) {
   const totalMissing = round2(batch.records.reduce((sum, r) => sum + recordBalance(r).variance, 0));
   const pending = batch.records.filter((r) => !r.destinationsSaved);
   const finalUseful = batch.records.at(-1) ? recordBalance(batch.records.at(-1)!).useful : 0;
+  // Chocolate made at mixing, added up by type
+  const madeByType = new Map<string, number>();
+  for (const run of recordFor(batch, 'mixing')?.runs ?? []) madeByType.set(run.type, round2((madeByType.get(run.type) ?? 0) + run.made));
 
   return (
     <>
@@ -324,8 +303,9 @@ function CompletionScreen({ batch }: { batch: Batch }) {
       </Panel>
       <Panel title="Finished quantities">
         <div className="grid gap-2 p-5 text-[13px] sm:grid-cols-2">
-          <div className="flex justify-between"><span className="text-muted">Starting input</span><strong className="tabular-nums">{kg(batch.startInput.weight)}</strong></div>
-          <div className="flex justify-between"><span className="text-muted">Last good output</span><strong className="tabular-nums">{kg(finalUseful)}</strong></div>
+          {batch.startInput.weight > 0 && <div className="flex justify-between"><span className="text-muted">Starting input</span><strong className="tabular-nums">{kg(batch.startInput.weight)}</strong></div>}
+          {madeByType.size === 0 && <div className="flex justify-between"><span className="text-muted">Last good output</span><strong className="tabular-nums">{kg(finalUseful)}</strong></div>}
+          {Array.from(madeByType, ([type, made]) => <div key={type} className="flex justify-between"><span className="text-muted">{type} made</span><strong className="tabular-nums">{kg(made)}</strong></div>)}
           <div className="flex justify-between"><span className="text-muted">Total missing weight</span><strong className="tabular-nums">{kg(totalMissing)}</strong></div>
           {packaging && <div className="flex justify-between"><span className="text-muted">Accepted units</span><strong className="tabular-nums">{packaging.acceptedUnits} × {packaging.packGrams} g</strong></div>}
           {packaging && <div className="flex justify-between"><span className="text-muted">Rejected units</span><strong className="tabular-nums">{packaging.rejectedUnits}</strong></div>}

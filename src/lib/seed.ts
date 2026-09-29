@@ -1,6 +1,7 @@
+import { mixingTotals } from './mixing';
 import { stations } from './stations';
 import type {
-  Batch, Container, Destination, IdCounters, Lot, OutputCategory, OutputKind, PackSize, Product, Recipe, RecordedOutput, Route,
+  Batch, Container, Destination, IdCounters, Lot, Mixer, MixingRun, OutputCategory, OutputKind, PackSize, Product, Recipe, RecordedOutput, Route,
   StationId, StationRecord, Supplier, Thresholds, User, BusinessDetails,
 } from './types';
 
@@ -24,10 +25,14 @@ export interface State {
   workflowVersion: number;
   /** Highest batch and lot numbers ever issued, so none is issued twice (see nextBatchId() and nextLotId()) */
   idCounters: IdCounters;
+  /** What the mixer holds between runs, and the last run made on it */
+  mixer: Mixer;
+  /** Chocolate usually left in the mixer for the next run, kg; suggested on each run */
+  mixerKeepsKg: number;
 }
 
-/** 2: sorting, butter & powder and liquor as separate parts of the line */
-const WORKFLOW_VERSION = 2;
+/** 2: sorting, butter & powder and liquor as separate parts of the line. 3: chocolate made in mixing runs. */
+const WORKFLOW_VERSION = 3;
 
 const at = (day: string, time: string) => `${day}T${time}:00`;
 
@@ -46,9 +51,9 @@ function record(
 }
 
 export const routes: Route[] = [
-  { id: 'beans', name: 'Beans to liquor, butter and powder', stations: ['receiving', 'sorting', 'roasting', 'winnowing', 'pressing', 'sieving', 'filtering', 'powder-roasting', 'powder-crushing', 'grinding', 'completion'], startMaterial: 'Cocoa beans delivered', note: 'Nibs split at winnowing: some for liquor, some for butter, some for sale. Each portion follows its own stations.' },
-  { id: 'pressing', name: 'Nibs to butter and powder', stations: ['pressing', 'sieving', 'filtering', 'powder-roasting', 'powder-crushing', 'completion'], startMaterial: 'Nibs for butter', note: 'For stored nibs. Brown butter is sieved and filtered; the cake becomes powder.' },
-  { id: 'chocolate', name: 'Chocolate making', stations: ['mixing', 'refining', 'conching', 'tempering', 'moulding', 'packaging', 'completion'], startMaterial: 'Recipe ingredients', note: 'Starts from a recipe version; actual ingredient weights are recorded at mixing.' },
+  { id: 'beans', name: 'Beans to chocolate', stations: ['receiving', 'sorting', 'roasting', 'winnowing', 'pressing', 'sieving', 'filtering', 'powder-roasting', 'powder-crushing', 'grinding', 'mixing', 'completion'], startMaterial: 'Cocoa beans delivered', note: 'Nibs split at winnowing: some for liquor, some for butter, some for sale. The liquor and cocoa butter go on to mixing, where the chocolate types are made one after another.' },
+  { id: 'pressing', name: 'Nibs to butter and powder', stations: ['pressing', 'sieving', 'filtering', 'powder-roasting', 'powder-crushing', 'mixing', 'completion'], startMaterial: 'Nibs for butter', note: 'For stored nibs. Brown butter is sieved and filtered; the cake becomes powder. Cocoa butter can go on to mixing.' },
+  { id: 'chocolate', name: 'Chocolate from stored liquor and butter', stations: ['mixing', 'completion'], startMaterial: 'Stored liquor and cocoa butter', note: 'For liquor and cocoa butter already in store: the chocolate types are made at mixing from their lots.' },
 ];
 
 /** What chocolate is made from; each is the material name of the lots weighed in */
@@ -73,11 +78,11 @@ const chocolateTypes: [id: string, name: string, liquor: number, butter: number,
 export const products: Product[] = [
   { id: 'P-BEANS', name: 'Cocoa beans', prefix: 'CB', route: 'beans' },
   { id: 'P-LIQUOR', name: 'Stored nibs (butter & powder)', prefix: 'CL', route: 'pressing' },
-  ...chocolateTypes.map(([id, name]): Product => ({ id: `P-${id}`, name, prefix: 'CH', route: 'chocolate', recipeId: `R-${id}` })),
+  { id: 'P-CHOC', name: 'Chocolate from store', prefix: 'CH', route: 'chocolate' },
 ];
 
 export const recipes: Recipe[] = chocolateTypes.map(([id, name, liquor, butter, sugar, milk]) => ({
-  id: `R-${id}`, name, productId: `P-${id}`, currentVersion: 1,
+  id: `R-${id}`, name, currentVersion: 1,
   versions: [{
     version: 1, createdAt: at('2026-09-01', '08:00'), note: 'From the changeover recipes sheet.',
     // Ingredients at 0% are left out: white chocolate has no liquor, 100% Dark no sugar.
@@ -95,8 +100,8 @@ export const suppliers: Supplier[] = [
 export const users: User[] = [
   { id: 'U-AM', name: 'Alex Morgan', role: 'Production manager', initials: 'AM', email: 'alex.morgan@cocoafactory.example', access: 'manager', stations: [] },
   { id: 'U-AB', name: 'Ama Boateng', role: 'Bean processing operator', initials: 'AB', email: 'ama.boateng@cocoafactory.example', access: 'operator', stations: ['receiving', 'sorting', 'roasting', 'winnowing'] },
-  { id: 'U-KM', name: 'Kwame Mensah', role: 'Butter, liquor & chocolate maker', initials: 'KM', email: 'kwame.mensah@cocoafactory.example', access: 'operator', stations: ['pressing', 'sieving', 'filtering', 'powder-roasting', 'powder-crushing', 'grinding', 'mixing', 'refining', 'conching', 'tempering'] },
-  { id: 'U-LF', name: 'Lena Fischer', role: 'Packaging lead', initials: 'LF', email: 'lena.fischer@cocoafactory.example', access: 'operator', stations: ['moulding', 'packaging', 'completion'] },
+  { id: 'U-KM', name: 'Kwame Mensah', role: 'Butter, liquor & chocolate maker', initials: 'KM', email: 'kwame.mensah@cocoafactory.example', access: 'operator', stations: ['pressing', 'sieving', 'filtering', 'powder-roasting', 'powder-crushing', 'grinding', 'mixing'] },
+  { id: 'U-LF', name: 'Lena Fischer', role: 'Packaging lead', initials: 'LF', email: 'lena.fischer@cocoafactory.example', access: 'operator', stations: ['packaging', 'completion'] },
   { id: 'U-SO', name: 'Sam Osei', role: 'Quality', initials: 'SO', email: 'sam.osei@cocoafactory.example', access: 'manager', stations: [] },
 ];
 
@@ -133,6 +138,31 @@ export const thresholds: Thresholds = {
 const slugOf = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 export const outputCategories: OutputCategory[] = stations.flatMap((s) => s.rows.map((row) => ({ ...row, id: `${s.id}:${slugOf(row.name)}`, station: s.id })));
+
+/**
+ * CH-017 made two types on the mixer: 70% Dark from empty, then 85% Dark on top of the 10 kg of 70% it
+ * kept, as in the changeover sheet (liquor 30 − 6 = 24, butter 4 − 1 = 3, sugar 6 − 3 = 3 to add).
+ */
+const ch017Run70: MixingRun = {
+  id: 'run-ch017-1', recipeId: 'R-70', type: '70% Dark', recipeVersion: 1, toRun: 100,
+  ingredients: [{ name: 'Liquor', expected: 60, actual: 60.1, lotId: 'LIQ-024' }, { name: 'Cocoa butter', expected: 10, actual: 9.9, lotId: 'BUT-019' }, { name: 'Sugar', expected: 30, actual: 30, lotId: 'SUG-031' }],
+  made: 90, kept: 10, lotId: 'D70-0001', recordedAt: at('2026-09-15', '09:10'), recordedBy: 'U-KM',
+};
+const ch017Run85: MixingRun = {
+  id: 'run-ch017-2', recipeId: 'R-85', type: '85% Dark', recipeVersion: 1, toRun: 30,
+  held: { kg: 10, type: '70% Dark', recipeId: 'R-70', recipeVersion: 1, batchId: 'CH-017', runId: 'run-ch017-1', lotId: 'D70-0001' },
+  ingredients: [{ name: 'Liquor', expected: 24, actual: 24, lotId: 'LIQ-023' }, { name: 'Cocoa butter', expected: 3, actual: 3, lotId: 'BUT-019' }, { name: 'Sugar', expected: 3, actual: 3, lotId: 'SUG-031' }],
+  made: 29.8, kept: 10, lotId: 'D85-0001', recordedAt: at('2026-09-15', '12:40'), recordedBy: 'U-KM',
+};
+
+/** A finished mixing record; its input and outputs follow from the runs */
+function mixingRecord(runs: MixingRun[], recordedAt: string): StationRecord {
+  return {
+    id: `mixing-${runs[0].recordedAt}`, station: 'mixing', inputMaterial: 'Chocolate ingredients', ...mixingTotals(runs),
+    inputLotIds: Array.from(new Set(runs.flatMap((r) => r.ingredients.flatMap((i) => (i.lotId ? [i.lotId] : []))))),
+    runs, recordedAt, recordedBy: 'U-KM', destinationsSaved: true,
+  };
+}
 
 const batches: Batch[] = [
   {
@@ -180,46 +210,26 @@ const batches: Batch[] = [
     records: [], holds: [], corrections: [],
   },
   {
-    id: 'CH-017', productId: 'P-70', product: '70% Dark', route: 'chocolate', startedAt: at('2026-09-13', '08:30'), status: 'hold', nextStation: 'conching',
-    startInput: { material: 'Recipe ingredients', weight: 100, lotIds: ['LIQ-023', 'BUT-019', 'SUG-031'] },
-    recipeId: 'R-70', recipeVersion: 1,
-    ingredients: [
-      { name: 'Liquor', expected: 60, actual: 60, lotId: 'LIQ-023' }, { name: 'Cocoa butter', expected: 10, actual: 10, lotId: 'BUT-019' },
-      { name: 'Sugar', expected: 30, actual: 30, lotId: 'SUG-031' },
-    ],
-    records: [
-      record('mixing', 'Liquor + butter + sugar', 100, ['LIQ-023', 'BUT-019', 'SUG-031'], [['Chocolate mix', 'useful', 99.1, 'continue:refining'], ['Machine residue', 'byproduct', 0.6, 'rework', 'REW-017'], ['Waste', 'waste', 0.2, 'waste']], at('2026-09-13', '09:20'), 'U-KM'),
-      record('refining', 'Chocolate mix', 99.1, [], [['Refined chocolate', 'useful', 95.2, 'continue:conching'], ['Machine residue', 'byproduct', 0.4, 'rework', 'REW-017B'], ['Waste', 'waste', 0.3, 'waste']], at('2026-09-13', '13:10'), 'U-KM'),
-    ],
-    holds: [{ id: 'h-1', reason: 'Refining variance above limit. Waiting for quality check before conching.', placedAt: at('2026-09-13', '13:25'), placedBy: 'U-SO', station: 'conching' }],
-    corrections: [],
+    id: 'CH-017', productId: 'P-CHOC', product: 'Chocolate from store', route: 'chocolate', startedAt: at('2026-09-15', '08:00'), status: 'completed', nextStation: null,
+    startInput: { material: 'Stored liquor and cocoa butter', weight: 0, lotIds: [] }, completedAt: at('2026-09-15', '15:30'),
+    records: [mixingRecord([ch017Run70, ch017Run85], at('2026-09-15', '12:40'))],
+    holds: [], corrections: [],
   },
   {
-    id: 'CH-018', productId: 'P-70', product: '70% Dark', route: 'chocolate', startedAt: at('2026-09-14', '06:50'), status: 'active', nextStation: 'moulding',
-    startInput: { material: 'Recipe ingredients', weight: 100.1, lotIds: ['LIQ-024', 'BUT-019', 'SUG-031'] },
-    recipeId: 'R-70', recipeVersion: 1,
-    ingredients: [
-      { name: 'Liquor', expected: 60, actual: 60.1, lotId: 'LIQ-024' }, { name: 'Cocoa butter', expected: 10, actual: 9.9, lotId: 'BUT-019' },
-      { name: 'Sugar', expected: 30, actual: 30.1, lotId: 'SUG-031' },
-    ],
-    records: [
-      record('mixing', 'Liquor + butter + sugar', 100.1, ['LIQ-024', 'BUT-019', 'SUG-031'], [['Chocolate mix', 'useful', 99.2, 'continue:refining'], ['Machine residue', 'byproduct', 0.5, 'rework', 'REW-018'], ['Waste', 'waste', 0.1, 'waste']], at('2026-09-14', '07:40'), 'U-KM'),
-      record('refining', 'Chocolate mix', 99.2, [], [['Refined chocolate', 'useful', 98.6, 'continue:conching'], ['Machine residue', 'byproduct', 0.3, 'waste'], ['Waste', 'waste', 0.1, 'waste']], at('2026-09-14', '09:15'), 'U-KM'),
-      record('conching', 'Refined chocolate', 98.6, [], [['Conched chocolate', 'useful', 97.9, 'continue:tempering'], ['Machine residue', 'byproduct', 0.4, 'waste'], ['Waste', 'waste', 0.1, 'waste']], at('2026-09-14', '11:05'), 'U-KM'),
-      record('tempering', 'Conched chocolate', 97.9, [], [['Tempered chocolate', 'useful', 96.8, 'continue:moulding'], ['Machine residue', 'byproduct', 0.6, 'waste'], ['Waste', 'waste', 0.2, 'waste']], at('2026-09-14', '12:10'), 'U-KM'),
-    ],
-    holds: [], corrections: [],
+    id: 'CH-018', productId: 'P-CHOC', product: 'Chocolate from store', route: 'chocolate', startedAt: at('2026-09-16', '07:30'), status: 'active', nextStation: 'mixing',
+    startInput: { material: 'Stored liquor and cocoa butter', weight: 0, lotIds: [] },
+    records: [], holds: [], corrections: [],
   },
 ];
 
 const lots: Lot[] = [
   { id: 'BEAN-0905', material: 'Cocoa beans', category: 'Raw material', received: 420, available: 70, unit: 'kg', source: { type: 'supplier', supplierId: 'S-KUAPA', reference: 'DN-2211' }, receivedAt: at('2026-09-05', '10:00'), uses: [{ batchId: 'CB-023', quantity: 200, station: 'receiving', at: at('2026-09-10', '07:30') }, { batchId: 'CB-024', quantity: 150, station: 'receiving', at: at('2026-09-13', '07:20') }] },
   { id: 'BEAN-0912', material: 'Cocoa beans', category: 'Raw material', received: 300, available: 200, unit: 'kg', source: { type: 'supplier', supplierId: 'S-KUAPA', reference: 'DN-2238' }, receivedAt: at('2026-09-12', '09:15'), uses: [{ batchId: 'CB-025', quantity: 100, station: 'receiving', at: at('2026-09-14', '07:15') }] },
-  { id: 'SUG-031', material: 'Sugar', category: 'Raw material', received: 500, available: 439.9, unit: 'kg', source: { type: 'supplier', supplierId: 'S-MZANSI', reference: 'INV-88120' }, receivedAt: at('2026-09-01', '13:00'), uses: [{ batchId: 'CH-017', quantity: 30, station: 'mixing', at: at('2026-09-13', '08:30') }, { batchId: 'CH-018', quantity: 30.1, station: 'mixing', at: at('2026-09-14', '06:50') }] },
-  { id: 'BUT-019', material: 'Cocoa butter', category: 'Raw material', received: 80, available: 60.1, unit: 'kg', source: { type: 'supplier', supplierId: 'S-GOLDEN', reference: 'GB-4471' }, receivedAt: at('2026-08-28', '11:20'), uses: [{ batchId: 'CH-017', quantity: 10, station: 'mixing', at: at('2026-09-13', '08:30') }, { batchId: 'CH-018', quantity: 9.9, station: 'mixing', at: at('2026-09-14', '06:50') }] },
+  { id: 'SUG-031', material: 'Sugar', category: 'Raw material', received: 500, available: 467, unit: 'kg', source: { type: 'supplier', supplierId: 'S-MZANSI', reference: 'INV-88120' }, receivedAt: at('2026-09-01', '13:00'), uses: [{ batchId: 'CH-017', quantity: 30, station: 'mixing', at: at('2026-09-15', '09:10'), runId: 'run-ch017-1' }, { batchId: 'CH-017', quantity: 3, station: 'mixing', at: at('2026-09-15', '12:40'), runId: 'run-ch017-2' }] },
+  { id: 'BUT-019', material: 'Cocoa butter', category: 'Raw material', received: 80, available: 67.1, unit: 'kg', source: { type: 'supplier', supplierId: 'S-GOLDEN', reference: 'GB-4471' }, receivedAt: at('2026-08-28', '11:20'), uses: [{ batchId: 'CH-017', quantity: 9.9, station: 'mixing', at: at('2026-09-15', '09:10'), runId: 'run-ch017-1' }, { batchId: 'CH-017', quantity: 3, station: 'mixing', at: at('2026-09-15', '12:40'), runId: 'run-ch017-2' }] },
     { id: 'MLK-002', material: 'Milk powder', category: 'Raw material', received: 60, available: 38, unit: 'kg', source: { type: 'supplier', supplierId: 'S-GOLDEN', reference: 'GB-4390' }, receivedAt: at('2026-08-14', '10:00'), uses: [] },
-  { id: 'LIQ-023', material: 'Liquor', category: 'Intermediate', received: 99.4, available: 39.4, unit: 'kg', source: { type: 'batch', batchId: 'CB-023', station: 'grinding' }, receivedAt: at('2026-09-10', '16:00'), uses: [{ batchId: 'CH-017', quantity: 60, station: 'mixing', at: at('2026-09-13', '08:30') }] },
-  { id: 'LIQ-024', material: 'Liquor', category: 'Intermediate', received: 79.6, available: 19.5, unit: 'kg', source: { type: 'batch', batchId: 'CB-024', station: 'grinding' }, receivedAt: at('2026-09-13', '16:45'), uses: [{ batchId: 'CH-018', quantity: 60.1, station: 'mixing', at: at('2026-09-14', '06:50') }] },
+  { id: 'LIQ-023', material: 'Liquor', category: 'Intermediate', received: 99.4, available: 75.4, unit: 'kg', source: { type: 'batch', batchId: 'CB-023', station: 'grinding' }, receivedAt: at('2026-09-10', '16:00'), uses: [{ batchId: 'CH-017', quantity: 24, station: 'mixing', at: at('2026-09-15', '12:40'), runId: 'run-ch017-2' }] },
+  { id: 'LIQ-024', material: 'Liquor', category: 'Intermediate', received: 79.6, available: 19.5, unit: 'kg', source: { type: 'batch', batchId: 'CB-024', station: 'grinding' }, receivedAt: at('2026-09-13', '16:45'), uses: [{ batchId: 'CH-017', quantity: 60.1, station: 'mixing', at: at('2026-09-15', '09:10'), runId: 'run-ch017-1' }] },
   { id: 'WRB-023', material: 'Whole roasted beans', category: 'Finished goods', received: 3, available: 3, unit: 'kg', source: { type: 'batch', batchId: 'CB-023', station: 'roasting' }, receivedAt: at('2026-09-10', '10:10'), uses: [] },
   { id: 'WRB-024', material: 'Whole roasted beans', category: 'Finished goods', received: 2, available: 2, unit: 'kg', source: { type: 'batch', batchId: 'CB-024', station: 'roasting' }, receivedAt: at('2026-09-13', '09:50'), uses: [] },
   { id: 'NIB-023', material: 'Nibs for butter', category: 'Intermediate', received: 40, available: 0, unit: 'kg', source: { type: 'batch', batchId: 'CB-023', station: 'winnowing' }, receivedAt: at('2026-09-10', '12:30'), uses: [{ batchId: 'CL-007', quantity: 40, station: 'pressing', at: at('2026-09-14', '08:00') }] },
@@ -229,9 +239,8 @@ const lots: Lot[] = [
   { id: 'BUT-024', material: 'Butter for sale', category: 'Finished goods', received: 2.5, available: 2.5, unit: 'kg', source: { type: 'batch', batchId: 'CB-024', station: 'filtering' }, receivedAt: at('2026-09-13', '14:30'), uses: [] },
   { id: 'BUT-024B', material: 'Cocoa butter', category: 'Intermediate', received: 5.7, available: 5.7, unit: 'kg', source: { type: 'batch', batchId: 'CB-024', station: 'filtering' }, receivedAt: at('2026-09-13', '14:30'), uses: [] },
   { id: 'PWD-024', material: 'Fine cocoa powder', category: 'Finished goods', received: 13.2, available: 13.2, unit: 'kg', source: { type: 'batch', batchId: 'CB-024', station: 'powder-crushing' }, receivedAt: at('2026-09-13', '15:20'), uses: [] },
-  { id: 'REW-017', material: 'Machine residue', category: 'Rework', received: 0.6, available: 0.6, unit: 'kg', source: { type: 'batch', batchId: 'CH-017', station: 'mixing' }, receivedAt: at('2026-09-13', '09:20'), uses: [] },
-  { id: 'REW-017B', material: 'Machine residue', category: 'Rework', received: 0.4, available: 0.4, unit: 'kg', source: { type: 'batch', batchId: 'CH-017', station: 'refining' }, receivedAt: at('2026-09-13', '13:10'), uses: [] },
-  { id: 'REW-018', material: 'Machine residue', category: 'Rework', received: 0.5, available: 0.5, unit: 'kg', source: { type: 'batch', batchId: 'CH-018', station: 'mixing' }, receivedAt: at('2026-09-14', '07:40'), uses: [] },
+  { id: 'D70-0001', material: '70% Dark', category: 'Intermediate', received: 90, available: 90, unit: 'kg', source: { type: 'batch', batchId: 'CH-017', station: 'mixing' }, receivedAt: at('2026-09-15', '09:10'), uses: [], chocolate: { type: '70% Dark', recipeId: 'R-70', recipeVersion: 1, runId: 'run-ch017-1' } },
+  { id: 'D85-0001', material: '85% Dark', category: 'Intermediate', received: 29.8, available: 29.8, unit: 'kg', source: { type: 'batch', batchId: 'CH-017', station: 'mixing' }, receivedAt: at('2026-09-15', '12:40'), uses: [], chocolate: { type: '85% Dark', recipeId: 'R-85', recipeVersion: 1, runId: 'run-ch017-2' } },
 ];
 
 const business: BusinessDetails = {
@@ -248,10 +257,13 @@ export function seedState(): State {
     thresholds, outputCategories, business, containers, idleMinutes: 10, workflowVersion: WORKFLOW_VERSION,
     // Empty: numbers continue from the sample IDs, and applyCommand() fills the counters in.
     idCounters: { batches: {}, lots: {} },
+    // CH-017's last run left 10 kg of 85% Dark in the mixer.
+    mixer: { holds: { kg: 10, type: '85% Dark', recipeId: 'R-85', recipeVersion: 1, batchId: 'CH-017', runId: 'run-ch017-2', lotId: 'D85-0001' }, lastRunId: 'run-ch017-2' },
+    mixerKeepsKg: 10,
   });
 }
 
 /** A real factory's first start: the line configuration only. People, suppliers, contact details and records are added by the factory. */
 export function configState(): State {
-  return { ...seedState(), batches: [], lots: [], suppliers: [], users: [], business: { name: business.name, address: '', phone: '', email: '' } };
+  return { ...seedState(), batches: [], lots: [], suppliers: [], users: [], business: { name: business.name, address: '', phone: '', email: '' }, mixer: { holds: null, lastRunId: null } };
 }

@@ -7,7 +7,7 @@ import { Badge, Button, Empty, Input, LinkButton, PageHeader, Panel } from '@/co
 import { batchDisplayName, nextInput, stationQueue } from '@/lib/derive';
 import { kg } from '@/lib/format';
 import { useStore } from '@/lib/store';
-import { stationName, stations } from '@/lib/stations';
+import { lineStations, stationName } from '@/lib/stations';
 
 /** Each person's home: the batches waiting at their own stations, one tap from recording */
 export default function WorkPage() {
@@ -17,7 +17,7 @@ export default function WorkPage() {
   const user = store.users.find((u) => u.id === store.currentUserId);
   const mine = user?.stations ?? [];
   const everything = mine.length === 0;
-  const queues = stations
+  const queues = lineStations
     .filter((s) => (everything ? true : mine.includes(s.id)))
     .map((station) => ({ station, ...stationQueue(store, station.id) }));
   const busy = queues.filter((q) => q.ready.length > 0 || q.held.length > 0);
@@ -55,7 +55,7 @@ export default function WorkPage() {
                   <div className="text-[13px] text-muted">{batch.name ? `ID ${batch.id} · ` : ''}{batch.product}</div>
                   <div className="mt-1 text-[14px]">
                     {station.form === 'completion' ? `${batch.records.length} stations recorded · ready to close`
-                      : input.weight > 0 ? <><strong className="tabular-nums">{kg(input.weight)}</strong> {input.material.toLowerCase()} ready</> : 'Weigh the input to start'}
+                      : input.weight > 0 ? <><strong className="tabular-nums">{kg(input.weight)}</strong> {input.material.toLowerCase()} ready</> : station.form === 'mixing' ? 'Mix from liquor and cocoa butter in store' : 'Weigh the input to start'}
                   </div>
                 </div>
                 <LinkButton href={`/production/batches/${batch.id}/record/${station.id}`} aria-label={`Record ${station.name} for ${batchDisplayName(batch)}`}>

@@ -10,10 +10,8 @@ import { batchDisplayName, recordBalance, userName } from '@/lib/derive';
 import { dateTime, kg, num, pct } from '@/lib/format';
 import type { ReportExportSnapshot } from '@/lib/report-export';
 import { useStore } from '@/lib/store';
-import { stationName, stations } from '@/lib/stations';
+import { isWeighed, stationName, stations } from '@/lib/stations';
 
-// Stages with a weigh-in, in line order (completion has none)
-const gridStations = stations.filter((s) => s.form !== 'completion');
 
 const sections = [
   { id: 'losses', label: 'Weight loss by process', href: '/reports/losses' },
@@ -65,9 +63,11 @@ export default function ReportsPage() {
   const withRecords = reportBatches.filter((b) => b.records.length > 0).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   const [batchId, setBatchId] = useState(withRecords[0]?.id ?? '');
   const current = sections.find((s) => s.id === section) ?? sections[0];
+  // Stages with a weigh-in, in line order; retired stations only for older batches that used them
+  const gridStations = stations.filter((s) => s.form !== 'completion' && (!s.retired || reportBatches.some((b) => b.records.some((r) => r.station === s.id))));
 
   // Loss at each process, added up over every batch that passed through it.
-  const byStation = stations.filter((s) => s.form === 'weights').map((station) => {
+  const byStation = stations.filter(isWeighed).map((station) => {
     const balances = reportBatches.flatMap((b) => b.records.filter((r) => r.station === station.id).map(recordBalance));
     const sum = (key: 'input' | 'useful' | 'byproduct' | 'waste' | 'variance') => round2(balances.reduce((t, b) => t + b[key], 0));
     const input = sum('input'), useful = sum('useful');
@@ -102,7 +102,7 @@ export default function ReportsPage() {
     const filteredRecords = filteredBatches.flatMap((batch) => batch.records.map((record) => ({ batch, record, balance: recordBalance(record) })));
 
     if (type === 'losses') {
-      const processRows = stations.filter((station) => station.form === 'weights').map((station) => {
+      const processRows = stations.filter(isWeighed).map((station) => {
         const balances = filteredRecords.filter(({ record }) => record.station === station.id).map(({ balance }) => balance);
         const sum = (key: 'input' | 'useful' | 'byproduct' | 'waste' | 'variance') => round2(balances.reduce((total, balance) => total + balance[key], 0));
         const input = sum('input');
@@ -321,7 +321,7 @@ export default function ReportsPage() {
             <Stat label="By-products" value={kg(round2(totals.byproduct))} />
             <Stat label="Unaccounted variance" value={kg(round2(totals.variance))} hint={pct(totals.input ? round2((totals.variance / totals.input) * 100) : 0)} tone={totals.variance > 0 ? 'warn' : undefined} />
           </div>
-          <Panel title="By station and batch" subtitle="Variance is what the scale could not explain. It is never counted as waste." action={<Select value={stationFilter} onChange={(e) => setStationFilter(e.target.value)} aria-label="Station filter" className="w-auto"><option value="all">All stations</option>{stations.filter((s) => s.form !== 'completion').map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select>}>
+          <Panel title="By station and batch" subtitle="Variance is what the scale could not explain. It is never counted as waste." action={<Select value={stationFilter} onChange={(e) => setStationFilter(e.target.value)} aria-label="Station filter" className="w-auto"><option value="all">All stations</option>{gridStations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select>}>
             {rows.length === 0 ? <Empty>Nothing recorded yet.</Empty> : (
               <Table head={['Batch', 'Station', 'Input', 'Useful', 'Waste', 'By-product', 'Variance', 'Variance %', 'Limit']}>
                 {rows.map(({ batch, record, balance, limit }) => (

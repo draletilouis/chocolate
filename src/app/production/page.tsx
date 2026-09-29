@@ -5,7 +5,7 @@ import { ArrowRight, Plus } from 'lucide-react';
 import { Badge, Empty, LinkButton, PageHeader, Panel, RowLink } from '@/components/ui';
 import { activeBatches, batchAlerts, batchDisplayName, currentStation, stationQueue, waitingAt } from '@/lib/derive';
 import { useStore } from '@/lib/store';
-import { stationGroups, stationName, stations } from '@/lib/stations';
+import { lineStations, stationGroups, stationName } from '@/lib/stations';
 
 export default function ProductionPage() {
   const store = useStore();
@@ -43,7 +43,7 @@ export default function ProductionPage() {
 
       <Panel title="Parts of the line" subtitle="Each part has its own page with its stations. Pick yours.">
         {stationGroups.map((group, index) => {
-          const partStations = stations.filter((s) => s.group === group.name);
+          const partStations = lineStations.filter((s) => s.group === group.name);
           const waiting = partStations.reduce((n, s) => n + stationQueue(store, s.id).ready.length, 0);
           return (
             <RowLink key={group.slug} href={`/production/parts/${group.slug}`}>

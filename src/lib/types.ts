@@ -28,12 +28,17 @@ export interface Station {
   rows: OutputRowDef[];
   /** Stations a carried-forward output can continue to (first is the default) */
   next: StationId[];
-  form: 'weights' | 'packaging' | 'completion';
+  form: 'weights' | 'mixing' | 'packaging' | 'completion';
   help: string;
+  /** No longer part of the line; kept so older records still show */
+  retired?: boolean;
 }
 
-/** Where a recorded output goes after the station is saved. 'sale' stores it as a finished-goods lot. */
-export type Destination = `continue:${StationId}` | 'stock' | 'sale' | 'rework' | 'waste';
+/**
+ * Where a recorded output goes after the station is saved. 'sale' stores it as a finished-goods lot.
+ * 'mixer' is chocolate left in the mixer for the next run; only mixing records it.
+ */
+export type Destination = `continue:${StationId}` | 'stock' | 'sale' | 'rework' | 'waste' | 'mixer';
 
 /** A container weighed together with the material. Its empty weight (tare) is subtracted from the scale reading. */
 export interface Container { id: string; name: string; tare: number }
@@ -88,6 +93,8 @@ export interface StationRecord {
   inputLotIds: string[];
   outputs: RecordedOutput[];
   packaging?: PackagingResult;
+  /** Mixing: the chocolate types made, one run after another */
+  runs?: MixingRun[];
   recordedAt: string;
   recordedBy: string;
   /** New on every save, so two saves of the same station in the same second are still told apart */
@@ -152,7 +159,14 @@ export type LotSource =
   | { type: 'supplier'; supplierId: string; reference?: string }
   | { type: 'batch'; batchId: string; station: StationId };
 
-export interface LotUse { batchId: string; quantity: number; station: StationId; at: string }
+export interface LotUse {
+  batchId: string;
+  quantity: number;
+  station: StationId;
+  at: string;
+  /** The mixing run that weighed it in, so the run can be undone */
+  runId?: string;
+}
 
 export type LotCategory = 'Raw material' | 'Intermediate' | 'By-product' | 'Rework' | 'Finished goods';
 
@@ -166,11 +180,45 @@ export interface Lot {
   source: LotSource;
   receivedAt: string;
   uses: LotUse[];
+  /** Chocolate made at mixing: its type and the run that made it */
+  chocolate?: { type: string; recipeId: string; recipeVersion: number; runId: string };
 }
 
 export interface RecipeIngredient { name: string; percent: number }
 export interface RecipeVersion { version: number; createdAt: string; ingredients: RecipeIngredient[]; note?: string }
-export interface Recipe { id: string; name: string; productId: string; currentVersion: number; versions: RecipeVersion[] }
+/** A chocolate type and its recipe versions. Older data linked each recipe to a product. */
+export interface Recipe { id: string; name: string; productId?: string; currentVersion: number; versions: RecipeVersion[] }
+
+/** Chocolate the mixer holds between runs; the next run is made on top of it */
+export interface MixerContents { kg: number; type: string; recipeId: string; recipeVersion: number; batchId: string; runId: string; lotId: string }
+
+/** The mixer: what it holds now, and the last run, which is the only one that can be undone */
+export interface Mixer { holds: MixerContents | null; lastRunId: string | null }
+
+/** One ingredient weighed into a mixing run: from the batch's own liquor or cocoa butter, or from a lot */
+export interface RunIngredient { name: string; expected: number; actual: number; lotId?: string }
+
+/** One chocolate type made at mixing, on top of whatever the mixer still held */
+export interface MixingRun {
+  id: string;
+  recipeId: string;
+  type: string;
+  recipeVersion: number;
+  /** Fresh ingredients planned, kg: the sheet's "To run" */
+  toRun: number;
+  /** What the mixer held when the run started */
+  held?: MixerContents;
+  ingredients: RunIngredient[];
+  /** Chocolate taken out, kg */
+  made: number;
+  /** Chocolate left in the mixer for the next run, kg */
+  kept: number;
+  lotId: string;
+  /** The lot the kept chocolate became when it was taken out of the mixer instead of used by the next run */
+  takenOut?: string;
+  recordedAt: string;
+  recordedBy: string;
+}
 
 export interface Product {
   id: string;
