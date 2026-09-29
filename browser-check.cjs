@@ -5,7 +5,7 @@ const { chromium } = require('@playwright/test');
 const BASE = 'http://127.0.0.1:3100';
 const SCREENSHOT_DIR = 'C:/Users/hp/Documents/Codex/2026-09-14/we/work/chocolate-checks';
 const STATIONS = ['receiving', 'sorting', 'roasting', 'winnowing', 'pressing', 'sieving', 'filtering', 'powder-roasting', 'powder-crushing', 'grinding', 'mixing', 'refining', 'conching', 'tempering', 'moulding', 'packaging', 'completion'];
-const STATION_NAMES = { sieving: 'Butter sieving', filtering: 'Filter pan', 'powder-roasting': 'Powder roasting', 'powder-crushing': 'Powder crushing', grinding: 'Liquor grinding' };
+const STATION_NAMES = { sieving: 'Butter sieving', filtering: 'Filter pan', 'powder-roasting': 'Powder roasting', 'powder-crushing': 'Powder crushing', grinding: 'Liquor grinding', packaging: 'Pieces' };
 const stationLabel = (id) => STATION_NAMES[id] ?? id.charAt(0).toUpperCase() + id.slice(1);
 const checked = [];
 const ok = (label) => checked.push(label);
@@ -67,7 +67,7 @@ async function expectText(page, text) {
 
   // Sidebar: six destinations, active state, counts, no "All screens".
   const nav = page.getByRole('navigation', { name: 'Main navigation' });
-  for (const label of ['Overview', 'Production line', 'Materials', 'Recipes', 'Reports', 'Setup']) await nav.getByRole('link', { name: label }).waitFor();
+  for (const label of ['Overview', 'Production line', 'Materials', 'Chocolate types', 'Reports', 'Setup']) await nav.getByRole('link', { name: label }).waitFor();
   if (await nav.getByText('All screens').count()) throw new Error('"All screens" link still present');
   const active = await nav.locator('[aria-current="page"]').innerText();
   if (!active.includes('Production line')) throw new Error(`Expected Production line active, got ${active}`);
@@ -82,7 +82,7 @@ async function expectText(page, text) {
   ok('active batch rows');
 
   // Each part of the line has its own sidebar entry and page; the production page itself stays short.
-  const PARTS = { 'bean-processing': ['receiving', 'sorting', 'roasting', 'winnowing'], 'butter-powder': ['pressing', 'sieving', 'filtering', 'powder-roasting', 'powder-crushing'], liquor: ['grinding'], 'chocolate-making': ['mixing', 'refining', 'conching', 'tempering'], finishing: ['moulding', 'packaging', 'completion'] };
+  const PARTS = { 'bean-processing': ['receiving', 'sorting', 'roasting', 'winnowing'], 'butter-powder': ['pressing', 'sieving', 'filtering', 'powder-roasting', 'powder-crushing'], liquor: ['grinding'], 'chocolate-making': ['mixing'], finishing: ['packaging', 'completion'] };
   const PART_LABELS = { 'bean-processing': 'Bean processing', 'butter-powder': 'Butter & powder', liquor: 'Liquor', 'chocolate-making': 'Chocolate making', finishing: 'Finishing' };
   const sidebarParts = page.getByRole('group', { name: 'Parts of the production line' });
   for (const [slug, ids] of Object.entries(PARTS)) {
@@ -106,7 +106,7 @@ async function expectText(page, text) {
   await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-part-butter-powder.png`, fullPage: true });
   await page.goto(`${BASE}/production`);
   if (await page.getByRole('link', { name: /Open station/ }).count()) throw new Error('Production page should not list stations (long scroll)');
-  ok('five parts as sidebar entries with their own pages; all 17 stations open their queues');
+  ok('five parts as sidebar entries with their own pages; all 13 stations of the line open their queues');
 
   // Winnowing on one screen: input already filled in, each output shows where it goes, one Save.
   await page.goto(`${BASE}/production/stations/winnowing`);
@@ -161,19 +161,39 @@ async function expectText(page, text) {
   await expectText(page, '50.00 kg'); // only the nibs for liquor became the grinding input
   ok('pressing with custom output row; only continued output becomes the next input');
 
-  // Liquor grinding: weighed after fine grinding, labelled with the batch name and supplier.
+  // Liquor grinding: weighed after fine grinding, labelled with the batch name and supplier, and sent on to mixing.
+  if ((await page.getByLabel('Liquor destination').inputValue()) !== 'continue:mixing') throw new Error('Liquor should go on to mixing by default');
   await page.getByRole('spinbutton', { name: 'Liquor', exact: true }).fill('49.8');
   await page.getByRole('button', { name: 'Save liquor grinding' }).click();
   await page.getByText('Liquor grinding saved.').waitFor();
-  await page.getByText('Nothing else is waiting. Complete the batch.').waitFor();
+  await page.getByText('Sent on: 49.80 kg liquor to mixing.').waitFor();
   await expectText(page, 'Liquor label');
   await expectText(page, 'Kuapa Kokoo');
-  ok('liquor grinding stores labelled liquor; label carries the batch and supplier');
+  ok('liquor grinding labels the liquor with the batch and supplier, and sends it on to mixing');
+
+  // Mixing, the changeover sheet's example: 30 kg of 70% Dark on the 10 kg of 85% Dark CH-017 left in the mixer.
+  await page.getByRole('link', { name: /Record mixing/ }).click();
+  await page.waitForURL('**/CB-025/record/mixing');
+  await expectText(page, '49.80 kg left');
+  await expectText(page, 'of 85% Dark');
+  await page.getByLabel('Chocolate type', { exact: true }).selectOption({ label: '70% Dark' });
+  await page.getByLabel('Kg to run').fill('30');
+  for (const t of ['Add 16.50 kg', 'Add 3.00 kg', 'Add 10.50 kg', 'Everything accounted for']) await expectText(page, t);
+  if ((await page.getByLabel('Liquor from').inputValue()) !== '') throw new Error('Liquor should come from the batch itself');
+  await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-mixing-run.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Save 70% Dark' }).click();
+  await expectText(page, '70% Dark saved: 30.00 kg made as lot D70-0002, 10.00 kg kept in the mixer.');
+  await expectText(page, '33.30 kg left');
+  await page.getByRole('button', { name: 'Finish mixing' }).click();
+  await page.getByRole('button', { name: 'Finish mixing' }).last().click();
+  await expectText(page, 'Mixing finished.');
+  await expectText(page, 'kept in store as LIQ-0025');
+  ok('mixing: 70% Dark on 10 kg of 85% adds 16.5 liquor, 3 butter, 10.5 sugar as in the sheet; unused liquor kept in store');
 
   // One step list with the weights behind each step, and corrections next to the weight.
   await page.goto(`${BASE}/production/batches/CB-025`);
   await page.getByRole('heading', { name: 'Steps' }).waitFor();
-  for (const t of ['Receiving', 'Sorting', 'Roasting', 'Winnowing', 'Pressing', 'Liquor grinding', 'missing 0.50 kg (0.55%)', 'Completion']) await expectText(page, t);
+  for (const t of ['Receiving', 'Sorting', 'Roasting', 'Winnowing', 'Pressing', 'Liquor grinding', 'Mixing', 'missing 0.50 kg (0.55%)', 'Completion']) await expectText(page, t);
   await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-batch-timeline.png`, fullPage: true });
   await page.getByRole('button', { name: 'Details', exact: true }).nth(3).click();
   await expectText(page, 'For sale');
@@ -196,33 +216,48 @@ async function expectText(page, text) {
   await expectText(page, 'Completed');
   ok('batch steps, inline correction, hold/release, completion');
 
-  // The step list exposes later stations for early entry.
-  await page.goto(`${BASE}/production/batches/CH-018`);
-  await page.getByRole('heading', { name: 'Steps' }).waitFor();
-  await page.getByRole('link', { name: /Enter Packaging weights early for CH-018/ }).waitFor();
-
-  // Chocolate finishing: moulding → packaging → completion.
-  await page.goto(`${BASE}/production/stations/moulding`);
+  // Chocolate from store: CH-018 mixes from lots. The 70% Dark CB-025 left must come out before 100% Dark.
+  await page.goto(`${BASE}/production/stations/mixing`);
   await page.getByRole('link', { name: /CH-018/ }).click();
-  await page.getByRole('spinbutton', { name: 'Finished chocolate', exact: true }).fill('94.8');
-  await page.getByRole('spinbutton', { name: 'Recoverable chocolate', exact: true }).fill('1.2');
-  await page.getByRole('button', { name: 'Save moulding' }).click();
-  await page.getByText('Moulding saved.').waitFor();
-  await page.getByText('Sent on: 94.80 kg finished chocolate to packaging.').waitFor();
-  await page.getByRole('link', { name: /Record packaging/ }).click();
-  await page.getByLabel('Pack size').selectOption({ label: '45 g bar' });
-  await page.getByLabel('Total units made').fill('2090');
-  await page.getByLabel('Rejected units').fill('14');
-  await expectText(page, '2076');
-  await page.getByRole('button', { name: 'Save packaging' }).click();
-  await page.getByText('Packaging saved.').waitFor();
-  await expectText(page, '2076 accepted units ready.');
-  await page.getByText('Nothing else is waiting. Complete the batch.').waitFor();
+  await page.waitForURL('**/CH-018/record/mixing');
+  await expectText(page, 'take each ingredient from a lot in store');
+  await page.getByLabel('Chocolate type', { exact: true }).selectOption({ label: '100% Dark' });
+  await page.getByLabel('Kg to run').fill('20');
+  await expectText(page, 'which has sugar. 100% Dark has none: take the chocolate out of the mixer first.');
+  page.once('dialog', (d) => d.accept());
+  await page.getByRole('button', { name: 'Take it out of the mixer' }).click();
+  await expectText(page, 'taken out as lot D70-0003. The mixer is empty.');
+  await page.getByLabel('Chocolate type', { exact: true }).selectOption({ label: '100% Dark' });
+  await page.getByLabel('Kg to run').fill('20');
+  await expectText(page, 'Add 18.00 kg');
+  await page.getByLabel('Kept in the mixer').fill('0');
+  await page.getByRole('button', { name: 'Save 100% Dark' }).click();
+  await expectText(page, '100% Dark saved: 20.00 kg made as lot D100-0001.');
+  await page.getByRole('button', { name: 'Finish mixing' }).click();
+  await page.getByRole('button', { name: 'Finish mixing' }).last().click();
   await page.getByRole('link', { name: /Review & complete batch/ }).click();
-  await expectText(page, '2076 × 45 g');
+  await expectText(page, '100% Dark made');
   await page.getByRole('button', { name: 'Complete batch' }).click();
   await page.waitForURL('**/production/batches/CH-018');
-  ok('moulding, packaging (accepted units calculated), completion');
+  ok('chocolate from store: a blocked changeover, the leftover taken out as a lot, a run from empty, completion');
+
+  // Pieces: the chocolate lots wait at Pieces; good pieces of each size are counted from a lot.
+  await page.goto(`${BASE}/production/stations/packaging`);
+  for (const t of ['Chocolate to make into pieces', 'D70-0002', '30.00 kg', 'D100-0001']) await expectText(page, t);
+  await page.getByRole('link', { name: /D70-0002/ }).click();
+  await page.waitForURL('**/production/pieces/D70-0002');
+  await page.getByLabel('1 kg pack pieces').fill('31');
+  await expectText(page, '1.00 kg more than the lot has');
+  await page.getByLabel('1 kg pack pieces').fill('');
+  await page.getByLabel('45 g bar pieces').fill('500');
+  await page.getByLabel('80 g bar pieces').fill('90');
+  await expectText(page, '590 pieces · 29.70 kg of chocolate');
+  await expectText(page, '0.30 kg stays in the lot');
+  await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-pieces.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Save pieces' }).click();
+  await expectText(page, 'Pieces saved. 500 × 45 g bar (FIN-0004) · 90 × 80 g bar (FIN-0005).');
+  await expectText(page, '0.30 kg');
+  ok('pieces: good pieces per size from a chocolate lot (590 = 29.70 kg), too much refused, lots FIN-0004/5');
 
   // A bean delivery is one form: the batch and its receiving record are saved together.
   await page.goto(`${BASE}/production/new`);
@@ -241,11 +276,11 @@ async function expectText(page, text) {
   await page.goto(`${BASE}/materials`);
   await page.getByRole('link', { name: /LIQ-024/ }).click();
   await page.getByRole('heading', { name: 'Traceability' }).waitFor();
-  for (const t of ['CB-024', 'BEAN-0905', 'CH-018', 'Print label']) await expectText(page, t);
+  for (const t of ['CB-024', 'BEAN-0905', 'CH-017', 'Print label']) await expectText(page, t);
   await page.goto(`${BASE}/materials`);
   await page.getByRole('button', { name: 'Finished goods' }).click();
   await page.getByRole('link', { name: /FIN-0001/ }).click();
-  await expectText(page, 'CH-018');
+  for (const t of ['1200 pieces of 45 g bar', 'D70-0001', 'CH-017', 'Print label']) await expectText(page, t);
   await page.goto(`${BASE}/materials/receive`);
   await page.getByLabel('Measured weight').fill('120');
   await page.getByRole('button', { name: 'Save receipt' }).click();
@@ -253,25 +288,73 @@ async function expectText(page, text) {
   await expectText(page, 'Kuapa Kokoo');
   ok('materials list, lot traceability (upstream and downstream), receive material');
 
-  // Recipes: versions and expected vs actual.
+  // Chocolate types: the sheet's recipes, versions and expected vs actual.
   await page.goto(`${BASE}/recipes`);
-  await page.getByRole('link', { name: /70% Dark chocolate/ }).click();
-  for (const t of ['v3', 'Expected vs actual', 'CH-018', '+0.10 kg']) await expectText(page, t);
+  for (const t of ['34% White', '50% Milk', '55% Dark', '100% Dark', 'Liquor 44% · Cocoa butter 10% · Sugar 46%']) await expectText(page, t);
+  await page.getByRole('link', { name: /70% Dark/ }).click();
+  for (const t of ['v1', 'Liquor 60% · Cocoa butter 10% · Sugar 30%', 'Expected vs actual', 'CH-017', 'CB-025', '+0.10 kg']) await expectText(page, t);
   await page.getByRole('button', { name: 'New version' }).click();
   await page.getByLabel('What changed?').fill('Trial.');
   await page.getByRole('button', { name: 'Save version' }).click();
-  await expectText(page, 'v4');
-  ok('recipe versions and expected vs actual');
+  await expectText(page, 'v2');
+  ok('chocolate types from the sheet, recipe versions and expected vs actual');
+
+  // A new chocolate type, then offered at mixing in a new "Chocolate from store" batch.
+  await page.goto(`${BASE}/recipes`);
+  await page.getByRole('link', { name: 'New chocolate type' }).click();
+  await page.getByLabel('Chocolate type name').fill('60% Dark');
+  await page.getByLabel('Liquor percent').fill('50');
+  await page.getByLabel('Cocoa butter percent').fill('10');
+  await expectText(page, 'Total 60.00%');
+  if (await page.getByRole('button', { name: 'Save chocolate type' }).isEnabled()) throw new Error('A recipe below 100% should not be saveable');
+  await page.getByLabel('Sugar percent').fill('40');
+  await page.getByRole('button', { name: 'Save chocolate type' }).click();
+  await page.waitForURL('**/recipes/R-60-DARK');
+  await expectText(page, 'Liquor 50% · Cocoa butter 10% · Sugar 40%');
+  await page.goto(`${BASE}/production/new?chocolate=1`);
+  if ((await page.getByLabel('Product', { exact: true }).inputValue()) !== 'P-CHOC') throw new Error('Mixing from store should start a Chocolate from store batch');
+  await page.getByRole('button', { name: /Create batch/ }).click();
+  await page.waitForURL('**/production/batches/CH-019/record/mixing');
+  await page.getByLabel('Chocolate type', { exact: true }).selectOption({ label: '60% Dark' });
+  ok('new chocolate type saved and offered at mixing in a new Chocolate from store batch (CH-019)');
 
   // Reports.
+  await page.goto(`${BASE}/reports`);
+  await page.waitForURL('**/reports/pieces');
+  for (const t of ['By type and size', '70% Dark', '45 g bar', '1700', '80 g bar', '390', '85% Dark']) await expectText(page, t);
   for (const [section, text] of [['losses', 'Weigh-in at each stage, every batch'], ['losses', 'Lost this step'], ['losses', 'Loss at each process, all batches'], ['variance', 'Unaccounted variance'], ['batches', 'All batches'], ['corrections', 'Bin tare was wrong.'], ['holds', 'Waiting for quality sign-off.']]) {
     await page.goto(`${BASE}/reports/${section}`);
     await expectText(page, text);
   }
-  ok('reports: waste & variance, batch history, corrections, holds');
+  ok('reports: pieces made by type and size, waste & variance, batch history, corrections, holds');
+
+  // Production plan: pieces planned per type and size, counted from the pieces recorded since its start date.
+  await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Production plan' }).click();
+  await page.waitForURL('**/plan');
+  for (const t of ['2210 pieces left to make', 'Counting pieces made from 2026-09-14', '4700', '2490', 'Chocolate still to mix', 'Ingredients to mix it', 'Milk powder']) await expectText(page, t);
+  const planRow = page.getByRole('row').filter({ hasText: '70% Dark' }).filter({ hasText: '45 g bar' });
+  for (const t of ['2000', '1700', '300']) if (!(await planRow.innerText()).includes(t)) throw new Error(`Plan row for 70% Dark 45 g bar is missing ${t}`);
+  await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-plan.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Change the plan' }).click();
+  await page.getByLabel('Line 1 pieces').fill('2500');
+  await page.getByRole('button', { name: 'Add a line' }).click();
+  await page.getByLabel('Line 6 chocolate type').selectOption({ label: '70% Dark' });
+  await page.getByLabel('Line 6 size').selectOption({ label: '45 g bar (45 g)' });
+  await page.getByLabel('Line 6 pieces').fill('5');
+  await page.getByRole('button', { name: 'Save plan' }).click();
+  await expectText(page, '70% Dark · 45 g bar is in the plan twice. Give it one line.');
+  await page.getByLabel('Line 6 chocolate type').selectOption({ label: '60% Dark' });
+  await page.getByLabel('Line 6 size').selectOption({ label: '1 kg pack (1000 g)' });
+  await page.getByLabel('Line 6 pieces').fill('10');
+  await page.getByLabel('Plan note').fill('Week 40 orders');
+  await page.getByRole('button', { name: 'Save plan' }).click();
+  for (const t of ['2720 pieces left to make', 'Week 40 orders', '5210', '60% Dark']) await expectText(page, t);
+  await page.goto(`${BASE}/overview`);
+  for (const t of ['Production plan', '2490 of 5210 pieces made']) await expectText(page, t);
+  ok('production plan: pieces left per type and size from the pieces made (2210), a duplicate line refused, plan changed (2720), shown on Overview');
 
   // Setup.
-  for (const [section, text] of [['products', 'Batch prefix'], ['pack-sizes', '45 g bar'], ['outputs', 'Nibs for liquor'], ['containers', 'Husk bin'], ['routes', 'Beans to liquor'], ['suppliers', 'Kuapa Kokoo'], ['users', 'Current user'], ['alerts', 'Variance limit per station']]) {
+  for (const [section, text] of [['products', 'Batch prefix'], ['pack-sizes', '45 g bar'], ['outputs', 'Nibs for liquor'], ['containers', 'Husk bin'], ['routes', 'Beans to chocolate'], ['suppliers', 'Kuapa Kokoo'], ['users', 'Current user'], ['alerts', 'Variance limit per station']]) {
     await page.goto(`${BASE}/setup/${section}`);
     await expectText(page, text);
   }
@@ -300,7 +383,13 @@ async function expectText(page, text) {
   overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   if (overflow) throw new Error('Horizontal overflow on mobile record page');
   await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-mobile-record.png`, fullPage: true });
-  ok('mobile layout: bottom navigation, no overflow');
+  if (await page.getByRole('navigation', { name: 'Mobile navigation' }).getByRole('link', { name: /Plan/ }).count()) throw new Error('The plan should stay off the phone bar');
+  await page.goto(`${BASE}/plan`);
+  await expectText(page, '2720 pieces left to make');
+  overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+  if (overflow) throw new Error('Horizontal overflow on mobile plan page');
+  await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-mobile-plan.png`, fullPage: true });
+  ok('mobile layout: bottom navigation, no overflow on production, record and plan pages');
 
   // Sign out returns to the login screen (mobile header button), and the login screen fits a phone.
   await page.getByRole('button', { name: 'Sign out' }).click();
@@ -318,6 +407,12 @@ async function expectText(page, text) {
   if ((await page.getByRole('navigation', { name: 'Mobile navigation' }).getByRole('link').count()) !== 2) throw new Error('Operators should see only My work and Production line');
   await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-my-work.png`, fullPage: true });
   ok('operator PIN sign-in lands on My work with a two-item menu');
+
+  // Operators can read the plan but not change it.
+  await page.goto(`${BASE}/plan`);
+  await expectText(page, '2720 pieces left to make');
+  if (await page.getByRole('button', { name: 'Change the plan' }).count()) throw new Error('Operators should not change the plan');
+  ok('operators read the plan without the button to change it');
 
   console.log(JSON.stringify({ checked, errors }, null, 2));
   await browser.close();

@@ -6,10 +6,11 @@ import { useState, type FormEvent } from 'react';
 import { AlertTriangle, ArrowRight, Check, ChevronDown, Circle, Pause, PenLine, Pencil, Play, Trash2 } from 'lucide-react';
 import { Back, Badge, Button, Empty, Field, Input, LinkButton, Notice, PageHeader, Panel, Textarea, UnitInput } from '@/components/ui';
 import { PrintLabelButton } from '@/components/BatchLabel';
-import { batchAlerts, batchById, batchDisplayName, batchSuppliers, nextInput, recordBalance, recordFor, userName, waitingAt } from '@/lib/derive';
+import { batchAlerts, batchById, batchDisplayName, batchSuppliers, chocolateWaiting, nextInput, recordBalance, recordFor, userName, waitingAt } from '@/lib/derive';
+import { piecesByTypeAndSize } from '@/lib/pieces';
 import { dateTime, destinationLabel, kg, num, pct } from '@/lib/format';
 import { useStore } from '@/lib/store';
-import { stationName, stations } from '@/lib/stations';
+import { stationById, stationName, stations } from '@/lib/stations';
 import type { Batch, StationId } from '@/lib/types';
 
 export default function BatchPage() {
@@ -27,6 +28,8 @@ export default function BatchPage() {
   const waiting = waitingAt(batch);
   const firstWaiting = waiting[0];
   const suppliers = batchSuppliers(store, batch);
+  const pieces = piecesByTypeAndSize(store.lots.filter((l) => l.pieces && l.source.type === 'batch' && l.source.batchId === batch.id));
+  const chocolateLeft = chocolateWaiting(store).filter((l) => l.source.type === 'batch' && l.source.batchId === batch.id);
   const canDelete = batch.records.length === 0 && batch.holds.length === 0 && batch.corrections.length === 0 && !store.lots.some((lot) => lot.source.type === 'batch' && lot.source.batchId === batch.id);
 
   async function submitHold(event: FormEvent) {
@@ -45,7 +48,7 @@ export default function BatchPage() {
         action={(
           <div className="flex flex-wrap justify-end gap-2">
             {batch.status === 'active' && firstWaiting && <LinkButton href={`/production/batches/${batch.id}/record/${firstWaiting}`}>{firstWaiting === 'completion' ? 'Review & complete' : `Record ${stationName(firstWaiting).toLowerCase()}`} <ArrowRight size={15} /></LinkButton>}
-            <PrintLabelButton batch={batch} material={batch.product} quantity={kg(batch.startInput.weight)} madeAt={batch.startedAt}>Print batch card</PrintLabelButton>
+            {batch.startInput.weight > 0 && <PrintLabelButton batch={batch} material={batch.product} quantity={kg(batch.startInput.weight)} madeAt={batch.startedAt}>Print batch card</PrintLabelButton>}
             <Button variant="secondary" onClick={() => setEditingDetails((value) => !value)}><Pencil size={14} /> Edit details</Button>
             {canDelete && <Button variant="danger" onClick={async () => { if (window.confirm(`Delete blank batch ${batch.id}?`) && await store.deleteBatch(batch.id)) router.push('/production'); }}><Trash2 size={14} /> Delete</Button>}
           </div>
@@ -93,6 +96,13 @@ export default function BatchPage() {
             </Panel>
           )}
 
+          {(pieces.length > 0 || chocolateLeft.length > 0) && (
+            <Panel title="Pieces made" subtitle="From the chocolate this batch mixed.">
+              {pieces.map((t) => <div key={`${t.type}-${t.size}`} className="flex justify-between gap-2 border-b border-line px-4 py-2 text-[13px] last:border-b-0"><span>{t.type} · {t.size}</span><strong className="tabular-nums">{t.pieces}</strong></div>)}
+              {chocolateLeft.map((l) => <div key={l.id} className="flex flex-wrap justify-between gap-2 border-b border-line px-4 py-2 text-[13px] last:border-b-0"><span className="text-muted">{l.chocolate!.type} not yet in pieces</span><Link href={`/production/pieces/${l.id}`} className="font-semibold text-green">{kg(l.available)} · {l.id}</Link></div>)}
+            </Panel>
+          )}
+
           {batch.holds.length > 0 && (
             <Panel title="Holds">
               {batch.holds.map((h) => <div key={h.id} className="border-b border-line px-4 py-2.5 text-[13px] last:border-b-0"><div>{h.reason}</div><div className="text-[12px] text-muted">{dateTime(h.placedAt)} · {userName(store, h.placedBy)} · at {stationName(h.station).toLowerCase()}{h.releasedAt ? ` · released ${dateTime(h.releasedAt)}${h.releaseNote ? `: ${h.releaseNote}` : ''}` : ''}</div></div>)}
@@ -130,7 +140,7 @@ function Steps({ batch }: { batch: Batch }) {
           <span className="step-icon is-done"><Check size={13} /></span>
           <div className="min-w-0 flex-1 text-[13px]">
             <strong className="text-[14px]">Started</strong> <span className="text-muted">· {dateTime(batch.startedAt)}</span>
-            <div className="text-muted">{batch.startInput.material}: <strong className="text-ink tabular-nums">{kg(batch.startInput.weight)}</strong>{batch.startInput.lotIds.length > 0 && <> from {batch.startInput.lotIds.map((l, i) => <span key={l}>{i > 0 && ', '}<Link href={`/materials/${l}`} className="font-semibold text-green">{l}</Link></span>)}</>}</div>
+            <div className="text-muted">{batch.startInput.material}{batch.startInput.weight > 0 && <>: <strong className="text-ink tabular-nums">{kg(batch.startInput.weight)}</strong></>}{batch.startInput.lotIds.length > 0 && <> from {batch.startInput.lotIds.map((l, i) => <span key={l}>{i > 0 && ', '}<Link href={`/materials/${l}`} className="font-semibold text-green">{l}</Link></span>)}</>}</div>
           </div>
         </li>
         {steps.map((stationId, index) => {
@@ -147,7 +157,7 @@ function Steps({ batch }: { batch: Batch }) {
                 <span className={`step-icon ${record.destinationsSaved ? 'is-done' : 'is-warn'}`}>{record.destinationsSaved ? <Check size={13} /> : '!'}</span>
                 <div className="min-w-0 flex-1 text-[13px]">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="flex flex-wrap items-center gap-2"><strong className="text-[14px]">{stationName(stationId)}</strong>{!record.destinationsSaved && <Badge tone="warn">Not finished</Badge>}</span>
+                    <span className="flex flex-wrap items-center gap-2"><strong className="text-[14px]">{stationName(stationId)}</strong>{!record.destinationsSaved && (record.runs ? <Badge tone="green">In progress · {record.runs.length} run{record.runs.length === 1 ? '' : 's'}</Badge> : <Badge tone="warn">Not finished</Badge>)}</span>
                     <button type="button" className="verdict-toggle text-green" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : stationId)}>{expanded ? 'Hide' : 'Details'} <ChevronDown size={14} className={expanded ? 'rotate-180' : ''} /></button>
                   </div>
                   <div className={over ? 'text-warn' : 'text-muted'}>In {kg(balance.input)} → out {kg(balance.measured)} · missing {kg(balance.variance)} ({pct(balance.variancePct)}){over ? ` · above the ${limit}% limit` : ''}</div>
@@ -162,7 +172,7 @@ function Steps({ batch }: { batch: Batch }) {
                             <li key={o.name} className="rounded-md bg-paper px-3 py-2">
                               <div className="flex flex-wrap items-center justify-between gap-2">
                                 <span><strong>{o.name}</strong> <span className="tabular-nums">{record.packaging ? `${o.name === 'Accepted units' ? record.packaging.acceptedUnits : record.packaging.rejectedUnits} units` : kg(o.weight)}</span></span>
-                                {!record.packaging && <button type="button" className="btn-text inline-flex min-h-[44px] items-center gap-1" onClick={() => { setFixing(isFixing ? null : { recordId: record.id, output: o.name }); setFix({ weight: String(o.weight), reason: '' }); }} aria-label={`Correct ${o.name}`}><Pencil size={13} /> Correct</button>}
+                                {!record.packaging && !record.runs && <button type="button" className="btn-text inline-flex min-h-[44px] items-center gap-1" onClick={() => { setFixing(isFixing ? null : { recordId: record.id, output: o.name }); setFix({ weight: String(o.weight), reason: '' }); }} aria-label={`Correct ${o.name}`}><Pencil size={13} /> Correct</button>}
                               </div>
                               <div className="text-[12px] text-muted">{destinationLabel(o.destination, (s) => stationName(s as StationId))}{o.lotId && <> · <Link href={`/materials/${o.lotId}`} className="font-semibold text-green">{o.lotId}</Link></>}{o.container && <> · {kg(o.container.gross)} on the scale − {kg(o.container.tare)} {o.container.name.toLowerCase()}</>}</div>
                               {isFixing && (
@@ -194,7 +204,7 @@ function Steps({ batch }: { batch: Batch }) {
                   <span className="flex flex-wrap items-center gap-2"><strong className="text-[14px]">{stationName(stationId)}</strong>{isWaiting ? <Badge tone={batch.status === 'hold' ? 'danger' : 'green'}>{batch.status === 'hold' ? 'On hold' : 'Waiting'}</Badge> : <span className="text-[12px] text-faint">{batch.status === 'completed' ? 'not used' : `step ${index + 1} · later`}</span>}</span>
                   {ready && <div className="text-muted">Ready: <strong className="text-ink tabular-nums">{kg(ready.weight)}</strong> {ready.material.toLowerCase()}</div>}
                 </div>
-                {batch.status === 'active' && (isWaiting
+                {batch.status === 'active' && (isWaiting || stationById[stationId].form === 'weights') && (isWaiting
                   ? <LinkButton href={`/production/batches/${batch.id}/record/${stationId}`} aria-label={`Record ${stationName(stationId)} weights for ${batchDisplayName(batch)}`}>Record <ArrowRight size={14} /></LinkButton>
                   : <LinkButton variant="ghost" href={`/production/batches/${batch.id}/record/${stationId}?mode=independent`} aria-label={`Enter ${stationName(stationId)} weights early for ${batchDisplayName(batch)}`}>Enter early</LinkButton>)}
               </div>

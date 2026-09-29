@@ -10,12 +10,13 @@ import { batchDisplayName, recordBalance, userName } from '@/lib/derive';
 import { dateTime, kg, num, pct } from '@/lib/format';
 import type { ReportExportSnapshot } from '@/lib/report-export';
 import { useStore } from '@/lib/store';
-import { stationName, stations } from '@/lib/stations';
+import { isWeighed, stationName, stations } from '@/lib/stations';
+import { piecesByTypeAndSize, piecesKg, piecesLots } from '@/lib/pieces';
+import type { Lot } from '@/lib/types';
 
-// Stages with a weigh-in, in line order (completion has none)
-const gridStations = stations.filter((s) => s.form !== 'completion');
 
 const sections = [
+  { id: 'pieces', label: 'Pieces made', href: '/reports/pieces' },
   { id: 'losses', label: 'Weight loss by process', href: '/reports/losses' },
   { id: 'variance', label: 'Waste & variance', href: '/reports/variance' },
   { id: 'batches', label: 'Batch history', href: '/reports/batches' },
@@ -65,9 +66,11 @@ export default function ReportsPage() {
   const withRecords = reportBatches.filter((b) => b.records.length > 0).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   const [batchId, setBatchId] = useState(withRecords[0]?.id ?? '');
   const current = sections.find((s) => s.id === section) ?? sections[0];
+  // Stages with a weigh-in, in line order; retired stations only for older batches that used them
+  const gridStations = stations.filter((s) => s.form !== 'completion' && (!s.retired || reportBatches.some((b) => b.records.some((r) => r.station === s.id))));
 
   // Loss at each process, added up over every batch that passed through it.
-  const byStation = stations.filter((s) => s.form === 'weights').map((station) => {
+  const byStation = stations.filter(isWeighed).map((station) => {
     const balances = reportBatches.flatMap((b) => b.records.filter((r) => r.station === station.id).map(recordBalance));
     const sum = (key: 'input' | 'useful' | 'byproduct' | 'waste' | 'variance') => round2(balances.reduce((t, b) => t + b[key], 0));
     const input = sum('input'), useful = sum('useful');
@@ -86,7 +89,24 @@ export default function ReportsPage() {
     .sort((a, b) => b.record.recordedAt.localeCompare(a.record.recordedAt));
   const totals = rows.reduce((t, r) => ({ input: t.input + r.balance.input, useful: t.useful + r.balance.useful, waste: t.waste + r.balance.waste, byproduct: t.byproduct + r.balance.byproduct, variance: t.variance + r.balance.variance }), { input: 0, useful: 0, waste: 0, byproduct: 0, variance: 0 });
 
+  // Pieces made in the period: the factory's end result, by chocolate type and size
+  const piecesInPeriod = piecesLots(store).filter((l) => duration === 'all' || inReportRange(l.receivedAt, durationRange));
+  const piecesTotals = piecesByTypeAndSize(piecesInPeriod);
+  const pieceRow = (l: Lot) => [dateTime(l.receivedAt), l.id, l.pieces!.type, l.pieces!.size, l.received, num(piecesKg(l.received, l.pieces!.grams)), l.pieces!.fromLotId, l.source.type === 'batch' ? l.source.batchId : '', userName(store, l.pieces!.recordedBy)];
+
   const buildExportSnapshot = (type: ProductionReportType, range: ReportRange): ReportExportSnapshot => {
+    if (type === 'pieces') {
+      const lots = piecesLots(store).filter((l) => inReportRange(l.receivedAt, range));
+      const totals = piecesByTypeAndSize(lots);
+      return {
+        title: 'Pieces made',
+        periodLabel: range.label,
+        sections: [
+          { title: 'By type and size', headers: ['Chocolate type', 'Size', 'Pieces', 'Chocolate (kg)'], rows: [...totals.map((t) => [t.type, t.size, t.pieces, num(t.kg)]), ['Total', '', totals.reduce((n, t) => n + t.pieces, 0), num(totals.reduce((n, t) => n + t.kg, 0))]] },
+          { title: 'Lots of pieces', headers: ['Made', 'Lot', 'Chocolate type', 'Size', 'Pieces', 'Chocolate (kg)', 'From chocolate lot', 'Batch', 'By'], rows: lots.map(pieceRow) },
+        ],
+      };
+    }
     const filteredBatches = store.batches
       .filter((batch) => inReportRange(batch.startedAt, range)
         || batch.records.some((record) => inReportRange(record.recordedAt, range))
@@ -102,7 +122,7 @@ export default function ReportsPage() {
     const filteredRecords = filteredBatches.flatMap((batch) => batch.records.map((record) => ({ batch, record, balance: recordBalance(record) })));
 
     if (type === 'losses') {
-      const processRows = stations.filter((station) => station.form === 'weights').map((station) => {
+      const processRows = stations.filter(isWeighed).map((station) => {
         const balances = filteredRecords.filter(({ record }) => record.station === station.id).map(({ balance }) => balance);
         const sum = (key: 'input' | 'useful' | 'byproduct' | 'waste' | 'variance') => round2(balances.reduce((total, balance) => total + balance[key], 0));
         const input = sum('input');
@@ -321,7 +341,7 @@ export default function ReportsPage() {
             <Stat label="By-products" value={kg(round2(totals.byproduct))} />
             <Stat label="Unaccounted variance" value={kg(round2(totals.variance))} hint={pct(totals.input ? round2((totals.variance / totals.input) * 100) : 0)} tone={totals.variance > 0 ? 'warn' : undefined} />
           </div>
-          <Panel title="By station and batch" subtitle="Variance is what the scale could not explain. It is never counted as waste." action={<Select value={stationFilter} onChange={(e) => setStationFilter(e.target.value)} aria-label="Station filter" className="w-auto"><option value="all">All stations</option>{stations.filter((s) => s.form !== 'completion').map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select>}>
+          <Panel title="By station and batch" subtitle="Variance is what the scale could not explain. It is never counted as waste." action={<Select value={stationFilter} onChange={(e) => setStationFilter(e.target.value)} aria-label="Station filter" className="w-auto"><option value="all">All stations</option>{gridStations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select>}>
             {rows.length === 0 ? <Empty>Nothing recorded yet.</Empty> : (
               <Table head={['Batch', 'Station', 'Input', 'Useful', 'Waste', 'By-product', 'Variance', 'Variance %', 'Limit']}>
                 {rows.map(({ batch, record, balance, limit }) => (
@@ -356,6 +376,30 @@ export default function ReportsPage() {
             })}
           </Table>
         </Panel>
+      )}
+
+      {current.id === 'pieces' && (
+        <>
+          <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3">
+            <Stat label="Pieces made" value={piecesTotals.reduce((n, t) => n + t.pieces, 0)} />
+            <Stat label="Chocolate in pieces" value={kg(piecesTotals.reduce((n, t) => n + t.kg, 0))} />
+            <Stat label="Chocolate types" value={new Set(piecesTotals.map((t) => t.type)).size} />
+          </div>
+          <Panel title="By type and size" subtitle="Good pieces made in this period.">
+            {piecesTotals.length === 0 ? <Empty>No pieces made in this period.</Empty> : (
+              <Table head={['Chocolate type', 'Size', 'Pieces', 'Chocolate']}>
+                {piecesTotals.map((t) => <tr key={`${t.type}-${t.size}`}><td className={td}>{t.type}</td><td className={td}>{t.size}</td><td className={`${tdNum} font-semibold`}>{t.pieces}</td><td className={tdNum}>{num(t.kg)} kg</td></tr>)}
+              </Table>
+            )}
+          </Panel>
+          {piecesInPeriod.length > 0 && (
+            <Panel title="Lots of pieces" subtitle="Each count entered at Pieces, with the chocolate it was made from.">
+              <Table head={['Made', 'Lot', 'Chocolate type', 'Size', 'Pieces', 'From', 'Batch', 'By']}>
+                {piecesInPeriod.map((l) => <tr key={l.id}><td className={td}>{dateTime(l.receivedAt)}</td><td className={td}><Link href={`/materials/${l.id}`} className="font-semibold text-green">{l.id}</Link></td><td className={td}>{l.pieces!.type}</td><td className={td}>{l.pieces!.size}</td><td className={tdNum}>{l.received}</td><td className={td}><Link href={`/materials/${l.pieces!.fromLotId}`} className="font-semibold text-green">{l.pieces!.fromLotId}</Link></td><td className={td}>{l.source.type === 'batch' && <Link href={`/production/batches/${l.source.batchId}`} className="font-semibold text-green">{l.source.batchId}</Link>}</td><td className={td}>{userName(store, l.pieces!.recordedBy)}</td></tr>)}
+              </Table>
+            </Panel>
+          )}
+        </>
       )}
 
       {current.id === 'corrections' && (

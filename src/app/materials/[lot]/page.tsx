@@ -6,8 +6,9 @@ import { useState } from 'react';
 import { ArrowDown, Pencil, Trash2 } from 'lucide-react';
 import { Back, Badge, Button, Empty, Field, Input, LinkButton, Notice, PageHeader, Panel, Select, Stat } from '@/components/ui';
 import { BatchLabel } from '@/components/BatchLabel';
-import { batchById, lotOrigin, recordBalance } from '@/lib/derive';
-import { dateTime } from '@/lib/format';
+import { batchById, lotOrigin, recordBalance, userName } from '@/lib/derive';
+import { piecesFrom, piecesKg } from '@/lib/pieces';
+import { dateTime, kg } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { stationName } from '@/lib/stations';
 import type { LotCategory } from '@/lib/types';
@@ -28,17 +29,19 @@ export default function LotPage() {
   const madeLots = downstream.flatMap((d) => store.lots.filter((l) => l.source.type === 'batch' && l.source.batchId === d.use.batchId));
   const referencedByBatch = store.batches.some((batch) => batch.startInput.lotIds.includes(lot.id) || batch.records.some((record) => record.inputLotIds.includes(lot.id) || record.outputs.some((output) => output.lotId === lot.id)));
   const canDelete = lot.source.type === 'supplier' && lot.uses.length === 0 && lot.available === lot.received && !referencedByBatch;
-  // A scanned tub or sack at mixing starts a chocolate batch with this lot already chosen.
+  // Liquor, cocoa butter, sugar or milk powder in store can be mixed into chocolate from a "Chocolate from store" batch.
+  const unit = lot.pieces ? 'pieces' : lot.unit;
+  const madePieces = lot.chocolate ? piecesFrom(store, lot.id) : [];
   const usedInRecipes = lot.unit === 'kg' && lot.available > 0 && store.recipes.some((r) => r.versions.find((v) => v.version === r.currentVersion)?.ingredients.some((i) => i.name === lot.material));
 
   return (
     <>
       <Back href="/materials" label="Materials" />
-      <PageHeader eyebrow={lot.category} title={`${lot.id} · ${lot.material}`} subtitle={`${lotOrigin(store, lot)} · received ${dateTime(lot.receivedAt)}`} action={<div className="flex flex-wrap gap-2">{usedInRecipes && <LinkButton href={`/production/new?lot=${lot.id}`}>Use in a chocolate batch</LinkButton>}<Button variant="secondary" onClick={() => setEditing((value) => !value)}><Pencil size={14} /> Edit</Button><Button variant="danger" disabled={!canDelete} title={canDelete ? 'Delete lot' : 'Only unused supplier lots can be deleted.'} onClick={async () => { if (canDelete && window.confirm(`Delete lot ${lot.id}?`) && await store.deleteLot(lot.id)) router.push('/materials'); }}><Trash2 size={14} /> Delete</Button></div>} />
+      <PageHeader eyebrow={lot.category} title={`${lot.id} · ${lot.material}`} subtitle={`${lotOrigin(store, lot)} · received ${dateTime(lot.receivedAt)}`} action={<div className="flex flex-wrap gap-2">{usedInRecipes && <LinkButton href={`/production/new?lot=${lot.id}`}>Mix chocolate from store</LinkButton>}{lot.chocolate && lot.available > 0.004 && <LinkButton href={`/production/pieces/${lot.id}`}>Record pieces</LinkButton>}<Button variant="secondary" onClick={() => setEditing((value) => !value)}><Pencil size={14} /> Edit</Button><Button variant="danger" disabled={!canDelete} title={canDelete ? 'Delete lot' : 'Only unused supplier lots can be deleted.'} onClick={async () => { if (canDelete && window.confirm(`Delete lot ${lot.id}?`) && await store.deleteLot(lot.id)) router.push('/materials'); }}><Trash2 size={14} /> Delete</Button></div>} />
       <div className="mb-5 grid grid-cols-3 gap-3">
-        <Stat label="Received" value={`${lot.received} ${lot.unit}`} />
-        <Stat label="Used" value={`${Math.round((lot.received - lot.available) * 100) / 100} ${lot.unit}`} />
-        <Stat label="Available" value={`${lot.available} ${lot.unit}`} tone={lot.category === 'Raw material' && lot.available < store.thresholds.lowStockKg ? 'warn' : undefined} />
+        <Stat label={lot.pieces ? 'Made' : 'Received'} value={`${lot.received} ${unit}`} />
+        <Stat label="Used" value={`${Math.round((lot.received - lot.available) * 1000) / 1000} ${unit}`} />
+        <Stat label="Available" value={`${lot.available} ${unit}`} tone={lot.category === 'Raw material' && lot.available < store.thresholds.lowStockKg ? 'warn' : undefined} />
       </div>
 
       {lot.source.type === 'batch' && <Notice tone="neutral">This lot was created by production and is part of the traceability record. Its quantity and origin are protected; correct the source batch if needed.</Notice>}
@@ -55,7 +58,16 @@ export default function LotPage() {
         </Panel>
       )}
 
-      {sourceBatch && <BatchLabel batch={sourceBatch} material={lot.material} quantity={`${lot.received} ${lot.unit}`} madeAt={lot.receivedAt} lotId={lot.id} />}
+      {lot.pieces && (
+        <Notice tone="neutral">{lot.received} pieces of {lot.pieces.size} ({kg(piecesKg(lot.received, lot.pieces.grams))} of {lot.pieces.type}) made from <Link href={`/materials/${lot.pieces.fromLotId}`} className="font-semibold text-green">{lot.pieces.fromLotId}</Link> by {userName(store, lot.pieces.recordedBy)}.{lot.uses.length === 0 && lot.available === lot.received ? ' Entered by mistake? Undo it from the Pieces screen of that lot.' : ''}</Notice>
+      )}
+      {lot.chocolate && madePieces.length > 0 && (
+        <Panel title="Pieces made from this lot">
+          {madePieces.map((p) => <div key={p.id} className="border-b border-line px-5 py-2.5 text-[13px] last:border-b-0"><Link href={`/materials/${p.id}`} className="font-semibold text-green">{p.id}</Link> · <strong className="tabular-nums">{p.received}</strong> × {p.pieces!.size} <span className="text-muted">· {dateTime(p.receivedAt)}</span></div>)}
+        </Panel>
+      )}
+
+      {sourceBatch && <BatchLabel batch={sourceBatch} material={lot.material} quantity={`${lot.received} ${unit}`} madeAt={lot.receivedAt} lotId={lot.id} />}
 
       <Panel title="Traceability" subtitle="Where this lot came from and where it went.">
         <ol className="px-5 py-3 text-[13px]">

@@ -19,10 +19,15 @@ export const carriedTo = (batch: Batch, station: StationId) =>
 
 /**
  * Stations with material waiting for this batch: an output was continued there but the station
- * is not recorded yet. A split (nibs to both pressing and grinding) leaves several waiting at once.
+ * is not recorded yet, or its record is not finished (mixing while runs are still being made).
+ * A split (nibs to both pressing and grinding) leaves several waiting at once.
  */
 export const pendingStations = (batch: Batch): StationId[] =>
-  stations.map((s) => s.id).filter((id) => id !== 'completion' && !recordFor(batch, id) && carriedTo(batch, id).length > 0);
+  stations.map((s) => s.id).filter((id) => {
+    if (id === 'completion') return false;
+    const record = recordFor(batch, id);
+    return record ? !record.destinationsSaved : carriedTo(batch, id).length > 0;
+  });
 
 /** Whether the batch can be recorded at this station in the normal flow */
 export const isReadyAt = (batch: Batch, station: StationId) => batch.nextStation === station || pendingStations(batch).includes(station);
@@ -65,6 +70,14 @@ export function stationQueue(state: State, station: StationId) {
   const done = state.batches.filter((b) => b.records.some((r) => r.station === station)).sort((a, b) => (recordFor(b, station)!.recordedAt.localeCompare(recordFor(a, station)!.recordedAt)));
   return { ready, held, done };
 }
+
+/** Chocolate lots with chocolate still to make into pieces, oldest first */
+export const chocolateWaiting = (state: Pick<State, 'lots'>) =>
+  state.lots.filter((l) => l.chocolate && l.available > 0.004).sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
+
+/** What waits at a station: batches, or at Pieces the chocolate lots not yet made into pieces */
+export const waitingCount = (state: State, station: StationId) =>
+  stationById[station].form === 'pieces' ? chocolateWaiting(state).length : stationQueue(state, station).ready.length;
 
 export function recordAlerts(state: State, batch: Batch, record: StationRecord): Alert[] {
   const balance = recordBalance(record);
@@ -145,9 +158,15 @@ const lotPrefixes: Record<string, string> = {
   'Machine residue': 'REW', 'Recoverable chocolate': 'REW', 'Finished chocolate': 'FIN', 'Accepted units': 'FIN', 'Rejected units': 'REJ',
 };
 
+/** Chocolate lots are numbered by type: "70% Dark" → D70, "34% White" → W34 */
+const chocolateCode = (material: string) => {
+  const match = /^(\d+)\s*%\s*([a-z])/i.exec(material);
+  return match ? `${match[2].toUpperCase()}${match[1]}` : undefined;
+};
+
 /** The next lot ID for a material, never one issued before (see nextBatchId()); taken are IDs already chosen in the same save */
 export function nextLotId(state: State, material: string, taken: string[] = []) {
-  const prefix = lotPrefixes[material] ?? (material.replace(/[^a-z]/gi, '').slice(0, 4).toUpperCase() || 'LOT');
+  const prefix = lotPrefixes[material] ?? chocolateCode(material) ?? (material.replace(/[^a-z]/gi, '').slice(0, 4).toUpperCase() || 'LOT');
   const ids = [...state.lots.map((l) => l.id), ...taken];
   const max = ids.filter((id) => id.startsWith(`${prefix}-`)).reduce((m, id) => Math.max(m, parseInt(id.slice(prefix.length + 1), 10) || 0), state.idCounters.lots[prefix] ?? 0);
   return `${prefix}-${String(max + 1).padStart(4, '0')}`;

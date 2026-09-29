@@ -1,13 +1,12 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { Suspense, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ArrowRight, Check } from 'lucide-react';
 import { Back, Button, Field, Input, LinkButton, Notice, PageHeader, Panel, Select, Textarea, UnitInput } from '@/components/ui';
 import { DestinationSelect, LiveBalance, WeightField, emptyWeight, netWeight, type WeightValue } from '@/components/weighing';
-import { calculateBalance, round2 } from '@/lib/balance';
+import { calculateBalance } from '@/lib/balance';
 import { defaultDestination, suggestBatchName } from '@/lib/derive';
-import { kg } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { stationById, stationName } from '@/lib/stations';
 import type { Destination, OutputKind } from '@/lib/types';
@@ -20,56 +19,29 @@ function NewBatch() {
   const store = useStore();
   const router = useRouter();
   const params = useSearchParams();
-  const batchableProducts = store.products.filter((p) => p.route !== 'chocolate' || !!p.recipeId);
-  // Opened from a lot (e.g. a scanned liquor tub): start a chocolate batch that uses it.
-  const startLot = store.lots.find((l) => l.id === params.get('lot'));
-  const usesLot = (productId: string) => {
-    const recipe = store.recipes.find((r) => r.id === store.products.find((p) => p.id === productId)?.recipeId);
-    return !!recipe?.versions.find((v) => v.version === recipe.currentVersion)?.ingredients.some((i) => i.name === startLot?.material);
-  };
-  const [productId, setProductId] = useState(() => (startLot && batchableProducts.find((p) => p.route === 'chocolate' && usesLot(p.id))?.id) || batchableProducts[0]?.id || '');
+  const batchableProducts = store.products;
+  // Opened from a lot in store or the mixing queue: start a batch that mixes chocolate from stored liquor and butter.
+  const fromStore = params.has('lot') || params.has('chocolate');
+  const [productId, setProductId] = useState(() => (fromStore && batchableProducts.find((p) => p.route === 'chocolate')?.id) || batchableProducts[0]?.id || '');
   const [batchName, setBatchName] = useState('');
   const [batchDate, setBatchDate] = useState(new Date().toISOString().slice(0, 10));
   const [weight, setWeight] = useState('');
   const [note, setNote] = useState('');
-  const [batchSize, setBatchSize] = useState('100');
-  const [version, setVersion] = useState<number | null>(null);
-  const [actuals, setActuals] = useState<Record<string, string>>({});
-  const [ingredientLots, setIngredientLots] = useState<Record<string, string>>(() => (startLot ? { [startLot.material]: startLot.id } : {}));
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
   const product = batchableProducts.find((p) => p.id === productId);
   const route = store.routes.find((r) => r.id === product?.route);
-  const recipe = store.recipes.find((r) => r.id === product?.recipeId);
-  const recipeVersion = recipe?.versions.find((v) => v.version === (version ?? recipe.currentVersion));
-
-  const ingredients = useMemo(() => {
-    if (!recipeVersion) return [];
-    const size = Number(batchSize) || 0;
-    return recipeVersion.ingredients.map((i) => {
-      const expected = round2((size * i.percent) / 100);
-      const actual = actuals[i.name] === undefined ? expected : Number(actuals[i.name]) || 0;
-      const lots = store.lots.filter((l) => l.material === i.name && l.available > 0 && l.unit === 'kg');
-      return { name: i.name, expected, actual, lots, lotId: ingredientLots[i.name] ?? lots[0]?.id ?? '' };
-    });
-  }, [recipeVersion, batchSize, actuals, ingredientLots, store.lots]);
-  const ingredientTotal = round2(ingredients.reduce((sum, i) => sum + i.actual, 0));
-
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (saving) return;
     setError('');
     if (!product || !route) return;
     let id: string | undefined;
-    if (route.id === 'chocolate') {
-      if (!recipeVersion || ingredientTotal <= 0) return setError('Enter the ingredient weights you actually used.');
+    if (route.stations[0] === 'mixing') {
+      // The ingredients are weighed in run by run at mixing.
       setSaving(true);
-      id = await store.createBatch({
-        productId, name: batchName, batchDate, startWeight: ingredientTotal, recipeVersion: recipeVersion.version, note,
-        ingredients: ingredients.map((i) => ({ name: i.name, expected: i.expected, actual: i.actual, lotId: i.lotId || undefined })),
-        lotUses: ingredients.filter((i) => i.lotId).map((i) => ({ lotId: i.lotId, quantity: i.actual })),
-      });
+      id = await store.createBatch({ productId, name: batchName, batchDate, startWeight: 0, note, lotUses: [] });
     } else {
       const startWeight = Number(weight);
       if (!(startWeight > 0)) return setError('Enter the weight from the scale.');
@@ -82,7 +54,7 @@ function NewBatch() {
 
   const productField = (
     <Field label="Product">
-      <Select value={productId} onChange={(e) => { setProductId(e.target.value); setVersion(null); setActuals({}); setIngredientLots({}); }} aria-label="Product">
+      <Select value={productId} onChange={(e) => setProductId(e.target.value)} aria-label="Product">
         {batchableProducts.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
       </Select>
     </Field>
@@ -122,38 +94,8 @@ function NewBatch() {
           </Panel>
         )}
 
-        {recipe && recipeVersion && (
-          <Panel title="Recipe ingredients" subtitle="Expected comes from the recipe. Enter what you actually weighed in.">
-            {startLot && <div className="px-5 pt-4"><Notice tone="neutral">Using lot {startLot.id} ({startLot.material}) from the scanned label.</Notice></div>}
-            <div className="grid gap-4 p-5 md:grid-cols-2">
-              <Field label="Recipe version">
-                <Select value={recipeVersion.version} onChange={(e) => setVersion(Number(e.target.value))}>
-                  {recipe.versions.map((v) => <option key={v.version} value={v.version}>v{v.version}{v.version === recipe.currentVersion ? ' (current)' : ''}{v.note ? ` · ${v.note}` : ''}</option>)}
-                </Select>
-              </Field>
-              <Field label="Planned batch size" hint="Only used to work out the expected amounts. What you actually weigh in can differ.">
-                <UnitInput unit="kg" value={batchSize} onChange={(e) => setBatchSize(e.target.value)} aria-label="Batch size" />
-              </Field>
-            </div>
-            <div className="border-t border-line">
-              <div className="hidden grid-cols-[1fr_110px_140px_1fr] gap-3 px-5 py-2 text-[11px] font-bold tracking-wide text-faint uppercase md:grid"><span>Ingredient</span><span className="text-right">Expected</span><span>Actual</span><span>Lot</span></div>
-              {ingredients.map((i) => (
-                <div key={i.name} className="grid gap-2 border-t border-line px-5 py-3 md:grid-cols-[1fr_110px_140px_1fr] md:items-center md:gap-3">
-                  <span className="font-medium">{i.name}</span>
-                  <span className="text-[13px] text-muted md:text-right">Expected {kg(i.expected)}</span>
-                  <UnitInput unit="kg" value={actuals[i.name] ?? String(i.expected)} onChange={(e) => setActuals({ ...actuals, [i.name]: e.target.value })} aria-label={`${i.name} actual`} />
-                  <Select value={i.lotId} onChange={(e) => setIngredientLots({ ...ingredientLots, [i.name]: e.target.value })} aria-label={`${i.name} lot`}>
-                    <option value="">No lot recorded</option>
-                    {i.lots.map((l) => <option key={l.id} value={l.id}>{l.id} · {kg(l.available)} available</option>)}
-                  </Select>
-                </div>
-              ))}
-              <div className="flex justify-between border-t border-line bg-paper px-5 py-3 text-[13px]"><span className="text-muted">Total weighed in (becomes the mixing input)</span><strong>{kg(ingredientTotal)}</strong></div>
-              {ingredients.filter((i) => i.lotId && i.actual > (i.lots.find((l) => l.id === i.lotId)?.available ?? 0)).map((i) => (
-                <div key={i.name} className="px-5 pt-3"><Notice tone="warn">{i.name}: the scale shows {kg(i.actual)} but lot {i.lotId} has only {kg(i.lots.find((l) => l.id === i.lotId)?.available ?? 0)} on record. The batch is saved at the scale weight; the lot record is drawn down to zero.</Notice></div>
-              ))}
-            </div>
-          </Panel>
+        {route?.id === 'chocolate' && (
+          <Notice tone="neutral">The batch starts at mixing. There each chocolate type is made in a run, taking liquor, cocoa butter, sugar and milk powder from their lots in store.</Notice>
         )}
 
         <Panel title="Note">

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { stations } from './stations';
-import type { StationId } from './types';
+import type { Destination, StationId } from './types';
 
 /**
  * Every change anyone can make, as a named command. The browser sends these to /api/commands;
@@ -15,7 +15,7 @@ const station = z.enum(stationIds);
 const destination = z.string().refine(
   (d) => ['stock', 'sale', 'rework', 'waste'].includes(d) || (d.startsWith('continue:') && (stationIds as string[]).includes(d.slice(9))),
   'Unknown destination',
-) as unknown as z.ZodType<`continue:${StationId}` | 'stock' | 'sale' | 'rework' | 'waste'>;
+) as unknown as z.ZodType<Destination>; // 'mixer' is only ever set by mixing itself, never sent
 const kind = z.enum(['useful', 'byproduct', 'waste']);
 const container = z.object({ name: text(80).min(1), tare: qty, gross: qty });
 const output = z.object({ name: text(80).min(1), kind, weight: qty, destination, container: container.optional() });
@@ -37,6 +37,8 @@ const newBatch = z.object({
   note: text(1000).optional(),
 });
 
+const recipeIngredients = z.array(z.object({ name: text(80).min(1), percent: z.number().finite().min(0).max(100) })).min(1).max(30);
+
 const product = z.object({ name: text(80).min(1), prefix: text(3).min(1).transform((p) => p.toUpperCase()), route: z.enum(['beans', 'pressing', 'chocolate']), recipeId: text(80).optional() });
 const userFields = { name: text(80).min(1), role: text(80).min(1), email, access: z.enum(['operator', 'manager']), stations: z.array(station).max(stationIds.length) };
 
@@ -45,7 +47,17 @@ export const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('receiveDelivery'), batch: newBatch, input: z.object({ weight: qty, container: container.optional() }), outputs: z.array(output).min(1).max(30), note: text(1000).optional() }),
   // expectRecord: recordStamp() of the record the form was opened on (null for a new one), so two people cannot overwrite each other unseen.
   z.object({ type: z.literal('saveRecord'), batchId: id, station, input: z.object({ weight: qty, container: container.optional() }), outputs: z.array(output).max(30), note: text(1000).optional(), options, expectRecord: z.string().max(200).nullable().optional() }),
-  z.object({ type: z.literal('savePackaging'), batchId: id, inputWeight: qty, packSizeId: id, totalUnits: z.number().int().min(0).max(10_000_000), rejectedUnits: z.number().int().min(0).max(10_000_000), note: text(1000).optional(), options, expectRecord: z.string().max(200).nullable().optional() }),
+  // Mixing: one chocolate type per run, made on top of what the mixer holds (expectMixer: mixerStamp() the form was opened on).
+  z.object({ type: z.literal('saveMixingRun'), batchId: id, recipeId: id, toRun: qty, ingredients: z.array(z.object({ name: text(80).min(1), actual: qty, lotId: text(80).optional() })).min(1).max(20), made: qty, kept: qty, expectMixer: z.string().max(200) }),
+  z.object({ type: z.literal('undoMixingRun'), batchId: id, runId: id }),
+  z.object({ type: z.literal('emptyMixer'), expectMixer: z.string().max(200) }),
+  z.object({ type: z.literal('finishMixing'), batchId: id, note: text(1000).optional() }),
+  z.object({ type: z.literal('setMixerKeeps'), kg: z.number().finite().min(0).max(10_000) }),
+  // Pieces: good pieces of each size made from a chocolate lot, and undoing an unused lot of pieces.
+  z.object({ type: z.literal('recordPieces'), lotId: id, pieces: z.array(z.object({ packSizeId: id, count: z.number().int().min(0).max(10_000_000) })).min(1).max(30) }),
+  z.object({ type: z.literal('removePieces'), lotId: id }),
+  // The production plan in pieces; managers only.
+  z.object({ type: z.literal('setPlan'), lines: z.array(z.object({ recipeId: id, packSizeId: id, pieces: z.number().int().min(0).max(100_000_000) })).max(100), from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), note: text(500).optional() }),
   z.object({ type: z.literal('completeBatch'), batchId: id, note: text(1000).optional() }),
   z.object({ type: z.literal('updateBatchDetails'), batchId: id, name: text(80).optional(), note: text(1000).optional() }),
   z.object({ type: z.literal('deleteBatch'), batchId: id }),
@@ -55,7 +67,9 @@ export const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('receiveLot'), input: z.object({ material: text(80).min(1), category: lotCategory, quantity: qty, unit: z.enum(['kg', 'units']), supplierId: id, reference: text(120).optional() }) }),
   z.object({ type: z.literal('updateLot'), lotId: id, material: text(80).min(1), category: lotCategory, supplierId: text(80).optional(), reference: text(120).optional() }),
   z.object({ type: z.literal('deleteLot'), lotId: id }),
-  z.object({ type: z.literal('addRecipeVersion'), recipeId: id, ingredients: z.array(z.object({ name: text(80).min(1), percent: z.number().finite().min(0).max(100) })).min(1).max(30), note: text(500) }),
+  z.object({ type: z.literal('addRecipeVersion'), recipeId: id, ingredients: recipeIngredients, note: text(500) }),
+  // A new chocolate type: its product and the first version of its recipe, made together.
+  z.object({ type: z.literal('addChocolateType'), name: text(80).min(1), ingredients: recipeIngredients, note: text(500).optional() }),
   z.object({ type: z.literal('updateRecipe'), recipeId: id, name: text(80).min(1) }),
   z.object({ type: z.literal('deleteRecipe'), recipeId: id }),
   z.object({ type: z.literal('addProduct'), product }),
@@ -91,7 +105,7 @@ export type CommandType = Command['type'];
 
 /** Commands an operator may run. Everything else needs manager access. */
 export const operatorCommands = new Set<CommandType>([
-  'createBatch', 'receiveDelivery', 'saveRecord', 'savePackaging', 'completeBatch', 'updateBatchDetails', 'deleteBatch', 'placeHold', 'addCorrection',
+  'createBatch', 'receiveDelivery', 'saveRecord', 'saveMixingRun', 'undoMixingRun', 'emptyMixer', 'finishMixing', 'recordPieces', 'removePieces', 'completeBatch', 'updateBatchDetails', 'deleteBatch', 'placeHold', 'addCorrection',
 ]);
 
 export const signInSchema = z.discriminatedUnion('method', [

@@ -10,9 +10,12 @@ Chocolate Factory records the movement of material through a chocolate-productio
 2. On one screen, the worker checks the input and enters only the weights or counts observed at that station. Each output already shows where it goes: another station, stock, sale, rework or waste.
 3. The app checks the mass balance while the weights are typed and saves everything in one step.
 4. Continued material becomes the next station's input; stored, for-sale and rejected outputs become separate lots or waste records.
-5. A batch is reviewed and closed at Completion.
+5. Liquor and cocoa butter go on to Mixing, where the chocolate types are made one after another. Each run is made on top of the chocolate the mixer kept from the run before, so the app works out what to add, and each type becomes a lot.
+6. At Pieces, the good pieces of each size are counted from each chocolate lot. The number of pieces of each size for each chocolate type is the end result (**Reports → Pieces made**).
+7. A batch is reviewed and closed at Completion.
+8. The **production plan** says how many pieces of each type and size to make. The app counts the pieces made against it and works out the chocolate still to mix and the ingredients that takes.
 
-The app also provides material-lot traceability, recipe versioning, alerts, holds, corrections, reports, and factory setup screens.
+The app also provides material-lot traceability, chocolate types with versioned recipes, alerts, holds, corrections, reports, and factory setup screens.
 
 ## 2. Runtime architecture
 
@@ -59,13 +62,13 @@ The schema is created on first start (`createSchema()` in `src/server/db.ts`):
 | Table | Holds |
 | --- | --- |
 | `app_meta` | The data version. Every saved change increases it by one. |
-| `app_items` | One row per batch, lot, recipe, product, pack size, supplier, person, route, output row and container, and one per setting (limits, business details, idle minutes, workflow version, ID counters), with the version at which it last changed. Deleted items stay as tombstones so other devices learn about the deletion. |
+| `app_items` | One row per batch, lot, recipe, product, pack size, supplier, person, route, output row and container, and one per setting (limits, business details, idle minutes, workflow version, ID counters, the mixer and what it usually keeps), with the version at which it last changed. Deleted items stay as tombstones so other devices learn about the deletion. |
 | `app_commands` | The audit log: every change with its version, time, the command, who was signed in (`user_id`) and, when a manager recorded on someone's behalf, whose name the records carry (`recorded_as`). Passwords and PINs are never logged. |
 | `app_credentials` | Password and PIN hashes (scrypt with a random salt) and failed-attempt counters. |
 | `app_sessions` | Signed-in sessions: a SHA-256 hash of the cookie token, the person, last activity, device and recording-as. |
 | `app_devices` | Devices a manager set up for quick sign-in (a hash of the device cookie token), who set them up and when they were last used. |
 
-A new database is seeded once (`seedInto()`, under an advisory lock): in demo mode with the sample factory, otherwise with the line configuration only (products, recipes, routes, pack sizes, containers, output rows and limits) and no batches, lots, suppliers or people.
+A new database is seeded once (`seedInto()`, under an advisory lock): in demo mode with the sample factory, otherwise with the line configuration only (products, recipes, routes, piece sizes, containers, output rows and limits) and no batches, lots, suppliers or people.
 
 ### Saving a change
 
@@ -73,7 +76,7 @@ Every change is a named command, for example `saveRecord`, `receiveDelivery`, `p
 
 1. refuses requests from other websites (the `Origin` must be the app's own) and requests without a valid session;
 2. validates the command with its zod schema: known IDs and stations, finite weights within range, text length limits, 4-digit PINs, passwords of at least 6 characters;
-3. checks access: operators may run only production commands (start a batch, receive a delivery, save a station or packaging, complete a batch, edit a batch name or note, delete a blank batch, place a hold, correct a weight); everything else needs manager access;
+3. checks access: operators may run only production commands (start a batch, receive a delivery, save a station, record or undo a mixing run, take chocolate out of the mixer, finish mixing, record or undo pieces, complete a batch, edit a batch name or note, delete a blank batch, place a hold, correct a weight); everything else needs manager access;
 4. in one database transaction, locks the data version, applies the command to the latest data with `applyCommand()`, writes only the items that changed with the new version, stores new password and PIN hashes, and logs the command; and
 5. answers with the command's result (such as a new batch ID) and everything that changed since the browser's version.
 
@@ -145,10 +148,12 @@ The line is presented as five parts:
 | Bean processing | Receiving → Sorting → Roasting → Winnowing | Receive the beans, sort them by hand and reweigh, roast (whole beans can be taken off for sale), then winnow into nibs and husks. |
 | Butter & powder | Pressing → Butter sieving → Filter pan; Powder roasting → Powder crushing | Press nibs into brown butter and cake (powder). Butter is sieved (particles go to liquor grinding) and filtered into clear butter. Cake can be roasted again, then is crushed to fine powder for sale. |
 | Liquor | Liquor grinding | Grind nibs twice (coarse, then fine), weigh after fine grinding, and label the liquor with the batch name. |
-| Chocolate making | Mixing → Refining → Conching → Tempering | Combine recipe ingredients and develop the chocolate's texture and flavor. |
-| Finishing | Moulding → Packaging → Completion | Make finished chocolate, count accepted/rejected units, and close the batch. |
+| Chocolate making | Mixing | Make the chocolate types one after another from liquor, cocoa butter, sugar and milk powder (section 6, Mixing). |
+| Finishing | Pieces; Completion | Count the good pieces of each size made from each chocolate lot, whenever it is moulded (section 6, Pieces), and close the batch. |
 
 The station definitions in `src/lib/stations.ts` are the source of truth for station names, groups, form type, help text, output rows, each row's default destination, and allowed continuation stations. Station IDs `receiving`, `roasting`, `winnowing`, `grinding` and `pressing` are unchanged from the earlier layout, so older records keep working.
+
+**Retired stations.** Refining, Conching, Tempering and Moulding were separate steps before chocolate was made in mixing runs. They stay defined with `retired: true` so older batches still show their records (read-only), but they are not part of any route, part page, queue, Setup list or My work (`lineStations`). The former Packaging station (ID `packaging`) is now **Pieces**; older packaging records (accepted and rejected units per batch) still show there, read-only.
 
 ### Stations and continuation options
 
@@ -160,29 +165,27 @@ The station definitions in `src/lib/stations.ts` are the source of truth for sta
 | Winnowing | Roasted beans | Nibs for liquor (→ Liquor grinding); Nibs for butter (→ Pressing); Nibs for sale (for sale); Husks (waste) | Weights | Pressing or Liquor grinding |
 | Pressing | Nibs for butter | Brown butter (→ Butter sieving); Cocoa cake (powder) (→ Powder roasting); Waste | Weights | Butter sieving, Powder roasting or Powder crushing |
 | Butter sieving | Brown butter | Sieved butter (→ Filter pan); Sieved particles (→ Liquor grinding); Waste | Weights | Filter pan or Liquor grinding |
-| Filter pan | Sieved butter | Silk butter (stored); Butter for sale (for sale); Cocoa butter for production (stored); Filter residue (waste) | Weights | Mixing |
+| Filter pan | Sieved butter | Silk butter (stored); Butter for sale (for sale); Cocoa butter (→ Mixing); Filter residue (waste) | Weights | Mixing |
 | Powder roasting | Cocoa cake (powder) | Roasted powder (→ Powder crushing); Waste | Weights | Powder crushing |
 | Powder crushing | Roasted powder | Fine cocoa powder (for sale); Waste | Weights | None |
-| Liquor grinding | Nibs for liquor + sieved particles | Liquor (stored, labelled); Waste | Weights | Mixing |
-| Mixing | Liquor + butter + sugar | Chocolate mix; Machine residue; Waste | Weights | Refining |
-| Refining | Chocolate mix | Refined chocolate; Machine residue; Waste | Weights | Conching |
-| Conching | Refined chocolate | Conched chocolate; Machine residue; Waste | Weights | Tempering |
-| Tempering | Conched chocolate | Tempered chocolate; Machine residue; Waste | Weights | Moulding |
-| Moulding | Tempered chocolate | Finished chocolate; Recoverable chocolate; Waste | Weights | Packaging |
-| Packaging | Finished chocolate | Accepted units; Rejected units | Packaging | Completion |
+| Liquor grinding | Nibs for liquor + sieved particles | Liquor (→ Mixing, labelled); Waste | Weights | Mixing |
+| Mixing | Liquor + cocoa butter + sugar + milk powder | One lot of chocolate per run, by type | Mixing runs | None |
+| Pieces | Chocolate lots | One lot of pieces per size | Pieces (per chocolate lot) | None |
 | Completion | Recorded stations | Completed batch record | Completion | None |
+
+Liquor and cocoa butter go on to Mixing by default; either can be kept in store instead, and mixing can also take them from lots.
 
 There are three seeded route definitions in `src/lib/seed.ts`:
 
-- `beans` (Beans to liquor, butter and powder): Receiving → Sorting → Roasting → Winnowing → Pressing → Butter sieving → Filter pan → Powder roasting → Powder crushing → Liquor grinding → Completion
-- `pressing` (Nibs to butter and powder, for stored nibs): Pressing → Butter sieving → Filter pan → Powder roasting → Powder crushing → Completion
-- `chocolate`: Mixing → Refining → Conching → Tempering → Moulding → Packaging → Completion
+- `beans` (Beans to chocolate): Receiving → Sorting → Roasting → Winnowing → Pressing → Butter sieving → Filter pan → Powder roasting → Powder crushing → Liquor grinding → Mixing → Completion
+- `pressing` (Nibs to butter and powder, for stored nibs): Pressing → Butter sieving → Filter pan → Powder roasting → Powder crushing → Mixing → Completion
+- `chocolate` (Chocolate from stored liquor and butter): Mixing → Completion. The product "Chocolate from store" (prefix `CH`) starts here, with no start weight: every ingredient is taken from a lot at mixing.
 
 Routes list the processes a batch may use. A station's destination choices provide the actual path for that batch; for example Powder roasting is skipped by sending the cake straight to Powder crushing.
 
 ### Splits and parallel branches
 
-At Winnowing the crushed nibs are weighed as separate portions, so one batch can send nibs to Pressing and to Liquor grinding at the same time. `pendingStations()` in `src/lib/derive.ts` lists every station that has continued material waiting and no record yet. The batch appears in the queue of each of those stations, its next step is the first of them in line order, and the batch page lists the others as "Material waiting". `nextInput()` adds up everything continued to a station, which is how sieved butter particles join the nibs at Liquor grinding (record Liquor grinding after sieving when particles are added). A batch reaches Completion when no station has material waiting.
+At Winnowing the crushed nibs are weighed as separate portions, so one batch can send nibs to Pressing and to Liquor grinding at the same time. `pendingStations()` in `src/lib/derive.ts` lists every station that has continued material waiting and no record yet, or a record that is not finished (mixing while its runs are being made). The batch appears in the queue of each of those stations, its next step is the first of them in line order, and the batch page lists the others as "Material waiting". `nextInput()` adds up everything continued to a station, which is how sieved butter particles join the nibs at Liquor grinding (record Liquor grinding after sieving when particles are added). A batch reaches Completion when no station has material waiting.
 
 ### Labels
 
@@ -192,16 +195,32 @@ Liquor is weighed once, after fine grinding. The Liquor grinding result screen s
 
 ### Starting a batch
 
-`/production/new` creates a batch using a selected product. Products map to a route and, for chocolate products, to a recipe.
+`/production/new` creates a batch using a selected product. Products map to a route.
 
 **Bean products use one "Receive a delivery" form.** It asks for the supplier, delivery date, batch name, delivered weight (with an optional container), and the receiving output rows (accepted and rejected beans, with their destinations). The live balance bar checks them while typing.
 
 - The batch name is suggested from the supplier and date by `suggestBatchName()`, e.g. `Kuapa 28 Sep`. It is made unique with a number when needed, and can be edited.
 - **Save delivery** calls `createBatch()` and then `saveRecord()` for Receiving, then opens the saved receiving screen with the printable batch card.
 
-For stored-nib products the worker enters a starting weight. For chocolate products, the worker picks a recipe version and planned size, then records actual ingredient weights and source lots.
+For stored-nib products the worker enters a starting weight. **Chocolate from store** needs no starting weight: the batch opens at Mixing, where each run takes its ingredients from lots.
 
-`/production/new?lot=<id>` pre-selects that lot for the matching ingredient and picks a chocolate product whose recipe uses it; lot pages link here with **Use in a chocolate batch**. The worker also enters the calendar date on which the batch started. It defaults to today, so historical batches can be entered.
+**Chocolate types.** A chocolate type is a recipe (`Recipe` in `src/lib/types.ts`, seeded in `src/lib/seed.ts`), chosen for each run at mixing rather than as a product. The nine types and their recipes come from the factory's "Dark Chocolate types & Changeover Recipes" sheet, as percentages of the batch weight; ingredients at 0% are left out, and none uses lecithin:
+
+| Type | Liquor | Cocoa butter | Sugar | Milk powder |
+| --- | --- | --- | --- | --- |
+| 34% White | — | 35 | 35 | 30 |
+| 40% Milk | 11 | 30 | 34 | 25 |
+| 50% Milk | 25 | 25 | 25 | 25 |
+| 54% Dark | 44 | 10 | 46 | — |
+| 55% Dark | 45 | 10 | 45 | — |
+| 56% Dark | 50 | 10 | 40 | — |
+| 70% Dark | 60 | 10 | 30 | — |
+| 85% Dark | 75 | 10 | 15 | — |
+| 100% Dark | 90 | 10 | — | — |
+
+Ingredient names are the material names of the lots weighed in (`chocolateIngredients`): liquor from Liquor grinding, cocoa butter from the Filter pan or a supplier, sugar and milk powder from suppliers. **New chocolate type** (`addChocolateType`, managers only) creates version 1 of a new type's recipe. Names are unique; runs and lots keep the name they were made under when a type is renamed, and a type that was ever mixed cannot be deleted.
+
+`/production/new?lot=<id>` and `?chocolate=1` pick the Chocolate from store product; lot pages of liquor, cocoa butter, sugar or milk powder link here with **Mix chocolate from store**, and the Mixing queue with **Mix from store**. The worker also enters the calendar date on which the batch started. It defaults to today, so historical batches can be entered.
 
 The optional batch name is trimmed and stored separately from the generated batch ID. The name is used in queues, alerts, records, labels and reports; the ID remains the key for URLs, lot uses, QR codes and traceability.
 
@@ -211,7 +230,7 @@ The optional batch name is trimmed and stored separately from the generated batc
 - Stores the optional batch name and, for bean batches, the supplier.
 - Stores the entered batch calendar date as `startedAt` (at noon local time).
 - Sets status to `active` and `nextStation` to the first station in the route.
-- Stores the starting material, weight, source lot IDs, optional recipe snapshot, and note.
+- Stores the starting material, weight (zero for a batch that starts at mixing), source lot IDs and note. (Chocolate batches from before mixing runs also kept a recipe snapshot; their records still show it.)
 - Draws down each selected lot by the actual quantity used, never below zero, while retaining the scale weight as entered.
 
 ### Statuses
@@ -229,7 +248,7 @@ Each `StationRecord` stores:
 - station and input material;
 - input weight and input lot IDs;
 - measured outputs with kind, weight, destination, and optional created lot ID;
-- optional packaging details;
+- the runs, for mixing; packaging details, for older packaging records;
 - timestamp and recording user;
 - optional note; and
 - whether destinations have been saved.
@@ -270,11 +289,11 @@ Defaults come from each output row's `to` in `src/lib/stations.ts`. Custom rows 
 
 - It shows how much is entered, how much is left to assign or missing, and turns orange above the station's variance limit or when more was entered than went in.
 - It also notes when waste is above the waste limit.
-- It does not block saving. Saving requires a positive input and at least one positive weight, or a positive total unit count for Packaging, where accepted units are calculated from total and rejected units.
+- It does not block saving. Saving requires a positive input and at least one positive weight.
 
 ### Saving
 
-**Save** sends a `saveRecord` (or `savePackaging`) command to the server (section 2). There, `saveRecord()` in `src/server/reduce.ts` first checks that:
+**Save** sends a `saveRecord` command to the server (section 2). There, `saveRecord()` in `src/server/reduce.ts` first checks that:
 
 - nobody saved this station of this batch since the form was opened;
 - the batch is not completed, and is not on hold unless an existing record is being edited;
@@ -299,6 +318,49 @@ The saved view puts the next step first:
 - **Labels:** Liquor grinding shows the liquor label; Receiving shows the batch card.
 - **Edit weights** reopens the form until the batch is completed.
 
+### Mixing
+
+Mixing has its own screen (`MixingScreen` in `src/components/MixingScreen.tsx`) instead of the weights form. The chocolate types are made one after another; each **run** is entered and saved on its own (`saveMixingRun`), so the record builds up during the day.
+
+**The mixer.** The mixer is never emptied between types: some chocolate stays in it and the next run is made on top of it, whichever batch that run belongs to. The state keeps what it holds (`mixer.holds`: kg, type, recipe version, and the batch, run and lot that left it) and the last run made on it (`mixer.lastRunId`). How much is usually kept (`mixerKeepsKg`, 10 kg to start) is set in **Setup → Containers** and suggested on every run.
+
+**A run.** The operator chooses the chocolate type and the kg of fresh ingredients to run (the sheet's "To run"). `changeover()` in `src/lib/mixing.ts` then does the changeover sheet's calculation: the run makes *to run + held* kg of the new type; each ingredient needed for that total, less what the held chocolate already brings, is what to add. For example, 30 kg of 70% Dark on 10 kg of 85% Dark makes 40 kg: liquor 24 − 7.5 = **16.5**, cocoa butter 4 − 1 = **3**, sugar 12 − 1.5 = **10.5**. The screen shows, per ingredient, what the mixer already holds, what to add, the weight actually weighed in (prefilled with what to add) and where it comes from: **this batch** (the liquor and cocoa butter it sent to mixing, up to what is left) or a lot, oldest first. The operator enters the chocolate taken out and what is kept in the mixer; the live bar checks *fresh + held = taken out + kept*.
+
+- An ingredient the held chocolate has more of than the new type cannot be taken out again, so a changeover has a **smallest run** (`minRun`): below it the recipe cannot be reached and the run is refused (for example at least 30 kg of 85% Dark on 15 kg of 55% Dark, as in the sheet).
+- When the new type has none of an ingredient the held chocolate has (sugar into 100% Dark, milk powder into a dark chocolate), the run is refused until the chocolate is **taken out of the mixer** (`emptyMixer`). What is taken out becomes a lot of that chocolate, traced to the batch whose run left it; that run then shows the lot instead of "left in the mixer".
+- The chocolate taken out becomes a lot of the type, numbered by type code: `D70-0001` for 70% Dark, `M40-…` for 40% Milk, `W34-…` for 34% White (`nextLotId()`). Ingredient lots are drawn down by the weight weighed in, and each use records the run.
+- The run is refused when the mixer changed since the screen was opened (`mixerStamp()`), so two devices cannot build on the same leftover.
+- The last run made on the mixer can be undone (`undoMixingRun`) while its chocolate is untouched and mixing is not finished: its lot is removed (its number stays taken) and the ingredients go back to their lots.
+
+**Finishing.** **Finish mixing** (`finishMixing`) closes the record. Liquor or cocoa butter the batch sent to mixing that no run used is kept in store as a lot, and the batch moves on (usually to Completion). A batch cannot be completed while its mixing is in progress.
+
+**The record.** The mixing record is an ordinary `StationRecord` with its `runs`; its input and outputs follow from them (`mixingTotals()`), so the balance, alerts and reports work as for other stations. Input is every ingredient weighed in, the chocolate the mixer held from another batch, and unused liquor or butter; outputs are each run's chocolate, what this batch leaves in the mixer for another (destination "Stays in the mixer") or what was taken out, and the liquor or butter kept in store. Mixing runs are not corrected from the batch page; undo the last run instead. Each run keeps its expected and actual ingredient weights, which the chocolate type's page compares.
+
+### Pieces
+
+The end result is the number of pieces of each size for each chocolate type. Pieces are counted from **chocolate lots**, not on a batch: chocolate can be moulded the same day or later, also after its batch is completed. The Pieces queue (`/production/stations/packaging`, `chocolateWaiting()`) lists every chocolate lot with chocolate left, oldest first; My work shows it to people with the Pieces station.
+
+On `/production/pieces/[lot]` the operator enters the good pieces made of each size (there are no rejects), and the screen shows the chocolate that takes (pieces × grams) and what stays in the lot. **Save pieces** (`recordPieces`):
+
+- makes one lot per size, counted in pieces and numbered `FIN-…`, named e.g. `70% Dark · 45 g bar`, with `pieces` naming the type, size, grams, the chocolate lot and who counted them; its source is the batch that mixed the chocolate, so its label traces to the supplier;
+- draws the chocolate lot down by the weight of the pieces, to the gram (`piecesKg()`), and records each use with the lot of pieces it made; more than the lot holds is refused.
+
+On the Pieces screen each size also shows how many pieces the production plan still needs of that type and size.
+
+Pieces entered by mistake can be undone while none of them is used (`removePieces`): the chocolate goes back to its lot and the `FIN` number stays taken. Sizes come from **Setup → Piece sizes**; a size already made cannot be deleted, and pieces keep the size name and grams they were made with. `piecesByTypeAndSize()` in `src/lib/pieces.ts` adds pieces up by type and size for the batch page, the completion screen and **Reports → Pieces made**.
+
+### Production plan
+
+The plan (`state.plan`, one shared setting) lists the pieces to make of each chocolate type and size, a start date and an optional note. Managers set it on `/plan` (`setPlan`); the server refuses a type or size that does not exist and the same type and size twice, drops lines of 0 pieces, and records who set it and when. Operators can read the plan but not change it. A new factory starts without one.
+
+`planProgress()` in `src/lib/plan.ts` works out, from the state alone:
+
+- **Pieces**: for each line, the pieces recorded at Pieces since the start date (lots of pieces with that chocolate type and size, by the day they were counted), what is left and the chocolate that takes (pieces × grams). Pieces made beyond a line do not count towards another.
+- **Chocolate still to mix**: per type, the chocolate for the pieces left less the chocolate already mixed and waiting in lots (the Pieces queue).
+- **Ingredients to mix it**: the chocolate still to mix times each type's current recipe, against what is in store (lots of that material, in kg) and the liquor and cocoa butter at mixing on batches not yet completed. What that does not cover is shown as short.
+
+It is a guide for the day's work: it does not take into account what a changeover adds or what the mixer keeps. **Overview** shows the plan's progress; My work links to it for people with Mixing or Pieces (or no stations of their own).
+
 ## 7. Mass balance and packaging calculations
 
 `calculateBalance(input, outputs)` in `src/lib/balance.ts` rounds values to two decimal places and computes:
@@ -315,7 +377,7 @@ variance % = variance / input × 100
 
 Unaccounted variance is kept separate from recorded waste. A negative variance is possible when measured output exceeds input. Percentages are zero when the input is not positive.
 
-Packaging uses nominal pack weight:
+Packaging records from before mixing runs used nominal pack weight:
 
 ```text
 accepted units = max(0, total units - rejected units)
@@ -330,7 +392,7 @@ The UI prevents rejected units from being greater than total units.
 `Lot` represents a quantity that can be traced. Lots may be:
 
 - supplier-delivered raw material;
-- an intermediate made by a batch;
+- an intermediate made by a batch, including each type of chocolate made at mixing (`chocolate` on the lot names the type, recipe version and run);
 - a by-product;
 - rework; or
 - finished goods.
@@ -343,7 +405,7 @@ Lots made by a batch show a printable label on their lot page, and a bean batch 
 
 Each lot records its source, received quantity, available quantity, and uses. When a source lot is selected for a new chocolate batch, the actual amount used is appended to the lot's use history and subtracted from availability. The lot page links upstream source lots, the creating batch/station, downstream batch uses, and lots made by those downstream batches.
 
-Lot IDs are generated in `nextLotId()` using material-specific prefixes such as `BEAN`, `WRB`, `NIB`, `SILK`, `BUT`, `PWD`, `LIQ`, `REW`, and `FIN`, followed by a four-digit sequence. Batch IDs are generated in `nextBatchId()` from the product prefix and a three-digit sequence.
+Lot IDs are generated in `nextLotId()` using material-specific prefixes such as `BEAN`, `WRB`, `NIB`, `SILK`, `BUT`, `PWD`, `LIQ`, `REW`, and `FIN`, followed by a four-digit sequence. Chocolate made at mixing is numbered by type code: `D70` for 70% Dark, `M40` for 40% Milk, `W34` for 34% White. Batch IDs are generated in `nextBatchId()` from the product prefix and a three-digit sequence.
 
 **Numbers are never reused.** A lot or batch can be removed: an unused supplier lot or a blank batch can be deleted, and saving a station again removes the lots it made for outputs it no longer stores (the output now continues or goes to waste, or was renamed). Its number stays taken, so a printed label or QR code for it finds nothing instead of opening a different lot or batch, and traceability back to the supplier holds. The state keeps `idCounters`: the highest number issued for each batch prefix and each lot prefix, stored as a setting. After every command, `applyCommand()` raises the counters to cover every batch and lot ID from before and after the command, inside the same transaction. The next number is one above the counter or the highest ID in use, whichever is higher. A new lot made in the same save that drops another cannot take the dropped lot's number either. A database saved before the counters existed needs no migration step: its numbers continue from its highest IDs, and its counters fill in as commands run. Uploading records from an older browser keeps the server's counters, so numbers the server already issued stay taken.
 
@@ -360,7 +422,7 @@ Corrections are made from the batch page: open a step's **Details** and select *
 
 The batch timeline shows station records, input/output balances, destinations, recording users, holds, corrections, the next station, upcoming default stations, and completion information.
 
-Completion is a review screen. It summarizes every station, starting and final useful quantities, total variance, packaging counts, and lots created by the batch. The Complete button is disabled while any record still lacks saved destinations or while the batch is on hold.
+Completion is a review screen. It summarizes every station, the starting weight, the chocolate made of each type, the pieces made so far by type and size, total variance, and lots created by the batch. The Complete button is disabled while any record still lacks saved destinations or while the batch is on hold.
 
 ## 10. Alerts and thresholds
 
@@ -385,37 +447,41 @@ Alerts appear in the Overview, in the production navigation counts, on batch pag
 | Route | Purpose |
 | --- | --- |
 | `/` | Home: My work for operators and for managers with their own stations, the production line for other managers. Shows the sign-in screen when nobody is signed in. |
-| `/overview` | Active-batch count, alert count, completed-today count, aggregate variance, alerts, and recent records. |
+| `/overview` | Active-batch count, alert count, completed-today count, aggregate variance, the production plan's progress, alerts, and recent records. |
+| `/plan` | **Production plan**: pieces planned, made and left per chocolate type and size, the chocolate still to mix, the ingredients it takes against store; managers set and change the plan. |
 | `/work` | My work: batches waiting at the signed-in person's stations (all stations for people without their own), with one button to record each, search, and **Receive a delivery**. |
 | `/search?q=` | Finds batches (name, ID, product, supplier) and lots (ID, material, supplier). |
 | `/scan/[code]` | Target of the QR codes on labels: opens the batch where it is waiting, or the lot. |
 | `/production` | Active batches, where each is waiting, holds, and the five production parts. |
-| `/production/new` | Receive a delivery (bean batches: batch and receiving in one form), or start a stored-nib or chocolate batch; `?lot=` pre-selects a lot. |
+| `/production/new` | Receive a delivery (bean batches: batch and receiving in one form), or start a stored-nib or Chocolate from store batch; `?lot=` or `?chocolate=1` picks Chocolate from store. |
 | `/production/parts/[part]` | Shows batches waiting in one line part and lists its stations. |
-| `/production/stations/[station]` | Shows a station's ready, held, and recently recorded queues. |
+| `/production/stations/[station]` | Shows a station's ready, held, and recently recorded queues; the Mixing queue also shows what the mixer holds, and the Pieces queue lists the chocolate lots not yet made into pieces. |
 | `/production/batches/[id]` | One Steps list (done with details and inline corrections, waiting, later with early entry), batch card printing, actions, recipe comparison, holds, and alerts. |
-| `/production/batches/[id]/record/[station]` | One-screen station entry (input, weights with containers, destinations, live check), the saved view, and completion. |
+| `/production/pieces/[lot]` | Pieces: counts the good pieces of each size made from one chocolate lot, and lists (and undoes) the pieces made from it. |
+| `/production/batches/[id]/record/[station]` | One-screen station entry (input, weights with containers, destinations, live check), the saved view, mixing runs, and completion. |
 | `/materials` | Filters and lists all material lots. |
 | `/materials/receive` | Records a supplier delivery and creates a lot. |
 | `/materials/[lot]` | Shows lot quantities, a printable label for production lots, and upstream/downstream traceability; edits/deletes unused supplier lots only. |
-| `/recipes` | Lists recipes, current versions, and batch usage. |
-| `/recipes/[id]` | Edits recipe labels, adds immutable versions, deletes recipes unused by batches, and compares expected versus actual ingredients by batch. |
+| `/recipes` | **Chocolate types**: lists each type's current recipe, versions, and how many runs made it. |
+| `/recipes/new` | Adds a chocolate type and the first version of its recipe. |
+| `/recipes/[id]` | Renames a type, adds immutable versions, deletes types never made, and compares expected versus actual ingredients by mixing run. |
+| `/reports/pieces` | **Pieces made**: pieces by chocolate type and size in the period, and every lot of pieces with the chocolate lot and batch it came from. |
 | `/reports/losses` | Shows weight loss by batch/stage, follows one batch, and aggregates loss by process. |
 | `/reports/variance` | Filters station records and compares waste, by-products, variance, and limits. |
 | `/reports/batches` | Lists all batches and their routes/statuses/summary quantities. |
 | `/reports/corrections` | Audits all output corrections. |
 | `/reports/holds` | Audits all holds and releases. |
 | `/setup/business` | Edits the business name and contact details rendered on reports; uploads records an older version kept in this browser; in demo mode, resets the demo data. |
-| `/setup/products` | Lists, adds, edits, and guarded-deletes products and route/recipe associations. |
-| `/setup/pack-sizes` | Lists, adds, edits, and guarded-deletes packaging sizes. |
-| `/setup/containers` | Lists, adds, edits and deletes containers and their empty weights. |
+| `/setup/products` | Lists, adds, edits, and guarded-deletes products and their routes. |
+| `/setup/pack-sizes` | **Piece sizes**: lists, adds, edits, and guarded-deletes the sizes pieces are made in. |
+| `/setup/containers` | Lists, adds, edits and deletes containers and their empty weights; sets how much chocolate the mixer usually keeps, and shows what it holds. |
 | `/setup/outputs` | Lists, adds, edits, and deletes station output rows for future station forms. |
 | `/setup/routes` | Edits route names, starting material and notes; station order stays structural and route deletion is guarded. |
 | `/setup/suppliers` | Lists, adds, edits, and guarded-deletes suppliers. |
 | `/setup/users` | Lists, adds, edits and guarded-deletes staff accounts with PIN, password, access and stations; sets the idle sign-out time; changes the user used for recording; lists, sets up and removes devices for quick sign-in. The last manager cannot be removed or demoted. |
 | `/setup/alerts` | Edits thresholds. |
 
-`/reports` redirects to `/reports/losses`; `/setup` redirects to `/setup/products`. The former `/setup/paper-catalog` URL redirects to `/setup/products`.
+`/reports` redirects to `/reports/pieces`; `/setup` redirects to `/setup/products`. The former `/setup/paper-catalog` URL redirects to `/setup/products`.
 
 The server's JSON API, used by the pages (all answers are JSON; errors come as `{ "error": "…" }` with a readable message):
 
@@ -440,23 +506,23 @@ All report sections support a duration filter for preset periods or a custom dat
 The Setup screens send commands to the server like the production screens, so a change reaches every device within a few seconds:
 
 - Products receive generated IDs based on their names.
-- Pack sizes receive generated IDs based on grams and list position.
+- Piece sizes receive generated IDs based on grams.
 - Suppliers receive generated IDs based on a slugged name.
 - Users receive generated IDs and initials.
-- Recipe versions must total exactly 100% (within 0.01 percentage points) before saving.
+- Recipe versions must total exactly 100% (within 0.01 percentage points) and name each ingredient once before saving.
 - Output categories are the rows shown on station recording forms and can be extended with custom rows.
 - Setup edits preserve entity IDs so existing references remain valid. Delete actions are checked on the server (a supplier with lots, a product with batches, a person in the audit history and so on cannot be deleted) as well as disabled in the screens.
 - Passwords and PINs are sent once and stored only as hashes; the forms never show them. Leaving **New PIN** or **New password** blank keeps the current one.
 - Routes keep their station sequence fixed because station IDs are part of production and report logic; only route descriptive fields are editable.
 - Recipe version history, station measurements, holds, corrections, and production-created lots are audit data, not disposable setup rows.
 
-A real factory starts with the line configuration from `configState()`: the bean and liquor products, three verified chocolate products and recipes, the paper pack sizes (7 g, 45 g, 80 g, 200 g sachet, and 1 kg), three routes, the containers, output rows and threshold values. It has no batches, lots, suppliers or people until they are entered, and its contact details in Setup → Business details start blank. The demo (`seedState()`) adds three suppliers, five staff, sample lots and sample batches.
+A real factory starts with the line configuration from `configState()`: the bean, stored-nib and Chocolate from store products, the nine chocolate types from the factory's changeover recipes sheet (section 5), an empty mixer, the piece sizes (7 g, 45 g and 80 g bars, 200 g sachet, and 1 kg pack; more can be added), three routes, the containers, output rows and threshold values. It has no batches, lots, suppliers or people until they are entered, and its contact details in Setup → Business details start blank. The demo (`seedState()`) adds three suppliers, five staff, sample lots and sample batches.
 
 ## 13. Navigation and visual system
 
 `Shell.tsx` provides:
 
-- a menu that depends on access: operators get **My work** and **Production line**; managers get Overview, Production line, Materials, Recipes, Reports and Setup, plus **My work** when they have their own stations;
+- a menu that depends on access: operators get **My work** and **Production line**; managers get Overview, Production line, Production plan, Materials, Chocolate types, Reports and Setup, plus **My work** when they have their own stations (the plan stays off the phone bar so it fits; Overview links to it);
 - production part links with waiting counts;
 - a desktop top bar with the current page and a search box;
 - a mobile header with the person's name, search and sign-out; and
@@ -492,7 +558,7 @@ node browser-check.cjs
 node interaction-audit.cjs
 ```
 
-Both browser scripts expect a demo instance to be running on port 3100: they sign in as the sample manager and reset the demo data first. They use Playwright with Microsoft Edge. The browser check covers PIN and email sign-in, all 17 station queues, one-screen recording with the live check, the nib split, labels, receiving a delivery in one form, the batch steps with inline corrections, holds, completion, reports, setup, the phone layout and operator menus. `interaction-audit.cjs` clicks through the same flows, saving before/after screenshots and a report under its configured output directory.
+Both browser scripts expect a demo instance to be running on port 3100: they sign in as the sample manager and reset the demo data first. They use Playwright with Microsoft Edge. The browser check covers PIN and email sign-in, the queues of all 13 stations of the line, one-screen recording with the live check, the nib split, labels, mixing runs with the changeover sheet's example, a blocked changeover and taking the leftover out, Chocolate from store, counting pieces from a chocolate lot and the Pieces made report, the production plan (progress, a duplicate line refused, changing it, reading it as an operator), receiving a delivery in one form, the batch steps with inline corrections, holds, completion, the chocolate types and adding a new one, reports, setup, the phone layout and operator menus. `interaction-audit.cjs` clicks through the same flows, saving before/after screenshots and a report under its configured output directory.
 
 ## 15. Current scope and limitations
 
@@ -503,4 +569,4 @@ Both browser scripts expect a demo instance to be running on port 3100: they sig
 - The audit log (`app_commands`) is kept in the database but not yet shown in the app; holds and corrections have their own reports.
 - On a new real factory, the first person to open the app creates the first manager. Open it and set it up right after deploying.
 - Back up the PostgreSQL database with your provider's backup feature or regular exports (`pg_dump`). The embedded database is a folder on one computer and is meant for local use.
-- Weights are recorded in kilograms and rounded to two decimals; Packaging also stores accepted units.
+- Weights are recorded in kilograms and rounded to two decimals; pieces are counted, and the chocolate they use is worked out to the gram.

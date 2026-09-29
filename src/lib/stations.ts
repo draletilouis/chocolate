@@ -54,11 +54,11 @@ export const stations: Station[] = [
     rows: [
       { name: 'Silk butter', kind: 'useful', to: 'stock' },
       { name: 'Butter for sale', kind: 'useful', to: 'sale' },
-      { name: 'Cocoa butter', kind: 'useful', to: 'stock' },
+      { name: 'Cocoa butter', kind: 'useful', to: 'continue:mixing' },
       { name: 'Filter residue', kind: 'waste', to: 'waste' },
     ],
     next: ['mixing'], form: 'weights',
-    help: 'Pass the sieved butter through the filter pan and weigh the clear butter in portions: silk butter, for sale, and cocoa butter kept for production.',
+    help: 'Pass the sieved butter through the filter pan and weigh the clear butter in portions: silk butter, for sale, and cocoa butter for chocolate, which goes on to mixing.',
   },
   {
     id: 'powder-roasting', name: 'Powder roasting', group: 'Butter & powder',
@@ -77,51 +77,53 @@ export const stations: Station[] = [
   {
     id: 'grinding', name: 'Liquor grinding', group: 'Liquor',
     input: 'Nibs for liquor + sieved particles', output: 'Cocoa liquor (labelled)',
-    rows: [{ name: 'Liquor', kind: 'useful', to: 'stock' }, { name: 'Waste', kind: 'waste', to: 'waste' }],
+    rows: [{ name: 'Liquor', kind: 'useful', to: 'continue:mixing' }, { name: 'Waste', kind: 'waste', to: 'waste' }],
     next: ['mixing'], form: 'weights',
-    help: 'Grind twice: coarse, then fine. Weigh the liquor only after fine grinding, then print its label with the batch name.',
+    help: 'Grind twice: coarse, then fine. Weigh the liquor only after fine grinding, then print its label with the batch name. It goes on to mixing, or keep it in store.',
   },
   {
     id: 'mixing', name: 'Mixing', group: 'Chocolate making',
-    input: 'Liquor + butter + sugar', output: 'Chocolate mix',
-    rows: [{ name: 'Chocolate mix', kind: 'useful' }, { name: 'Machine residue', kind: 'byproduct' }, { name: 'Waste', kind: 'waste' }],
-    next: ['refining'], form: 'weights',
-    help: 'Input is the total of the recipe ingredients actually weighed in.',
+    input: 'Liquor + cocoa butter + sugar + milk powder', output: 'Chocolate, one type after another',
+    rows: [],
+    next: [], form: 'mixing',
+    help: 'Make the chocolate types one after another. Each run is made on top of what the mixer still holds from the run before.',
   },
+  // Refining to moulding were separate steps before chocolate was made in mixing runs. Older batches still show them.
   {
-    id: 'refining', name: 'Refining', group: 'Chocolate making',
+    id: 'refining', name: 'Refining', group: 'Chocolate making', retired: true,
     input: 'Chocolate mix', output: 'Refined chocolate',
-    rows: [{ name: 'Refined chocolate', kind: 'useful' }, { name: 'Machine residue', kind: 'byproduct' }, { name: 'Waste', kind: 'waste' }],
+    rows: [],
     next: ['conching'], form: 'weights',
     help: 'Weigh the refined mass and any residue cleaned from the refiner.',
   },
   {
-    id: 'conching', name: 'Conching', group: 'Chocolate making',
+    id: 'conching', name: 'Conching', group: 'Chocolate making', retired: true,
     input: 'Refined chocolate', output: 'Conched chocolate',
-    rows: [{ name: 'Conched chocolate', kind: 'useful' }, { name: 'Machine residue', kind: 'byproduct' }, { name: 'Waste', kind: 'waste' }],
+    rows: [],
     next: ['tempering'], form: 'weights',
     help: 'Weigh the conched mass when the conche is emptied.',
   },
   {
-    id: 'tempering', name: 'Tempering', group: 'Chocolate making',
+    id: 'tempering', name: 'Tempering', group: 'Chocolate making', retired: true,
     input: 'Conched chocolate', output: 'Tempered chocolate',
-    rows: [{ name: 'Tempered chocolate', kind: 'useful' }, { name: 'Machine residue', kind: 'byproduct' }, { name: 'Waste', kind: 'waste' }],
+    rows: [],
     next: ['moulding'], form: 'weights',
     help: 'Weigh the tempered chocolate going to the moulds.',
   },
   {
-    id: 'moulding', name: 'Moulding', group: 'Finishing',
+    id: 'moulding', name: 'Moulding', group: 'Finishing', retired: true,
     input: 'Tempered chocolate', output: 'Finished chocolate · recoverable chocolate',
-    rows: [{ name: 'Finished chocolate', kind: 'useful' }, { name: 'Recoverable chocolate', kind: 'byproduct' }, { name: 'Waste', kind: 'waste' }],
+    rows: [],
     next: ['packaging'], form: 'weights',
     help: 'Recoverable chocolate can be reworked. Only unusable material is waste.',
   },
+  // Formerly Packaging (accepted and rejected units per batch); its older records still show there.
   {
-    id: 'packaging', name: 'Packaging', group: 'Finishing',
-    input: 'Finished chocolate', output: 'Accepted units · rejected units',
+    id: 'packaging', name: 'Pieces', group: 'Finishing',
+    input: 'Chocolate by type', output: 'Pieces by size',
     rows: [],
-    next: ['completion'], form: 'packaging',
-    help: 'Count every unit made, then the rejected units. Accepted units are calculated.',
+    next: [], form: 'pieces',
+    help: 'Make the chocolate into pieces and count the good pieces of each size. Chocolate not made into pieces yet stays in its lot.',
   },
   {
     id: 'completion', name: 'Completion', group: 'Finishing',
@@ -139,9 +141,15 @@ export const stationGroups: StationGroupDef[] = [
   { name: 'Bean processing', slug: 'bean-processing', note: 'Receive, sort, roast and winnow the beans.', from: 'Cocoa beans', to: 'Nibs · whole beans · husks' },
   { name: 'Butter & powder', slug: 'butter-powder', note: 'Press nibs into brown butter and cake. The butter is sieved and filtered; the cake becomes powder.', from: 'Nibs for butter', to: 'Clear butter · cocoa powder' },
   { name: 'Liquor', slug: 'liquor', note: 'Grind nibs twice, weigh after fine grinding, then label the liquor with the batch name.', from: 'Nibs for liquor', to: 'Labelled cocoa liquor' },
-  { name: 'Chocolate making', slug: 'chocolate-making', note: 'Combine ingredients, then develop texture and flavour.', from: 'Liquor + butter + sugar', to: 'Tempered chocolate' },
-  { name: 'Finishing', slug: 'finishing', note: 'Mould, count units, complete the batch.', from: 'Tempered chocolate', to: 'Packed units' },
+  { name: 'Chocolate making', slug: 'chocolate-making', note: 'Mix the chocolate types one after another from liquor, cocoa butter, sugar and milk powder.', from: 'Liquor + cocoa butter', to: 'Chocolate by type' },
+  { name: 'Finishing', slug: 'finishing', note: 'Make the chocolate into pieces of each size, and complete the batch.', from: 'Chocolate by type', to: 'Pieces by size' },
 ];
+
+/** The stations of the line as it runs now, without the retired ones */
+export const lineStations = stations.filter((s) => !s.retired);
+
+/** Stations whose records have a weight balance (input against outputs) */
+export const isWeighed = (s: Station) => s.form === 'weights' || s.form === 'mixing';
 
 export const groupBySlug = (slug: string) => stationGroups.find((g) => g.slug === slug);
 export const groupOf = (id: StationId) => stationGroups.find((g) => g.name === stationById[id].group)!;

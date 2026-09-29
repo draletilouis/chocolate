@@ -7,6 +7,7 @@ import { Check, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Back, Badge, Button, Empty, Field, Input, LinkButton, Notice, PageHeader, Panel, Table, td, tdNum } from '@/components/ui';
 import { round2 } from '@/lib/balance';
 import { batchDisplayName } from '@/lib/derive';
+import { allRuns } from '@/lib/mixing';
 import { dateTime, num } from '@/lib/format';
 import { useStore } from '@/lib/store';
 
@@ -19,12 +20,16 @@ export default function RecipePage() {
   const [editingName, setEditingName] = useState(false);
   const [draft, setDraft] = useState<{ name: string; percent: string }[]>([]);
   const [note, setNote] = useState('');
-  if (!recipe) return <Empty>Recipe {id} was not found.</Empty>;
+  if (!recipe) return <Empty>Chocolate type {id} was not found.</Empty>;
 
-  const product = store.products.find((p) => p.id === recipe.productId);
-  const allRecipeBatches = store.batches.filter((b) => b.recipeId === recipe.id);
-  const batches = store.batches.filter((b) => b.recipeId === recipe.id && b.ingredients);
-  const canDelete = allRecipeBatches.length === 0;
+  const runs = allRuns(store).filter(({ run }) => run.recipeId === recipe.id);
+  // Chocolate batches from before mixing runs recorded their ingredients on the batch itself.
+  const olderBatches = store.batches.filter((b) => b.recipeId === recipe.id && b.ingredients);
+  const made = [
+    ...runs.map(({ batch, run, index }) => ({ key: run.id, batch, when: run.recordedAt, version: run.recipeVersion, label: `run ${index + 1}${run.held ? ` · on ${num(run.held.kg)} kg of ${run.held.type}` : ''}`, ingredients: run.ingredients.filter((i) => i.expected > 0 || i.actual > 0) })),
+    ...olderBatches.map((b) => ({ key: b.id, batch: b, when: b.startedAt, version: b.recipeVersion, label: '', ingredients: b.ingredients! })),
+  ];
+  const canDelete = made.length === 0 && !store.batches.some((b) => b.recipeId === recipe.id) && store.mixer.holds?.recipeId !== recipe.id;
   const total = round2(draft.reduce((s, d) => s + (Number(d.percent) || 0), 0));
 
   function startDraft() {
@@ -41,13 +46,13 @@ export default function RecipePage() {
 
   return (
     <>
-      <Back href="/recipes" label="Recipes" />
-      <PageHeader eyebrow="Recipe" title={recipe.name} subtitle={`Product: ${product?.name ?? recipe.productId} · current version v${recipe.currentVersion}`}
-        action={<div className="flex flex-wrap justify-end gap-2"><LinkButton variant="secondary" href="/production/new">Start a batch</LinkButton><Button variant="secondary" onClick={() => setEditingName((value) => !value)}><Pencil size={14} /> Edit name</Button><Button variant="danger" disabled={!canDelete} title={canDelete ? 'Delete recipe' : 'Recipes used by batches cannot be deleted.'} onClick={async () => { if (canDelete && window.confirm(`Delete recipe ${recipe.name}?`) && await store.deleteRecipe(recipe.id)) router.push('/recipes'); }}><Trash2 size={14} /> Delete</Button>{!adding && <Button onClick={startDraft}><Plus size={15} /> New version</Button>}</div>} />
+      <Back href="/recipes" label="Chocolate types" />
+      <PageHeader eyebrow="Chocolate type" title={recipe.name} subtitle={`Current version v${recipe.currentVersion} · made in ${runs.length} run${runs.length === 1 ? '' : 's'}`}
+        action={<div className="flex flex-wrap justify-end gap-2"><LinkButton variant="secondary" href="/production/stations/mixing">Mixing</LinkButton><Button variant="secondary" onClick={() => setEditingName((value) => !value)}><Pencil size={14} /> Edit name</Button><Button variant="danger" disabled={!canDelete} title={canDelete ? 'Delete chocolate type' : 'Chocolate types already made cannot be deleted.'} onClick={async () => { if (canDelete && window.confirm(`Delete chocolate type ${recipe.name}?`) && await store.deleteRecipe(recipe.id)) router.push('/recipes'); }}><Trash2 size={14} /> Delete</Button>{!adding && <Button onClick={startDraft}><Plus size={15} /> New version</Button>}</div>} />
 
-      {editingName && <Panel title="Edit recipe" subtitle="This changes the recipe label only. Existing version history remains unchanged.">
+      {editingName && <Panel title="Rename chocolate type" subtitle="The new name is used for new batches. Batches already made and the version history keep their names.">
         <form className="flex flex-wrap items-end gap-3 p-5" onSubmit={async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); if (await store.updateRecipe(recipe.id, { name: String(form.get('name')) })) setEditingName(false); }}>
-          <Field label="Recipe name" className="min-w-[240px] flex-1"><Input name="name" defaultValue={recipe.name} required /></Field>
+          <Field label="Chocolate type name" className="min-w-[240px] flex-1"><Input name="name" defaultValue={recipe.name} required /></Field>
           <div className="flex gap-2"><Button variant="secondary" onClick={() => setEditingName(false)}>Cancel</Button><Button type="submit">Save changes</Button></div>
         </form>
       </Panel>}
@@ -80,24 +85,24 @@ export default function RecipePage() {
         ))}
       </Panel>
 
-      <Panel title="Expected vs actual" subtitle="What each batch actually weighed in, against the recipe version it used.">
-        {batches.length === 0 && <Empty>No batches have used this recipe yet.</Empty>}
-        {batches.map((b) => {
-          const expected = round2(b.ingredients!.reduce((s, i) => s + i.expected, 0));
-          const actual = round2(b.ingredients!.reduce((s, i) => s + i.actual, 0));
+      <Panel title="Expected vs actual" subtitle="What each run actually weighed in, against what its recipe version called for on top of what the mixer held.">
+        {made.length === 0 && <Empty>{recipe.name} has not been made yet.</Empty>}
+        {made.sort((a, b) => b.when.localeCompare(a.when)).map(({ key, batch: b, version, label, ingredients }) => {
+          const expected = round2(ingredients.reduce((s, i) => s + i.expected, 0));
+          const actual = round2(ingredients.reduce((s, i) => s + i.actual, 0));
           return (
-            <div key={b.id} className="border-b border-line last:border-b-0">
-              <div className="flex flex-wrap items-center gap-2 px-5 pt-3 text-[13px]"><Link href={`/production/batches/${b.id}`} className="font-bold text-green">{batchDisplayName(b)}</Link>{b.name && <span className="text-[11px] text-muted">ID {b.id}</span>}<span className="text-muted">v{b.recipeVersion} · expected {num(expected)} kg · actual {num(actual)} kg</span></div>
+            <div key={key} className="border-b border-line last:border-b-0">
+              <div className="flex flex-wrap items-center gap-2 px-5 pt-3 text-[13px]"><Link href={`/production/batches/${b.id}`} className="font-bold text-green">{batchDisplayName(b)}</Link>{b.name && <span className="text-[11px] text-muted">ID {b.id}</span>}<span className="text-muted">{label && `${label} · `}v{version} · expected {num(expected)} kg · actual {num(actual)} kg</span></div>
               <Table head={['Ingredient', 'Expected', 'Actual', 'Difference', 'Lot']}>
-                {b.ingredients!.map((i) => { const diff = round2(i.actual - i.expected); return (
-                  <tr key={i.name}><td className={td}>{i.name}</td><td className={tdNum}>{num(i.expected)} kg</td><td className={tdNum}>{num(i.actual)} kg</td><td className={`${tdNum} ${diff !== 0 ? 'text-warn' : 'text-muted'}`}>{diff > 0 ? '+' : ''}{num(diff)} kg</td><td className={td}>{i.lotId ? <Link href={`/materials/${i.lotId}`} className="font-semibold text-green">{i.lotId}</Link> : <span className="text-faint">—</span>}</td></tr>
+                {ingredients.map((i) => { const diff = round2(i.actual - i.expected); return (
+                  <tr key={i.name}><td className={td}>{i.name}</td><td className={tdNum}>{num(i.expected)} kg</td><td className={tdNum}>{num(i.actual)} kg</td><td className={`${tdNum} ${diff !== 0 ? 'text-warn' : 'text-muted'}`}>{diff > 0 ? '+' : ''}{num(diff)} kg</td><td className={td}>{i.lotId ? <Link href={`/materials/${i.lotId}`} className="font-semibold text-green">{i.lotId}</Link> : <span className="text-muted">From the batch</span>}</td></tr>
                 ); })}
               </Table>
             </div>
           );
         })}
       </Panel>
-      {!adding && recipe.versions.length > 1 && <Notice tone="neutral">Older versions stay on record so past batches can still be compared with what they used. Versions cannot be edited or deleted after creation.</Notice>}
+      {!adding && recipe.versions.length > 1 && <Notice tone="neutral">Older versions stay on record so past runs can still be compared with what they used. Versions cannot be edited or deleted after creation.</Notice>}
     </>
   );
 }

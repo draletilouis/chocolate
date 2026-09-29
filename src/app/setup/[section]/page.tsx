@@ -6,13 +6,13 @@ import { Check, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import { Badge, Button, Empty, Field, Input, Notice, PageHeader, Panel, Select, SubNav, Table, Textarea, td, tdNum } from '@/components/ui';
 import { dateTime, kindLabel } from '@/lib/format';
 import { useStore, type DeviceInfo } from '@/lib/store';
-import { stationName, stations } from '@/lib/stations';
+import { isWeighed, lineStations, stationName } from '@/lib/stations';
 import type { Access, BusinessDetails, OutputKind, RouteId, StationId, User } from '@/lib/types';
 
 const sections = [
   { id: 'business', label: 'Business details', href: '/setup/business' },
   { id: 'products', label: 'Products', href: '/setup/products' },
-  { id: 'pack-sizes', label: 'Pack sizes', href: '/setup/pack-sizes' },
+  { id: 'pack-sizes', label: 'Piece sizes', href: '/setup/pack-sizes' },
   { id: 'containers', label: 'Containers', href: '/setup/containers' },
   { id: 'outputs', label: 'Output categories', href: '/setup/outputs' },
   { id: 'routes', label: 'Routes', href: '/setup/routes' },
@@ -60,13 +60,13 @@ function UserFields({ user }: { user?: User }) {
   return (
     <>
       <Field label={user ? 'New PIN (4 digits)' : 'PIN (4 digits)'} hint={user ? 'Leave blank to keep the current PIN.' : 'Used for quick sign-in on shared devices.'}><Input name="pin" type="password" inputMode="numeric" pattern="\d{4}" maxLength={4} required={!user} autoComplete="new-password" /></Field>
-      <Field label="Access" hint="Operators see My work and the production line. Managers also see reports, recipes and setup.">
+      <Field label="Access" hint="Operators see My work and the production line. Managers also see reports, chocolate types and setup.">
         <Select name="access" defaultValue={user?.access ?? 'operator'}><option value="operator">Operator</option><option value="manager">Manager</option></Select>
       </Field>
       <fieldset className="md:col-span-2">
         <legend className="form-label">Stations on their My work page</legend>
         <div className="grid grid-cols-2 gap-1 sm:grid-cols-3 lg:grid-cols-4">
-          {stations.map((s) => (
+          {lineStations.map((s) => (
             <label key={s.id} className="flex min-h-[44px] items-center gap-2 rounded-lg px-2 text-[13px] hover:bg-paper"><input type="checkbox" name="stations" value={s.id} defaultChecked={user?.stations.includes(s.id)} className="h-5 w-5" />{s.name}</label>
           ))}
         </div>
@@ -215,50 +215,47 @@ export default function SetupPage() {
 
       {current.id === 'products' && (
         <Panel title="Products" subtitle="What the factory makes, and which route each product follows.">
-          <Table head={['Product', 'Batch prefix', 'Route', 'Recipe / status', '']}>
+          <Table head={['Product', 'Batch prefix', 'Route', '']}>
             {store.products.map((p) => {
               const canDelete = !store.batches.some((b) => b.productId === p.id) && !store.recipes.some((r) => r.productId === p.id);
               return <Fragment key={p.id}>
                 <tr key={p.id}>
                   <td className={td}>{p.name}</td><td className={td}>{p.prefix}-</td><td className={td}>{store.routes.find((r) => r.id === p.route)?.name ?? <span className="text-faint">Route removed</span>}</td>
-                    <td className={td}>{p.recipeId ? store.recipes.find((r) => r.id === p.recipeId)?.name : p.route === 'chocolate' ? <Badge tone="neutral">Recipe pending</Badge> : <span className="text-faint">—</span>}</td>
                   <td className={td}><RowActions onEdit={() => setEditingId(p.id)} onDelete={() => { if (canDelete && window.confirm(`Delete ${p.name}?`)) store.deleteProduct(p.id); }} deleteDisabled={!canDelete} deleteHint="Products used by recipes or batches cannot be deleted." /></td>
                 </tr>
-                {editingId === p.id && <tr key={`${p.id}-edit`}><td className={td} colSpan={5}>
-                  <EditForm onCancel={() => setEditingId(null)} onSubmit={(d) => { store.updateProduct(p.id, { name: String(d.get('name')).trim(), prefix: String(d.get('prefix')).trim().toUpperCase(), route: d.get('route') as RouteId, recipeId: String(d.get('recipe')) || undefined }); setEditingId(null); }}>
+                {editingId === p.id && <tr key={`${p.id}-edit`}><td className={td} colSpan={4}>
+                  <EditForm onCancel={() => setEditingId(null)} onSubmit={(d) => { store.updateProduct(p.id, { name: String(d.get('name')).trim(), prefix: String(d.get('prefix')).trim().toUpperCase(), route: d.get('route') as RouteId, recipeId: p.recipeId }); setEditingId(null); }}>
                     <Field label="Name"><Input name="name" defaultValue={p.name} required /></Field>
                     <Field label="Batch prefix"><Input name="prefix" defaultValue={p.prefix} required maxLength={3} /></Field>
                     <Field label="Route"><Select name="route" defaultValue={p.route}>{store.routes.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</Select></Field>
-                    <Field label="Recipe"><Select name="recipe" defaultValue={p.recipeId ?? ''}><option value="">None</option>{store.recipes.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</Select></Field>
                   </EditForm>
                 </td></tr>}
               </Fragment>;
             })}
           </Table>
-          <p className="section-note">Chocolate products without a recipe are marked “Recipe pending” and are kept out of the new-batch selector until a verified recipe is configured.</p>
-          <AddForm title="Add product" onSubmit={(d) => store.addProduct({ name: String(d.get('name')), prefix: String(d.get('prefix')).toUpperCase(), route: d.get('route') as RouteId, recipeId: String(d.get('recipe')) || undefined })}>
+          <p className="section-note">Chocolate types and their recipes are kept under Chocolate types: each is chosen per run at mixing, not as a product.</p>
+          <AddForm title="Add product" onSubmit={(d) => store.addProduct({ name: String(d.get('name')), prefix: String(d.get('prefix')).toUpperCase(), route: d.get('route') as RouteId })}>
             <Field label="Name"><Input name="name" required /></Field>
             <Field label="Batch prefix"><Input name="prefix" required maxLength={3} placeholder="CH" /></Field>
             <Field label="Route"><Select name="route">{store.routes.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</Select></Field>
-            <Field label="Recipe (chocolate only)"><Select name="recipe"><option value="">None</option>{store.recipes.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</Select></Field>
           </AddForm>
         </Panel>
       )}
 
       {current.id === 'pack-sizes' && (
-        <Panel title="Pack sizes" subtitle="Used at packaging to work out accepted weight.">
-          <Table head={['Pack', 'Grams per unit', '']}>
+        <Panel title="Piece sizes" subtitle="The sizes chocolate is made into at Pieces. Add a size whenever a new one is made. Pieces keep the size and weight they were made with.">
+          <Table head={['Size', 'Grams per piece', '']}>
             {store.packSizes.map((p) => {
-              const canDelete = !store.batches.some((b) => b.records.some((r) => r.packaging?.packSizeId === p.id));
+              const canDelete = !store.batches.some((b) => b.records.some((r) => r.packaging?.packSizeId === p.id)) && !store.lots.some((l) => l.pieces?.packSizeId === p.id);
               return <Fragment key={p.id}>
-                <tr key={p.id}><td className={td}>{p.name}</td><td className={tdNum}>{p.grams} g</td><td className={td}><RowActions onEdit={() => setEditingId(p.id)} onDelete={() => { if (canDelete && window.confirm(`Delete ${p.name}?`)) store.deletePackSize(p.id); }} deleteDisabled={!canDelete} deleteHint="Pack sizes used by packaging records cannot be deleted." /></td></tr>
-                {editingId === p.id && <tr key={`${p.id}-edit`}><td className={td} colSpan={3}><EditForm onCancel={() => setEditingId(null)} onSubmit={(d) => { store.updatePackSize(p.id, { name: String(d.get('name')).trim(), grams: Number(d.get('grams')) }); setEditingId(null); }}><Field label="Name"><Input name="name" defaultValue={p.name} required /></Field><Field label="Grams per unit"><Input name="grams" type="number" min="1" defaultValue={p.grams} required /></Field></EditForm></td></tr>}
+                <tr key={p.id}><td className={td}>{p.name}</td><td className={tdNum}>{p.grams} g</td><td className={td}><RowActions onEdit={() => setEditingId(p.id)} onDelete={() => { if (canDelete && window.confirm(`Delete ${p.name}?`)) store.deletePackSize(p.id); }} deleteDisabled={!canDelete} deleteHint="Sizes already made cannot be deleted." /></td></tr>
+                {editingId === p.id && <tr key={`${p.id}-edit`}><td className={td} colSpan={3}><EditForm onCancel={() => setEditingId(null)} onSubmit={(d) => { store.updatePackSize(p.id, { name: String(d.get('name')).trim(), grams: Number(d.get('grams')) }); setEditingId(null); }}><Field label="Name"><Input name="name" defaultValue={p.name} required /></Field><Field label="Grams per piece"><Input name="grams" type="number" min="1" defaultValue={p.grams} required /></Field></EditForm></td></tr>}
               </Fragment>;
             })}
           </Table>
-          <AddForm title="Add pack size" onSubmit={(d) => store.addPackSize({ name: String(d.get('name')), grams: Number(d.get('grams')) })}>
+          <AddForm title="Add piece size" onSubmit={(d) => store.addPackSize({ name: String(d.get('name')), grams: Number(d.get('grams')) })}>
             <Field label="Name"><Input name="name" required placeholder="e.g. 60 g bar" /></Field>
-            <Field label="Grams per unit"><Input name="grams" type="number" min="1" required /></Field>
+            <Field label="Grams per piece"><Input name="grams" type="number" min="1" required /></Field>
           </AddForm>
         </Panel>
       )}
@@ -268,11 +265,11 @@ export default function SetupPage() {
           <Table head={['Station', 'Output', 'Type', '']}>
             {store.outputCategories.map((c) => <Fragment key={c.id}>
               <tr key={c.id}><td className={td}>{stationName(c.station)}</td><td className={td}>{c.name}{c.custom && <Badge tone="neutral">added</Badge>}</td><td className={td}><Badge tone={c.kind === 'useful' ? 'green' : c.kind === 'waste' ? 'warn' : 'neutral'}>{kindLabel[c.kind]}</Badge></td><td className={td}><RowActions onEdit={() => setEditingId(`output-${c.id}`)} onDelete={() => { if (window.confirm(`Delete the ${c.name} output row?`)) void store.deleteOutputCategory(c.id); }} /></td></tr>
-              {editingId === `output-${c.id}` && <tr key={`output-${c.id}-edit`}><td className={td} colSpan={4}><EditForm onCancel={() => setEditingId(null)} onSubmit={async (d) => { if (await store.updateOutputCategory(c.id, { station: d.get('station') as StationId, name: String(d.get('name')).trim(), kind: d.get('kind') as OutputKind })) setEditingId(null); }}><Field label="Station"><Select name="station" defaultValue={c.station}>{stations.filter((s) => s.form === 'weights').map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field><Field label="Output name"><Input name="name" defaultValue={c.name} required /></Field><Field label="Type"><Select name="kind" defaultValue={c.kind}><option value="useful">Useful output</option><option value="byproduct">By-product</option><option value="waste">Waste</option></Select></Field></EditForm></td></tr>}
+              {editingId === `output-${c.id}` && <tr key={`output-${c.id}-edit`}><td className={td} colSpan={4}><EditForm onCancel={() => setEditingId(null)} onSubmit={async (d) => { if (await store.updateOutputCategory(c.id, { station: d.get('station') as StationId, name: String(d.get('name')).trim(), kind: d.get('kind') as OutputKind })) setEditingId(null); }}><Field label="Station"><Select name="station" defaultValue={c.station}>{lineStations.filter((s) => s.form === 'weights').map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field><Field label="Output name"><Input name="name" defaultValue={c.name} required /></Field><Field label="Type"><Select name="kind" defaultValue={c.kind}><option value="useful">Useful output</option><option value="byproduct">By-product</option><option value="waste">Waste</option></Select></Field></EditForm></td></tr>}
             </Fragment>) }
           </Table>
           <AddForm title="Add output row" onSubmit={(d) => store.addOutputCategory(d.get('station') as StationId, String(d.get('name')), d.get('kind') as OutputKind)}>
-            <Field label="Station"><Select name="station">{stations.filter((s) => s.form === 'weights').map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
+            <Field label="Station"><Select name="station">{lineStations.filter((s) => s.form === 'weights').map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
             <Field label="Output name"><Input name="name" required /></Field>
             <Field label="Type"><Select name="kind"><option value="useful">Useful output</option><option value="byproduct">By-product</option><option value="waste">Waste</option></Select></Field>
           </AddForm>
@@ -369,12 +366,20 @@ export default function SetupPage() {
           </AddForm>
         </Panel>
       )}
+      {current.id === 'containers' && (
+        <Panel title="Mixer" subtitle="The mixer keeps some chocolate between types; the next run is made on top of it.">
+          <div className="grid gap-4 p-5 md:grid-cols-2">
+            <Field label="Chocolate usually kept in the mixer (kg)" hint="Suggested on every run; the operator can change it."><NumberSetting value={store.mixerKeepsKg} step="0.1" onSave={store.setMixerKeeps} label="Chocolate kept in the mixer" /></Field>
+            <div className="text-[13px]"><span className="block text-[11px] font-bold tracking-wide text-faint uppercase">It holds now</span>{store.mixer.holds ? `${store.mixer.holds.kg.toFixed(2)} kg of ${store.mixer.holds.type} (left by ${store.mixer.holds.batchId})` : 'Nothing'}</div>
+          </div>
+        </Panel>
+      )}
 
       {current.id === 'alerts' && (
         <>
           <Panel title="Variance limit per station" subtitle="An alert is raised when unaccounted variance is above this share of the station input.">
             <Table head={['Station', 'Allowed variance']}>
-              {stations.filter((s) => s.form !== 'completion').map((s) => (
+              {lineStations.filter(isWeighed).map((s) => (
                 <tr key={s.id}><td className={td}>{s.name}</td><td className={td}><span className="flex items-center gap-2"><NumberSetting value={store.thresholds.variancePct[s.id] ?? 0} step="0.1" onSave={(v) => store.setStationVariance(s.id, v)} label={`${s.name} variance limit`} /><span className="text-muted">%</span></span></td></tr>
               ))}
             </Table>

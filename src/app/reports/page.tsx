@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
 
 export default function ReportsIndex() {
-  redirect('/reports/losses');
+  redirect('/reports/pieces');
 }

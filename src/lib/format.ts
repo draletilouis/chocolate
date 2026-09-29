@@ -12,4 +12,5 @@ export const destinationLabel = (destination: string, stationName: (id: string) 
   destination.startsWith('continue:') ? `To ${stationName(destination.slice(9)).toLowerCase()}` :
   destination === 'stock' ? 'Kept in store' :
   destination === 'sale' ? 'For sale' :
-  destination === 'rework' ? 'Rework' : 'Waste bin';
+  destination === 'rework' ? 'Rework' :
+  destination === 'mixer' ? 'Stays in the mixer' : 'Waste bin';

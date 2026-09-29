@@ -5,7 +5,7 @@ import type { Command } from './commands';
 import type { State } from './seed';
 import { applyItems, emptyState, type SyncPayload } from './sync';
 import type {
-  Access, BusinessDetails, Container, ContainerUse, Destination, Ingredient, LotCategory, OutputKind, PackSize, Product,
+  Access, BusinessDetails, Container, ContainerUse, Destination, Ingredient, LotCategory, OutputKind, PackSize, PlanLine, Product,
   RecipeIngredient, Route, StationId, Supplier, User,
 } from './types';
 
@@ -53,7 +53,17 @@ interface Actions {
   receiveDelivery: (batch: NewBatchInput, input: { weight: number; container?: ContainerUse }, outputs: OutputEntry[], note?: string) => Promise<string | undefined>;
   /** Saves a station's input, weights and destinations at once. expectRecord is recordStamp() of the record the form started from. */
   saveRecord: (batchId: string, station: StationId, input: { weight: number; container?: ContainerUse }, outputs: OutputEntry[], note: string | undefined, options: RecordOptions | undefined, expectRecord: string | null) => Promise<boolean>;
-  savePackaging: (batchId: string, inputWeight: number, packSizeId: string, totalUnits: number, rejectedUnits: number, note: string | undefined, options: RecordOptions | undefined, expectRecord: string | null) => Promise<boolean>;
+  /** One chocolate type made at mixing; answers the chocolate lot's ID. expectMixer is mixerStamp() of the mixer the form was opened on. */
+  saveMixingRun: (run: { batchId: string; recipeId: string; toRun: number; ingredients: { name: string; actual: number; lotId?: string }[]; made: number; kept: number; expectMixer: string }) => Promise<string | undefined>;
+  undoMixingRun: (batchId: string, runId: string) => Promise<boolean>;
+  /** Takes the chocolate out of the mixer as a lot; answers its ID */
+  emptyMixer: (expectMixer: string) => Promise<string | undefined>;
+  finishMixing: (batchId: string, note?: string) => Promise<boolean>;
+  setMixerKeeps: (kg: number) => Promise<boolean>;
+  /** Good pieces of each size made from a chocolate lot; answers the lots of pieces made */
+  recordPieces: (lotId: string, pieces: { packSizeId: string; count: number }[]) => Promise<string[] | undefined>;
+  removePieces: (lotId: string) => Promise<boolean>;
+  setPlan: (plan: { lines: PlanLine[]; from: string; note?: string }) => Promise<boolean>;
   completeBatch: (batchId: string, note?: string) => Promise<boolean>;
   updateBatchDetails: (batchId: string, patch: { name?: string; note?: string }) => Promise<boolean>;
   deleteBatch: (batchId: string) => Promise<boolean>;
@@ -64,6 +74,8 @@ interface Actions {
   updateLot: (lotId: string, patch: { material: string; category: LotCategory; supplierId?: string; reference?: string }) => Promise<boolean>;
   deleteLot: (lotId: string) => Promise<boolean>;
   addRecipeVersion: (recipeId: string, ingredients: RecipeIngredient[], note: string) => Promise<boolean>;
+  /** A new chocolate type with the first version of its recipe; answers the recipe ID */
+  addChocolateType: (type: { name: string; ingredients: RecipeIngredient[]; note?: string }) => Promise<string | undefined>;
   updateRecipe: (recipeId: string, patch: { name: string }) => Promise<boolean>;
   deleteRecipe: (recipeId: string) => Promise<boolean>;
   addProduct: (product: Omit<Product, 'id'>) => Promise<boolean>;
@@ -277,7 +289,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       createBatch: (input) => value<string>({ type: 'createBatch', input }),
       receiveDelivery: (batch, input, outputs, note) => value<string>({ type: 'receiveDelivery', batch, input, outputs, note }),
       saveRecord: (batchId, station, input, outputs, note, options, expectRecord) => done({ type: 'saveRecord', batchId, station, input, outputs, note, options, expectRecord }),
-      savePackaging: (batchId, inputWeight, packSizeId, totalUnits, rejectedUnits, note, options, expectRecord) => done({ type: 'savePackaging', batchId, inputWeight, packSizeId, totalUnits, rejectedUnits, note, options, expectRecord }),
+      saveMixingRun: (run) => value<string>({ type: 'saveMixingRun', ...run }),
+      undoMixingRun: (batchId, runId) => done({ type: 'undoMixingRun', batchId, runId }),
+      emptyMixer: (expectMixer) => value<string>({ type: 'emptyMixer', expectMixer }),
+      finishMixing: (batchId, note) => done({ type: 'finishMixing', batchId, note }),
+      setMixerKeeps: (kg) => done({ type: 'setMixerKeeps', kg }),
+      recordPieces: (lotId, pieces) => value<string[]>({ type: 'recordPieces', lotId, pieces }),
+      removePieces: (lotId) => done({ type: 'removePieces', lotId }),
+      setPlan: (plan) => done({ type: 'setPlan', ...plan }),
       completeBatch: (batchId, note) => done({ type: 'completeBatch', batchId, note }),
       updateBatchDetails: (batchId, patch) => done({ type: 'updateBatchDetails', batchId, ...patch }),
       deleteBatch: (batchId) => done({ type: 'deleteBatch', batchId }),
@@ -288,6 +307,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateLot: (lotId, patch) => done({ type: 'updateLot', lotId, ...patch }),
       deleteLot: (lotId) => done({ type: 'deleteLot', lotId }),
       addRecipeVersion: (recipeId, ingredients, note) => done({ type: 'addRecipeVersion', recipeId, ingredients, note }),
+      addChocolateType: (type) => value<string>({ type: 'addChocolateType', ...type }),
       updateRecipe: (recipeId, patch) => done({ type: 'updateRecipe', recipeId, name: patch.name }),
       deleteRecipe: (recipeId) => done({ type: 'deleteRecipe', recipeId }),
       addProduct: (product) => done({ type: 'addProduct', product }),
