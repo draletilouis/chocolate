@@ -5,7 +5,7 @@ const { chromium } = require('@playwright/test');
 const BASE = 'http://127.0.0.1:3100';
 const SCREENSHOT_DIR = 'C:/Users/hp/Documents/Codex/2026-09-14/we/work/chocolate-checks';
 const STATIONS = ['receiving', 'sorting', 'roasting', 'winnowing', 'pressing', 'sieving', 'filtering', 'powder-roasting', 'powder-crushing', 'grinding', 'mixing', 'refining', 'conching', 'tempering', 'moulding', 'packaging', 'completion'];
-const STATION_NAMES = { sieving: 'Butter sieving', filtering: 'Filter pan', 'powder-roasting': 'Powder roasting', 'powder-crushing': 'Powder crushing', grinding: 'Liquor grinding' };
+const STATION_NAMES = { sieving: 'Butter sieving', filtering: 'Filter pan', 'powder-roasting': 'Powder roasting', 'powder-crushing': 'Powder crushing', grinding: 'Liquor grinding', packaging: 'Pieces' };
 const stationLabel = (id) => STATION_NAMES[id] ?? id.charAt(0).toUpperCase() + id.slice(1);
 const checked = [];
 const ok = (label) => checked.push(label);
@@ -82,7 +82,7 @@ async function expectText(page, text) {
   ok('active batch rows');
 
   // Each part of the line has its own sidebar entry and page; the production page itself stays short.
-  const PARTS = { 'bean-processing': ['receiving', 'sorting', 'roasting', 'winnowing'], 'butter-powder': ['pressing', 'sieving', 'filtering', 'powder-roasting', 'powder-crushing'], liquor: ['grinding'], 'chocolate-making': ['mixing'], finishing: ['completion'] };
+  const PARTS = { 'bean-processing': ['receiving', 'sorting', 'roasting', 'winnowing'], 'butter-powder': ['pressing', 'sieving', 'filtering', 'powder-roasting', 'powder-crushing'], liquor: ['grinding'], 'chocolate-making': ['mixing'], finishing: ['packaging', 'completion'] };
   const PART_LABELS = { 'bean-processing': 'Bean processing', 'butter-powder': 'Butter & powder', liquor: 'Liquor', 'chocolate-making': 'Chocolate making', finishing: 'Finishing' };
   const sidebarParts = page.getByRole('group', { name: 'Parts of the production line' });
   for (const [slug, ids] of Object.entries(PARTS)) {
@@ -106,7 +106,7 @@ async function expectText(page, text) {
   await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-part-butter-powder.png`, fullPage: true });
   await page.goto(`${BASE}/production`);
   if (await page.getByRole('link', { name: /Open station/ }).count()) throw new Error('Production page should not list stations (long scroll)');
-  ok('five parts as sidebar entries with their own pages; all 12 stations of the line open their queues');
+  ok('five parts as sidebar entries with their own pages; all 13 stations of the line open their queues');
 
   // Winnowing on one screen: input already filled in, each output shows where it goes, one Save.
   await page.goto(`${BASE}/production/stations/winnowing`);
@@ -241,6 +241,24 @@ async function expectText(page, text) {
   await page.waitForURL('**/production/batches/CH-018');
   ok('chocolate from store: a blocked changeover, the leftover taken out as a lot, a run from empty, completion');
 
+  // Pieces: the chocolate lots wait at Pieces; good pieces of each size are counted from a lot.
+  await page.goto(`${BASE}/production/stations/packaging`);
+  for (const t of ['Chocolate to make into pieces', 'D70-0002', '30.00 kg', 'D100-0001']) await expectText(page, t);
+  await page.getByRole('link', { name: /D70-0002/ }).click();
+  await page.waitForURL('**/production/pieces/D70-0002');
+  await page.getByLabel('1 kg pack pieces').fill('31');
+  await expectText(page, '1.00 kg more than the lot has');
+  await page.getByLabel('1 kg pack pieces').fill('');
+  await page.getByLabel('45 g bar pieces').fill('500');
+  await page.getByLabel('80 g bar pieces').fill('90');
+  await expectText(page, '590 pieces · 29.70 kg of chocolate');
+  await expectText(page, '0.30 kg stays in the lot');
+  await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-pieces.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Save pieces' }).click();
+  await expectText(page, 'Pieces saved. 500 × 45 g bar (FIN-0004) · 90 × 80 g bar (FIN-0005).');
+  await expectText(page, '0.30 kg');
+  ok('pieces: good pieces per size from a chocolate lot (590 = 29.70 kg), too much refused, lots FIN-0004/5');
+
   // A bean delivery is one form: the batch and its receiving record are saved together.
   await page.goto(`${BASE}/production/new`);
   await page.getByRole('heading', { name: 'Receive a delivery' }).waitFor();
@@ -260,9 +278,9 @@ async function expectText(page, text) {
   await page.getByRole('heading', { name: 'Traceability' }).waitFor();
   for (const t of ['CB-024', 'BEAN-0905', 'CH-017', 'Print label']) await expectText(page, t);
   await page.goto(`${BASE}/materials`);
-  await page.getByRole('button', { name: 'Intermediate' }).click();
-  await page.getByRole('link', { name: /D70-0001/ }).click();
-  await expectText(page, 'CH-017');
+  await page.getByRole('button', { name: 'Finished goods' }).click();
+  await page.getByRole('link', { name: /FIN-0001/ }).click();
+  for (const t of ['1200 pieces of 45 g bar', 'D70-0001', 'CH-017', 'Print label']) await expectText(page, t);
   await page.goto(`${BASE}/materials/receive`);
   await page.getByLabel('Measured weight').fill('120');
   await page.getByRole('button', { name: 'Save receipt' }).click();
@@ -301,11 +319,14 @@ async function expectText(page, text) {
   ok('new chocolate type saved and offered at mixing in a new Chocolate from store batch (CH-019)');
 
   // Reports.
+  await page.goto(`${BASE}/reports`);
+  await page.waitForURL('**/reports/pieces');
+  for (const t of ['By type and size', '70% Dark', '45 g bar', '1700', '80 g bar', '390', '85% Dark']) await expectText(page, t);
   for (const [section, text] of [['losses', 'Weigh-in at each stage, every batch'], ['losses', 'Lost this step'], ['losses', 'Loss at each process, all batches'], ['variance', 'Unaccounted variance'], ['batches', 'All batches'], ['corrections', 'Bin tare was wrong.'], ['holds', 'Waiting for quality sign-off.']]) {
     await page.goto(`${BASE}/reports/${section}`);
     await expectText(page, text);
   }
-  ok('reports: waste & variance, batch history, corrections, holds');
+  ok('reports: pieces made by type and size, waste & variance, batch history, corrections, holds');
 
   // Setup.
   for (const [section, text] of [['products', 'Batch prefix'], ['pack-sizes', '45 g bar'], ['outputs', 'Nibs for liquor'], ['containers', 'Husk bin'], ['routes', 'Beans to chocolate'], ['suppliers', 'Kuapa Kokoo'], ['users', 'Current user'], ['alerts', 'Variance limit per station']]) {

@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { ArrowLeft, ArrowRight, GitBranch } from 'lucide-react';
 import { Back, Badge, Empty, LinkButton, PageHeader, Panel, RowLink, SubNav } from '@/components/ui';
-import { activeBatches, batchDisplayName, nextInput, pendingStations, stationQueue } from '@/lib/derive';
+import { activeBatches, batchDisplayName, nextInput, pendingStations, waitingCount } from '@/lib/derive';
 import { kg } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { groupBySlug, lineStations, stationGroups, stationName } from '@/lib/stations';
@@ -74,7 +74,7 @@ export default function PartPage() {
 
       <Panel title="Stations" subtitle="Process → input → output. Open a station to see its queue.">
         {partStations.map((station, i) => {
-          const waiting = stationQueue(store, station.id).ready.length;
+          const waiting = waitingCount(store, station.id);
           return (
             <RowLink key={station.id} href={`/production/stations/${station.id}`}>
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-paper text-[11px] font-bold text-muted">{String(i + 1).padStart(2, '0')}</span>

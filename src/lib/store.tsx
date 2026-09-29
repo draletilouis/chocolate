@@ -60,6 +60,9 @@ interface Actions {
   emptyMixer: (expectMixer: string) => Promise<string | undefined>;
   finishMixing: (batchId: string, note?: string) => Promise<boolean>;
   setMixerKeeps: (kg: number) => Promise<boolean>;
+  /** Good pieces of each size made from a chocolate lot; answers the lots of pieces made */
+  recordPieces: (lotId: string, pieces: { packSizeId: string; count: number }[]) => Promise<string[] | undefined>;
+  removePieces: (lotId: string) => Promise<boolean>;
   completeBatch: (batchId: string, note?: string) => Promise<boolean>;
   updateBatchDetails: (batchId: string, patch: { name?: string; note?: string }) => Promise<boolean>;
   deleteBatch: (batchId: string) => Promise<boolean>;
@@ -290,6 +293,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       emptyMixer: (expectMixer) => value<string>({ type: 'emptyMixer', expectMixer }),
       finishMixing: (batchId, note) => done({ type: 'finishMixing', batchId, note }),
       setMixerKeeps: (kg) => done({ type: 'setMixerKeeps', kg }),
+      recordPieces: (lotId, pieces) => value<string[]>({ type: 'recordPieces', lotId, pieces }),
+      removePieces: (lotId) => done({ type: 'removePieces', lotId }),
       completeBatch: (batchId, note) => done({ type: 'completeBatch', batchId, note }),
       updateBatchDetails: (batchId, patch) => done({ type: 'updateBatchDetails', batchId, ...patch }),
       deleteBatch: (batchId) => done({ type: 'deleteBatch', batchId }),

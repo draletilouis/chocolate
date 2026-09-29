@@ -273,6 +273,28 @@ async function chocolateFromStoreFlow(page) {
   });
 }
 
+async function piecesFlow(page) {
+  await page.goto(`${BASE}/production/stations/packaging`);
+  await action(page, 'Choose chocolate lot D70-0002 for pieces', page.getByRole('link', { name: /D70-0002/ }), async () => {
+    await waitForUrl(page, '**/production/pieces/D70-0002');
+  });
+  await page.getByLabel('45 g bar pieces').fill('400');
+  await action(page, 'Save 400 × 45 g bars', page.getByRole('button', { name: 'Save pieces' }), async () => {
+    await waitForText(page, 'Pieces saved.');
+  });
+  page.once('dialog', (d) => d.accept());
+  await action(page, 'Undo the pieces just entered', page.getByRole('button', { name: /^Undo FIN-/ }), async () => {
+    await waitForText(page, '30.00 kg');
+  });
+  await page.getByLabel('45 g bar pieces').fill('500');
+  await page.getByLabel('80 g bar pieces').fill('90');
+  await action(page, 'Save 500 × 45 g and 90 × 80 g bars', page.getByRole('button', { name: 'Save pieces' }), async () => {
+    await waitForText(page, '0.30 kg');
+  });
+  await page.goto(`${BASE}/reports/pieces`);
+  await waitForText(page, 'By type and size');
+}
+
 async function materialsAndRecipes(page) {
   await page.goto(`${BASE}/materials`);
   await action(page, 'Filter intermediate lots', page.getByRole('button', { name: 'Intermediate' }), async () => {
@@ -311,7 +333,7 @@ async function materialsAndRecipes(page) {
 async function setupControls(page) {
   const forms = [
     ['products', 'Add product', [['Name', 'Audit product'], ['Batch prefix', 'AU']], 'Add product'],
-    ['pack-sizes', 'Add pack size', [['Name', '60 g bar'], ['Grams per unit', '60']], 'Add pack size'],
+    ['pack-sizes', 'Add piece size', [['Name', '60 g bar'], ['Grams per piece', '60']], 'Add piece size'],
     ['outputs', 'Add output row', [['Output name', 'Audit residue']], 'Add output row'],
     ['suppliers', 'Add supplier', [['Name', 'Audit supplier'], ['Supplies', 'Cocoa beans'], ['Contact', 'audit@example.com']], 'Add supplier'],
     ['users', 'Add user', [['Name', 'Audit User'], ['Role', 'Operator'], ['Email', 'audit.user@cocoafactory.example'], ['Password', 'cocoa123']], 'Add user'],
@@ -378,6 +400,7 @@ async function navigationAndFilters(page) {
     await beanAndPressingFlow(page);
     await batchControls(page);
     await chocolateFromStoreFlow(page);
+    await piecesFlow(page);
     await materialsAndRecipes(page);
     await setupControls(page);
     await navigationAndFilters(page);

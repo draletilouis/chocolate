@@ -71,6 +71,14 @@ export function stationQueue(state: State, station: StationId) {
   return { ready, held, done };
 }
 
+/** Chocolate lots with chocolate still to make into pieces, oldest first */
+export const chocolateWaiting = (state: Pick<State, 'lots'>) =>
+  state.lots.filter((l) => l.chocolate && l.available > 0.004).sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
+
+/** What waits at a station: batches, or at Pieces the chocolate lots not yet made into pieces */
+export const waitingCount = (state: State, station: StationId) =>
+  stationById[station].form === 'pieces' ? chocolateWaiting(state).length : stationQueue(state, station).ready.length;
+
 export function recordAlerts(state: State, batch: Batch, record: StationRecord): Alert[] {
   const balance = recordBalance(record);
   const alerts: Alert[] = [];

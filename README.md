@@ -1,6 +1,6 @@
 # Cocoa Production System
 
-A simple recording system for a chocolate factory production line. Workers open a station, choose a batch, confirm the input, enter the weights they measured, and the system calculates the balance (measured output, useful output, waste, by-products, unaccounted variance, yield and percentages). Split outputs are assigned destinations separately; only what is carried forward becomes the input of the next station.
+A simple recording system for a chocolate factory production line. Workers open a station, choose a batch, confirm the input, enter the weights they measured, and the system calculates the balance (measured output, useful output, waste, by-products, unaccounted variance, yield and percentages). Split outputs are assigned destinations separately; only what is carried forward becomes the input of the next station. At mixing the chocolate types are made one after another, each run on top of what the mixer kept from the one before (the factory's changeover sheet), and at Pieces the good pieces of each size are counted from each chocolate lot: the number of pieces per type and size is the end result.
 
 It is a web app: one server and one PostgreSQL database hold the records, and every phone, tablet and computer in the factory opens it in a browser and sees the same batches within a few seconds.
 
@@ -57,7 +57,9 @@ node interaction-audit.cjs   # clicks through every flow and saves screenshots (
 
 ## Layout
 
-- `src/lib/stations.ts` – the 17 stations, the five parts of the line, predefined output rows with their default destinations, and allowed next stations
+- `src/lib/stations.ts` – the stations (13 on the line, plus retired ones older records still show), the five parts of the line, predefined output rows with their default destinations, and allowed next stations
+- `src/lib/mixing.ts` – the changeover calculation for mixing runs and the mixing record's totals; `src/components/MixingScreen.tsx` – the mixing screen
+- `src/lib/pieces.ts` – pieces by chocolate type and size
 - `src/lib/balance.ts` – mass-balance and packaging calculations
 - `src/lib/commands.ts` – every change as a named, validated command, and which ones operators may run
 - `src/server/reduce.ts` – the business rules: applies a command to the factory's data or refuses it with a reason
@@ -70,7 +72,7 @@ node interaction-audit.cjs   # clicks through every flow and saves screenshots (
 - `src/components/Shell.tsx` – sidebar (desktop) and bottom navigation (mobile)
 - `src/components/BatchLabel.tsx` – printable batch cards and labels with the batch name, supplier and a QR code that opens the record
 - `src/app/work` – My work (each person's waiting batches); `src/app/search`, `src/app/scan/[code]` – search and QR-code landing
-- `src/app/production/**` – production line, station queues, batch steps, one-screen station recording, receive a delivery
+- `src/app/production/**` – production line, station queues, batch steps, one-screen station recording, receive a delivery, mixing, pieces
 - `src/app/materials`, `recipes`, `reports`, `setup` – supporting screens
 
 For day-to-day instructions, see the [Chocolate Factory user guide](USER_GUIDE.md). For the data model, implementation details, calculations, routes, alerts, traceability, and current limitations, see [SYSTEM_DOCUMENTATION.md](SYSTEM_DOCUMENTATION.md).

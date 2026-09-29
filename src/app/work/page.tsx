@@ -4,10 +4,10 @@ import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { ArrowRight, Pause, ScanLine, Truck } from 'lucide-react';
 import { Badge, Button, Empty, Input, LinkButton, PageHeader, Panel } from '@/components/ui';
-import { batchDisplayName, nextInput, stationQueue } from '@/lib/derive';
+import { batchDisplayName, chocolateWaiting, nextInput, stationQueue } from '@/lib/derive';
 import { kg } from '@/lib/format';
 import { useStore } from '@/lib/store';
-import { lineStations, stationName } from '@/lib/stations';
+import { lineStations, stationById, stationName } from '@/lib/stations';
 
 /** Each person's home: the batches waiting at their own stations, one tap from recording */
 export default function WorkPage() {
@@ -20,9 +20,11 @@ export default function WorkPage() {
   const queues = lineStations
     .filter((s) => (everything ? true : mine.includes(s.id)))
     .map((station) => ({ station, ...stationQueue(store, station.id) }));
+  // Pieces are made from chocolate lots, not batches
+  const chocolate = lineStations.some((s) => s.form === 'pieces' && (everything || mine.includes(s.id))) ? chocolateWaiting(store) : [];
   const busy = queues.filter((q) => q.ready.length > 0 || q.held.length > 0);
-  const quiet = queues.filter((q) => q.ready.length === 0 && q.held.length === 0);
-  const total = busy.reduce((n, q) => n + q.ready.length, 0);
+  const quiet = queues.filter((q) => q.ready.length === 0 && q.held.length === 0 && (q.station.form !== 'pieces' || chocolate.length === 0));
+  const total = busy.reduce((n, q) => n + q.ready.length, 0) + chocolate.length;
   const receives = everything || mine.includes('receiving');
 
   function search(event: FormEvent) {
@@ -34,7 +36,7 @@ export default function WorkPage() {
     <>
       <PageHeader
         eyebrow={everything ? 'Everything waiting' : `My work · ${user?.name ?? ''}`}
-        title={total ? `${total} ${total === 1 ? 'batch is' : 'batches are'} waiting` : 'Nothing is waiting right now'}
+        title={total ? `${total} ${total === 1 ? 'thing is' : 'things are'} waiting` : 'Nothing is waiting right now'}
         subtitle={everything ? 'All stations. Give people their stations in Setup → Users and each person sees only their own.' : `Your stations: ${mine.map((s) => stationName(s)).join(', ')}`}
         action={receives ? <LinkButton href="/production/new"><Truck size={16} /> Receive a delivery</LinkButton> : undefined} />
 
@@ -76,7 +78,22 @@ export default function WorkPage() {
         </Panel>
       ))}
 
-      {busy.length === 0 && <Panel><Empty>Nothing is waiting at {everything ? 'any station' : 'your stations'}. {receives ? 'Start with a new delivery when beans arrive.' : 'New work appears here as soon as the station before you saves.'}</Empty></Panel>}
+      {chocolate.length > 0 && (
+        <Panel title={stationById.packaging.name} subtitle={`${chocolate.length} lot${chocolate.length === 1 ? '' : 's'} of chocolate to make into pieces · ${stationById.packaging.group}`}>
+          {chocolate.map((lot) => (
+            <div key={lot.id} className="work-card">
+              <div className="min-w-0">
+                <div className="work-card-name">{lot.chocolate!.type}</div>
+                <div className="text-[13px] text-muted">{lot.id}{lot.source.type === 'batch' ? ` · mixed by ${lot.source.batchId}` : ''}</div>
+                <div className="mt-1 text-[14px]"><strong className="tabular-nums">{kg(lot.available)}</strong> ready for pieces</div>
+              </div>
+              <LinkButton href={`/production/pieces/${lot.id}`} aria-label={`Record pieces for ${lot.id}`}>Record pieces <ArrowRight size={16} /></LinkButton>
+            </div>
+          ))}
+        </Panel>
+      )}
+
+      {busy.length === 0 && chocolate.length === 0 && <Panel><Empty>Nothing is waiting at {everything ? 'any station' : 'your stations'}. {receives ? 'Start with a new delivery when beans arrive.' : 'New work appears here as soon as the station before you saves.'}</Empty></Panel>}
       {!everything && quiet.length > 0 && busy.length > 0 && <p className="text-[12px] text-muted">Nothing waiting at: {quiet.map((q) => q.station.name.toLowerCase()).join(', ')}.</p>}
     </>
   );

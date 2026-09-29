@@ -7,6 +7,7 @@ import { AlertTriangle, ArrowRight, Check, CheckCircle2, Pencil, Plus, Trash2 } 
 import { Back, Button, Empty, LinkButton, Notice, PageHeader, Panel, inputClass } from '@/components/ui';
 import { BatchLabel } from '@/components/BatchLabel';
 import { MixingScreen } from '@/components/MixingScreen';
+import { piecesByTypeAndSize } from '@/lib/pieces';
 import { BalanceVerdict, DestinationSelect, LiveBalance, WeightField, emptyWeight, netWeight, weightFrom, type WeightValue } from '@/components/weighing';
 import { calculateBalance, round2 } from '@/lib/balance';
 import { batchById, batchDisplayName, defaultDestination, isReadyAt, lastContainerId, nextInput, recordBalance, recordFor, recordStamp, userName, waitingAt } from '@/lib/derive';
@@ -43,6 +44,9 @@ export default function RecordPage() {
   if (batch.status === 'completed' && station.form !== 'completion' && !record) {
     return <><Back href={`/production/batches/${batch.id}`} label={`Batch ${batchDisplayName(batch)}`} /><Notice tone="neutral">{batchDisplayName(batch)} is completed. Nothing more can be recorded.</Notice></>;
   }
+  if (station.form === 'pieces' && !record) {
+    return <><Back href={`/production/batches/${batch.id}`} label={`Batch ${batchDisplayName(batch)}`} /><Notice tone="neutral">Pieces are made from the chocolate lots, not recorded on the batch. <Link href="/production/stations/packaging" className="font-semibold text-green">Open the Pieces queue</Link>.</Notice></>;
+  }
   if (station.retired && !record) {
     return <><Back href={`/production/batches/${batch.id}`} label={`Batch ${batchDisplayName(batch)}`} /><Notice tone="neutral">{station.name} is no longer part of the line. Chocolate is made in mixing runs.</Notice></>;
   }
@@ -67,9 +71,10 @@ export default function RecordPage() {
 
 /** Shows the saved result, or the form while a station is being entered or edited */
 function StationScreen({ batch, station, record, independent, justCreated }: { batch: Batch; station: Station; record?: StationRecord; independent: boolean; justCreated: boolean }) {
-  const [editing, setEditing] = useState((!record || !record.destinationsSaved) && !station.retired);
+  const readOnly = station.retired || station.form === 'pieces';
+  const [editing, setEditing] = useState((!record || !record.destinationsSaved) && !readOnly);
   const [justSaved, setJustSaved] = useState(justCreated);
-  if (record && !editing) return <SavedView batch={batch} station={station} record={record} independent={independent} justSaved={justSaved} onEdit={station.retired ? undefined : () => { setEditing(true); setJustSaved(false); }} />;
+  if (record && !editing) return <SavedView batch={batch} station={station} record={record} independent={independent} justSaved={justSaved} onEdit={readOnly ? undefined : () => { setEditing(true); setJustSaved(false); }} />;
   return (
     <StationForm batch={batch} station={station} record={record} independent={independent}
       onSaved={() => { setEditing(false); setJustSaved(true); window.scrollTo({ top: 0 }); }}
@@ -306,6 +311,7 @@ function CompletionScreen({ batch }: { batch: Batch }) {
           {batch.startInput.weight > 0 && <div className="flex justify-between"><span className="text-muted">Starting input</span><strong className="tabular-nums">{kg(batch.startInput.weight)}</strong></div>}
           {madeByType.size === 0 && <div className="flex justify-between"><span className="text-muted">Last good output</span><strong className="tabular-nums">{kg(finalUseful)}</strong></div>}
           {Array.from(madeByType, ([type, made]) => <div key={type} className="flex justify-between"><span className="text-muted">{type} made</span><strong className="tabular-nums">{kg(made)}</strong></div>)}
+          {piecesByTypeAndSize(lots).map((t) => <div key={`${t.type}-${t.size}`} className="flex justify-between"><span className="text-muted">{t.type} · {t.size}</span><strong className="tabular-nums">{t.pieces} pieces</strong></div>)}
           <div className="flex justify-between"><span className="text-muted">Total missing weight</span><strong className="tabular-nums">{kg(totalMissing)}</strong></div>
           {packaging && <div className="flex justify-between"><span className="text-muted">Accepted units</span><strong className="tabular-nums">{packaging.acceptedUnits} × {packaging.packGrams} g</strong></div>}
           {packaging && <div className="flex justify-between"><span className="text-muted">Rejected units</span><strong className="tabular-nums">{packaging.rejectedUnits}</strong></div>}

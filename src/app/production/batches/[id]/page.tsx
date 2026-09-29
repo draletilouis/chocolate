@@ -6,7 +6,8 @@ import { useState, type FormEvent } from 'react';
 import { AlertTriangle, ArrowRight, Check, ChevronDown, Circle, Pause, PenLine, Pencil, Play, Trash2 } from 'lucide-react';
 import { Back, Badge, Button, Empty, Field, Input, LinkButton, Notice, PageHeader, Panel, Textarea, UnitInput } from '@/components/ui';
 import { PrintLabelButton } from '@/components/BatchLabel';
-import { batchAlerts, batchById, batchDisplayName, batchSuppliers, nextInput, recordBalance, recordFor, userName, waitingAt } from '@/lib/derive';
+import { batchAlerts, batchById, batchDisplayName, batchSuppliers, chocolateWaiting, nextInput, recordBalance, recordFor, userName, waitingAt } from '@/lib/derive';
+import { piecesByTypeAndSize } from '@/lib/pieces';
 import { dateTime, destinationLabel, kg, num, pct } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { stationById, stationName, stations } from '@/lib/stations';
@@ -27,6 +28,8 @@ export default function BatchPage() {
   const waiting = waitingAt(batch);
   const firstWaiting = waiting[0];
   const suppliers = batchSuppliers(store, batch);
+  const pieces = piecesByTypeAndSize(store.lots.filter((l) => l.pieces && l.source.type === 'batch' && l.source.batchId === batch.id));
+  const chocolateLeft = chocolateWaiting(store).filter((l) => l.source.type === 'batch' && l.source.batchId === batch.id);
   const canDelete = batch.records.length === 0 && batch.holds.length === 0 && batch.corrections.length === 0 && !store.lots.some((lot) => lot.source.type === 'batch' && lot.source.batchId === batch.id);
 
   async function submitHold(event: FormEvent) {
@@ -90,6 +93,13 @@ export default function BatchPage() {
                   ))}
                 </tbody>
               </table>
+            </Panel>
+          )}
+
+          {(pieces.length > 0 || chocolateLeft.length > 0) && (
+            <Panel title="Pieces made" subtitle="From the chocolate this batch mixed.">
+              {pieces.map((t) => <div key={`${t.type}-${t.size}`} className="flex justify-between gap-2 border-b border-line px-4 py-2 text-[13px] last:border-b-0"><span>{t.type} · {t.size}</span><strong className="tabular-nums">{t.pieces}</strong></div>)}
+              {chocolateLeft.map((l) => <div key={l.id} className="flex flex-wrap justify-between gap-2 border-b border-line px-4 py-2 text-[13px] last:border-b-0"><span className="text-muted">{l.chocolate!.type} not yet in pieces</span><Link href={`/production/pieces/${l.id}`} className="font-semibold text-green">{kg(l.available)} · {l.id}</Link></div>)}
             </Panel>
           )}
 

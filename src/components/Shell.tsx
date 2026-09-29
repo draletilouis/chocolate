@@ -4,9 +4,9 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { AlertTriangle, BarChart3, ChevronDown, ClipboardCheck, ClipboardList, FlaskConical, LayoutDashboard, LogOut, Package, Search, Settings2, WifiOff, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { activeBatches, allAlerts, stationQueue } from '@/lib/derive';
+import { activeBatches, allAlerts, waitingCount } from '@/lib/derive';
 import { useStore } from '@/lib/store';
-import { groupBySlug, stationGroups, stations } from '@/lib/stations';
+import { groupBySlug, lineStations, stationById, stationGroups } from '@/lib/stations';
 import { LoginScreen } from './LoginScreen';
 import { Button, Notice } from './ui';
 
@@ -39,7 +39,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const counts = {
     alerts: allAlerts(store).length,
     batches: activeBatches(store).length,
-    work: myStations.reduce((n, s) => n + stationQueue(store, s).ready.length, 0),
+    work: myStations.filter((s) => !stationById[s]?.retired).reduce((n, s) => n + waitingCount(store, s), 0),
   };
   const active = items.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
   const [productionOpen, setProductionOpen] = useState(() => pathname.startsWith('/production'));
@@ -56,7 +56,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
   const parts = stationGroups.map((g) => ({
     href: `/production/parts/${g.slug}`, label: g.name,
-    waiting: stations.filter((s) => s.group === g.name).reduce((n, s) => n + stationQueue(store, s.id).ready.length, 0),
+    waiting: lineStations.filter((s) => s.group === g.name).reduce((n, s) => n + waitingCount(store, s.id), 0),
   }));
   const partSlug = pathname.startsWith('/production/parts/') ? pathname.split('/')[3] : undefined;
   const pageTitle = partSlug && groupBySlug(partSlug) ? `Production line · ${groupBySlug(partSlug)!.name}` : pathname.startsWith('/search') ? 'Search' : active?.label ?? 'Chocolate Factory';

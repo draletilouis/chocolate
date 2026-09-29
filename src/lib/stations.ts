@@ -88,7 +88,7 @@ export const stations: Station[] = [
     next: [], form: 'mixing',
     help: 'Make the chocolate types one after another. Each run is made on top of what the mixer still holds from the run before.',
   },
-  // Refining to packaging were separate steps before chocolate was made in mixing runs. Older batches still show them.
+  // Refining to moulding were separate steps before chocolate was made in mixing runs. Older batches still show them.
   {
     id: 'refining', name: 'Refining', group: 'Chocolate making', retired: true,
     input: 'Chocolate mix', output: 'Refined chocolate',
@@ -117,12 +117,13 @@ export const stations: Station[] = [
     next: ['packaging'], form: 'weights',
     help: 'Recoverable chocolate can be reworked. Only unusable material is waste.',
   },
+  // Formerly Packaging (accepted and rejected units per batch); its older records still show there.
   {
-    id: 'packaging', name: 'Packaging', group: 'Finishing', retired: true,
-    input: 'Finished chocolate', output: 'Accepted units · rejected units',
+    id: 'packaging', name: 'Pieces', group: 'Finishing',
+    input: 'Chocolate by type', output: 'Pieces by size',
     rows: [],
-    next: ['completion'], form: 'packaging',
-    help: 'Count every unit made, then the rejected units. Accepted units are calculated.',
+    next: [], form: 'pieces',
+    help: 'Make the chocolate into pieces and count the good pieces of each size. Chocolate not made into pieces yet stays in its lot.',
   },
   {
     id: 'completion', name: 'Completion', group: 'Finishing',
@@ -141,7 +142,7 @@ export const stationGroups: StationGroupDef[] = [
   { name: 'Butter & powder', slug: 'butter-powder', note: 'Press nibs into brown butter and cake. The butter is sieved and filtered; the cake becomes powder.', from: 'Nibs for butter', to: 'Clear butter · cocoa powder' },
   { name: 'Liquor', slug: 'liquor', note: 'Grind nibs twice, weigh after fine grinding, then label the liquor with the batch name.', from: 'Nibs for liquor', to: 'Labelled cocoa liquor' },
   { name: 'Chocolate making', slug: 'chocolate-making', note: 'Mix the chocolate types one after another from liquor, cocoa butter, sugar and milk powder.', from: 'Liquor + cocoa butter', to: 'Chocolate by type' },
-  { name: 'Finishing', slug: 'finishing', note: 'Complete the batch.', from: 'Chocolate by type', to: 'Completed batch' },
+  { name: 'Finishing', slug: 'finishing', note: 'Make the chocolate into pieces of each size, and complete the batch.', from: 'Chocolate by type', to: 'Pieces by size' },
 ];
 
 /** The stations of the line as it runs now, without the retired ones */

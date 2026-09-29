@@ -2,10 +2,11 @@ import { round2 } from '@/lib/balance';
 import type { Command } from '@/lib/commands';
 import { batchDisplayName, isReadyAt, issuedNumbers, nextBatchId, nextInput, nextLotId, pendingStations, recordFor, recordStamp, waitingAt } from '@/lib/derive';
 import { kg } from '@/lib/format';
+import { piecesKg } from '@/lib/pieces';
 import { batchMaterialAtMixing, changeover, ingredientsOf, mixerStamp, mixingTotals, storedAtMixing, versionOf } from '@/lib/mixing';
 import { demoCredentials, seedState, type State } from '@/lib/seed';
 import { stationById, stationName } from '@/lib/stations';
-import type { Batch, Lot, LotCategory, Mixer, MixingRun, OutputCategory, Recipe, RecipeIngredient, RecordedOutput, RunIngredient, StationId, StationRecord, User } from '@/lib/types';
+import type { Batch, Lot, LotCategory, LotUse, Mixer, MixingRun, OutputCategory, Recipe, RecipeIngredient, RecordedOutput, RunIngredient, StationId, StationRecord, User } from '@/lib/types';
 
 /** A command that cannot be applied; the message is shown to the person who tried */
 export class CommandError extends Error {}
@@ -277,6 +278,51 @@ function finishMixing(s: State, batchId: string, note: string | undefined, ctx: 
   return replaceBatch({ ...s, lots: [...s.lots, ...made] }, { ...updated, nextStation: pendingStations(updated)[0] ?? 'completion' });
 }
 
+type RecordPieces = Extract<Command, { type: 'recordPieces' }>;
+
+/**
+ * Good pieces of each size made from a chocolate lot. Each size becomes a lot counted in pieces, traced
+ * to the chocolate lot and the batch that mixed it; the chocolate lot is drawn down by their weight.
+ */
+function recordPieces(s: State, cmd: RecordPieces, ctx: CommandContext): Outcome {
+  const chocolate = s.lots.find((l) => l.id === cmd.lotId) ?? fail('That lot was not found.');
+  if (!chocolate.chocolate || chocolate.source.type !== 'batch') fail(`Lot ${chocolate.id} is not chocolate made at mixing.`);
+  const { batchId } = chocolate.source;
+  const entries = cmd.pieces.filter((p) => p.count > 0);
+  if (entries.length === 0) fail('Enter how many pieces were made.');
+  if (new Set(entries.map((e) => e.packSizeId)).size !== entries.length) fail('Each size can be entered once.');
+  const made: Lot[] = [];
+  const uses: LotUse[] = [];
+  for (const entry of entries) {
+    const pack = s.packSizes.find((p) => p.id === entry.packSizeId) ?? fail('That piece size no longer exists.');
+    // Pieces are numbered with the finished-units prefix: FIN-0001.
+    const id = nextLotId(s, 'Accepted units', made.map((l) => l.id));
+    made.push({
+      id, material: `${chocolate.chocolate.type} · ${pack.name}`, category: 'Finished goods', received: entry.count, available: entry.count, unit: 'units',
+      source: { type: 'batch', batchId, station: 'packaging' }, receivedAt: ctx.now, uses: [],
+      pieces: { type: chocolate.chocolate.type, packSizeId: pack.id, size: pack.name, grams: pack.grams, fromLotId: chocolate.id, recordedBy: ctx.userId },
+    });
+    uses.push({ batchId, quantity: piecesKg(entry.count, pack.grams), station: 'packaging', at: ctx.now, madeLot: id });
+  }
+  const used = Math.round(uses.reduce((sum, u) => sum + u.quantity, 0) * 1000) / 1000;
+  if (used > chocolate.available + 0.005) fail(`That is ${kg(used)} of chocolate, but lot ${chocolate.id} has ${kg(chocolate.available)} left.`);
+  const lots = s.lots.map((l) => (l.id === chocolate.id ? { ...l, available: Math.max(0, Math.round((l.available - used) * 1000) / 1000), uses: [...l.uses, ...uses] } : l));
+  return { state: { ...s, lots: [...lots, ...made] }, result: made.map((l) => l.id) };
+}
+
+/** Takes back a lot of pieces entered by mistake, while none of it is used; the chocolate goes back to its lot */
+function removePieces(s: State, lotId: string): State {
+  const lot = s.lots.find((l) => l.id === lotId) ?? fail('That lot was not found.');
+  const pieces = lot.pieces ?? fail(`Lot ${lot.id} is not a lot of pieces.`);
+  if (lot.uses.length || lot.available !== lot.received) fail(`Pieces from lot ${lot.id} are already in use.`);
+  const lots = s.lots.filter((l) => l.id !== lot.id).map((l) => {
+    if (l.id !== pieces.fromLotId) return l;
+    const returned = l.uses.filter((u) => u.madeLot === lot.id).reduce((sum, u) => sum + u.quantity, 0);
+    return { ...l, available: Math.min(l.received, Math.round((l.available + returned) * 1000) / 1000), uses: l.uses.filter((u) => u.madeLot !== lot.id) };
+  });
+  return { ...s, lots };
+}
+
 /** A recipe's ingredients must have different names and add up to 100% */
 function checkIngredients(ingredients: RecipeIngredient[]) {
   const names = new Set<string>();
@@ -324,6 +370,8 @@ function runCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
     case 'emptyMixer': return emptyMixer(s, cmd.expectMixer, ctx);
     case 'finishMixing': return { state: finishMixing(s, cmd.batchId, cmd.note, ctx) };
     case 'setMixerKeeps': return { state: { ...s, mixerKeepsKg: round2(cmd.kg) } };
+    case 'recordPieces': return recordPieces(s, cmd, ctx);
+    case 'removePieces': return { state: removePieces(s, cmd.lotId) };
     case 'completeBatch': {
       const b = findBatch(s, cmd.batchId);
       if (b.status === 'completed') fail(`${batchDisplayName(b)} is already completed.`);
@@ -441,7 +489,7 @@ function runCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
     case 'updatePackSize':
       return { state: { ...s, packSizes: s.packSizes.map((p) => (p.id === cmd.packSizeId ? { ...cmd.pack, id: p.id } : p)) } };
     case 'deletePackSize':
-      if (s.batches.some((b) => b.records.some((r) => r.packaging?.packSizeId === cmd.packSizeId))) fail('Pack sizes used by packaging records cannot be deleted.');
+      if (s.batches.some((b) => b.records.some((r) => r.packaging?.packSizeId === cmd.packSizeId)) || s.lots.some((l) => l.pieces?.packSizeId === cmd.packSizeId)) fail('Piece sizes already made cannot be deleted.');
       return { state: { ...s, packSizes: s.packSizes.filter((p) => p.id !== cmd.packSizeId) } };
     case 'addSupplier':
       return { state: { ...s, suppliers: [...s.suppliers, { ...cmd.supplier, id: uniqueId(s.suppliers, `S-${slug(cmd.supplier.name).toUpperCase()}`) }] } };

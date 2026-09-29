@@ -28,7 +28,7 @@ export interface Station {
   rows: OutputRowDef[];
   /** Stations a carried-forward output can continue to (first is the default) */
   next: StationId[];
-  form: 'weights' | 'mixing' | 'packaging' | 'completion';
+  form: 'weights' | 'mixing' | 'pieces' | 'completion';
   help: string;
   /** No longer part of the line; kept so older records still show */
   retired?: boolean;
@@ -166,6 +166,8 @@ export interface LotUse {
   at: string;
   /** The mixing run that weighed it in, so the run can be undone */
   runId?: string;
+  /** The lot of pieces made from it */
+  madeLot?: string;
 }
 
 export type LotCategory = 'Raw material' | 'Intermediate' | 'By-product' | 'Rework' | 'Finished goods';
@@ -182,6 +184,8 @@ export interface Lot {
   uses: LotUse[];
   /** Chocolate made at mixing: its type and the run that made it */
   chocolate?: { type: string; recipeId: string; recipeVersion: number; runId: string };
+  /** Pieces of one size made from a chocolate lot; the lot counts pieces */
+  pieces?: { type: string; packSizeId: string; size: string; grams: number; fromLotId: string; recordedBy: string };
 }
 
 export interface RecipeIngredient { name: string; percent: number }

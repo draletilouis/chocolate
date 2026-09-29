@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { ArrowRight, Plus } from 'lucide-react';
 import { Badge, Empty, LinkButton, PageHeader, Panel, RowLink } from '@/components/ui';
-import { activeBatches, batchAlerts, batchDisplayName, currentStation, stationQueue, waitingAt } from '@/lib/derive';
+import { activeBatches, batchAlerts, batchDisplayName, currentStation, waitingAt, waitingCount } from '@/lib/derive';
 import { useStore } from '@/lib/store';
 import { lineStations, stationGroups, stationName } from '@/lib/stations';
 
@@ -44,7 +44,7 @@ export default function ProductionPage() {
       <Panel title="Parts of the line" subtitle="Each part has its own page with its stations. Pick yours.">
         {stationGroups.map((group, index) => {
           const partStations = lineStations.filter((s) => s.group === group.name);
-          const waiting = partStations.reduce((n, s) => n + stationQueue(store, s.id).ready.length, 0);
+          const waiting = partStations.reduce((n, s) => n + waitingCount(store, s.id), 0);
           return (
             <RowLink key={group.slug} href={`/production/parts/${group.slug}`}>
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-paper text-[11px] font-bold text-muted">{index + 1}</span>

@@ -12,7 +12,7 @@ import type { Access, BusinessDetails, OutputKind, RouteId, StationId, User } fr
 const sections = [
   { id: 'business', label: 'Business details', href: '/setup/business' },
   { id: 'products', label: 'Products', href: '/setup/products' },
-  { id: 'pack-sizes', label: 'Pack sizes', href: '/setup/pack-sizes' },
+  { id: 'pack-sizes', label: 'Piece sizes', href: '/setup/pack-sizes' },
   { id: 'containers', label: 'Containers', href: '/setup/containers' },
   { id: 'outputs', label: 'Output categories', href: '/setup/outputs' },
   { id: 'routes', label: 'Routes', href: '/setup/routes' },
@@ -243,19 +243,19 @@ export default function SetupPage() {
       )}
 
       {current.id === 'pack-sizes' && (
-        <Panel title="Pack sizes" subtitle="Used at packaging to work out accepted weight.">
-          <Table head={['Pack', 'Grams per unit', '']}>
+        <Panel title="Piece sizes" subtitle="The sizes chocolate is made into at Pieces. Add a size whenever a new one is made. Pieces keep the size and weight they were made with.">
+          <Table head={['Size', 'Grams per piece', '']}>
             {store.packSizes.map((p) => {
-              const canDelete = !store.batches.some((b) => b.records.some((r) => r.packaging?.packSizeId === p.id));
+              const canDelete = !store.batches.some((b) => b.records.some((r) => r.packaging?.packSizeId === p.id)) && !store.lots.some((l) => l.pieces?.packSizeId === p.id);
               return <Fragment key={p.id}>
-                <tr key={p.id}><td className={td}>{p.name}</td><td className={tdNum}>{p.grams} g</td><td className={td}><RowActions onEdit={() => setEditingId(p.id)} onDelete={() => { if (canDelete && window.confirm(`Delete ${p.name}?`)) store.deletePackSize(p.id); }} deleteDisabled={!canDelete} deleteHint="Pack sizes used by packaging records cannot be deleted." /></td></tr>
-                {editingId === p.id && <tr key={`${p.id}-edit`}><td className={td} colSpan={3}><EditForm onCancel={() => setEditingId(null)} onSubmit={(d) => { store.updatePackSize(p.id, { name: String(d.get('name')).trim(), grams: Number(d.get('grams')) }); setEditingId(null); }}><Field label="Name"><Input name="name" defaultValue={p.name} required /></Field><Field label="Grams per unit"><Input name="grams" type="number" min="1" defaultValue={p.grams} required /></Field></EditForm></td></tr>}
+                <tr key={p.id}><td className={td}>{p.name}</td><td className={tdNum}>{p.grams} g</td><td className={td}><RowActions onEdit={() => setEditingId(p.id)} onDelete={() => { if (canDelete && window.confirm(`Delete ${p.name}?`)) store.deletePackSize(p.id); }} deleteDisabled={!canDelete} deleteHint="Sizes already made cannot be deleted." /></td></tr>
+                {editingId === p.id && <tr key={`${p.id}-edit`}><td className={td} colSpan={3}><EditForm onCancel={() => setEditingId(null)} onSubmit={(d) => { store.updatePackSize(p.id, { name: String(d.get('name')).trim(), grams: Number(d.get('grams')) }); setEditingId(null); }}><Field label="Name"><Input name="name" defaultValue={p.name} required /></Field><Field label="Grams per piece"><Input name="grams" type="number" min="1" defaultValue={p.grams} required /></Field></EditForm></td></tr>}
               </Fragment>;
             })}
           </Table>
-          <AddForm title="Add pack size" onSubmit={(d) => store.addPackSize({ name: String(d.get('name')), grams: Number(d.get('grams')) })}>
+          <AddForm title="Add piece size" onSubmit={(d) => store.addPackSize({ name: String(d.get('name')), grams: Number(d.get('grams')) })}>
             <Field label="Name"><Input name="name" required placeholder="e.g. 60 g bar" /></Field>
-            <Field label="Grams per unit"><Input name="grams" type="number" min="1" required /></Field>
+            <Field label="Grams per piece"><Input name="grams" type="number" min="1" required /></Field>
           </AddForm>
         </Panel>
       )}

@@ -11,9 +11,12 @@ import { dateTime, kg, num, pct } from '@/lib/format';
 import type { ReportExportSnapshot } from '@/lib/report-export';
 import { useStore } from '@/lib/store';
 import { isWeighed, stationName, stations } from '@/lib/stations';
+import { piecesByTypeAndSize, piecesKg, piecesLots } from '@/lib/pieces';
+import type { Lot } from '@/lib/types';
 
 
 const sections = [
+  { id: 'pieces', label: 'Pieces made', href: '/reports/pieces' },
   { id: 'losses', label: 'Weight loss by process', href: '/reports/losses' },
   { id: 'variance', label: 'Waste & variance', href: '/reports/variance' },
   { id: 'batches', label: 'Batch history', href: '/reports/batches' },
@@ -86,7 +89,24 @@ export default function ReportsPage() {
     .sort((a, b) => b.record.recordedAt.localeCompare(a.record.recordedAt));
   const totals = rows.reduce((t, r) => ({ input: t.input + r.balance.input, useful: t.useful + r.balance.useful, waste: t.waste + r.balance.waste, byproduct: t.byproduct + r.balance.byproduct, variance: t.variance + r.balance.variance }), { input: 0, useful: 0, waste: 0, byproduct: 0, variance: 0 });
 
+  // Pieces made in the period: the factory's end result, by chocolate type and size
+  const piecesInPeriod = piecesLots(store).filter((l) => duration === 'all' || inReportRange(l.receivedAt, durationRange));
+  const piecesTotals = piecesByTypeAndSize(piecesInPeriod);
+  const pieceRow = (l: Lot) => [dateTime(l.receivedAt), l.id, l.pieces!.type, l.pieces!.size, l.received, num(piecesKg(l.received, l.pieces!.grams)), l.pieces!.fromLotId, l.source.type === 'batch' ? l.source.batchId : '', userName(store, l.pieces!.recordedBy)];
+
   const buildExportSnapshot = (type: ProductionReportType, range: ReportRange): ReportExportSnapshot => {
+    if (type === 'pieces') {
+      const lots = piecesLots(store).filter((l) => inReportRange(l.receivedAt, range));
+      const totals = piecesByTypeAndSize(lots);
+      return {
+        title: 'Pieces made',
+        periodLabel: range.label,
+        sections: [
+          { title: 'By type and size', headers: ['Chocolate type', 'Size', 'Pieces', 'Chocolate (kg)'], rows: [...totals.map((t) => [t.type, t.size, t.pieces, num(t.kg)]), ['Total', '', totals.reduce((n, t) => n + t.pieces, 0), num(totals.reduce((n, t) => n + t.kg, 0))]] },
+          { title: 'Lots of pieces', headers: ['Made', 'Lot', 'Chocolate type', 'Size', 'Pieces', 'Chocolate (kg)', 'From chocolate lot', 'Batch', 'By'], rows: lots.map(pieceRow) },
+        ],
+      };
+    }
     const filteredBatches = store.batches
       .filter((batch) => inReportRange(batch.startedAt, range)
         || batch.records.some((record) => inReportRange(record.recordedAt, range))
@@ -356,6 +376,30 @@ export default function ReportsPage() {
             })}
           </Table>
         </Panel>
+      )}
+
+      {current.id === 'pieces' && (
+        <>
+          <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3">
+            <Stat label="Pieces made" value={piecesTotals.reduce((n, t) => n + t.pieces, 0)} />
+            <Stat label="Chocolate in pieces" value={kg(piecesTotals.reduce((n, t) => n + t.kg, 0))} />
+            <Stat label="Chocolate types" value={new Set(piecesTotals.map((t) => t.type)).size} />
+          </div>
+          <Panel title="By type and size" subtitle="Good pieces made in this period.">
+            {piecesTotals.length === 0 ? <Empty>No pieces made in this period.</Empty> : (
+              <Table head={['Chocolate type', 'Size', 'Pieces', 'Chocolate']}>
+                {piecesTotals.map((t) => <tr key={`${t.type}-${t.size}`}><td className={td}>{t.type}</td><td className={td}>{t.size}</td><td className={`${tdNum} font-semibold`}>{t.pieces}</td><td className={tdNum}>{num(t.kg)} kg</td></tr>)}
+              </Table>
+            )}
+          </Panel>
+          {piecesInPeriod.length > 0 && (
+            <Panel title="Lots of pieces" subtitle="Each count entered at Pieces, with the chocolate it was made from.">
+              <Table head={['Made', 'Lot', 'Chocolate type', 'Size', 'Pieces', 'From', 'Batch', 'By']}>
+                {piecesInPeriod.map((l) => <tr key={l.id}><td className={td}>{dateTime(l.receivedAt)}</td><td className={td}><Link href={`/materials/${l.id}`} className="font-semibold text-green">{l.id}</Link></td><td className={td}>{l.pieces!.type}</td><td className={td}>{l.pieces!.size}</td><td className={tdNum}>{l.received}</td><td className={td}><Link href={`/materials/${l.pieces!.fromLotId}`} className="font-semibold text-green">{l.pieces!.fromLotId}</Link></td><td className={td}>{l.source.type === 'batch' && <Link href={`/production/batches/${l.source.batchId}`} className="font-semibold text-green">{l.source.batchId}</Link>}</td><td className={td}>{userName(store, l.pieces!.recordedBy)}</td></tr>)}
+              </Table>
+            </Panel>
+          )}
+        </>
       )}
 
       {current.id === 'corrections' && (

@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { ArrowRight, Plus } from 'lucide-react';
 import { Back, Badge, Empty, LinkButton, Notice, PageHeader, Panel, RowLink } from '@/components/ui';
-import { batchDisplayName, nextInput, recordBalance, recordFor, stationQueue } from '@/lib/derive';
+import { batchDisplayName, chocolateWaiting, nextInput, recordBalance, recordFor, stationQueue } from '@/lib/derive';
+import { piecesLots } from '@/lib/pieces';
 import { dateTime, kg, kindLabel } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { groupOf, isStationId, stationById } from '@/lib/stations';
@@ -16,6 +17,7 @@ export default function StationPage() {
   const station = stationById[stationParam];
   const queue = stationQueue(store, station.id);
   const rows = store.outputCategories.filter((c) => c.station === station.id);
+  if (station.form === 'pieces') return <PiecesQueue />;
 
   return (
     <>
@@ -74,6 +76,42 @@ export default function StationPage() {
         </Panel>
       )}
       <p className="text-[12px] text-muted">Looking for another station? <Link href="/production" className="font-semibold text-green">Back to the production line</Link>.</p>
+    </>
+  );
+}
+
+/** Pieces are made from chocolate lots, whenever they are moulded: the queue is the chocolate not yet made into pieces */
+function PiecesQueue() {
+  const store = useStore();
+  const station = stationById.packaging;
+  const waiting = chocolateWaiting(store);
+  const recent = piecesLots(store).slice(0, 8);
+  return (
+    <>
+      <Back href={`/production/parts/${groupOf(station.id).slug}`} label={station.group} />
+      <PageHeader eyebrow={station.group} title={station.name} subtitle={<>{station.input} <ArrowRight size={12} className="inline" /> {station.output}</>} />
+      <Panel title="Chocolate to make into pieces" subtitle={station.help}>
+        {waiting.length === 0 && <Empty>No chocolate is waiting. Chocolate appears here as soon as a mixing run saves it.</Empty>}
+        {waiting.map((lot) => (
+          <RowLink key={lot.id} href={`/production/pieces/${lot.id}`}>
+            <span className="min-w-0 flex-1">
+              <span className="flex flex-wrap items-center gap-2"><strong>{lot.chocolate!.type}</strong><span className="text-[12px] text-muted">{lot.id}</span></span>
+              <span className="text-[12px] text-muted"><strong className="text-ink tabular-nums">{kg(lot.available)}</strong> left of {kg(lot.received)} · mixed by {lot.source.type === 'batch' ? lot.source.batchId : ''} · {dateTime(lot.receivedAt)}</span>
+            </span>
+            <span className="text-[13px] font-semibold text-green">Record pieces</span>
+          </RowLink>
+        ))}
+      </Panel>
+      {recent.length > 0 && (
+        <Panel title="Pieces made recently">
+          {recent.map((lot) => (
+            <RowLink key={lot.id} href={`/materials/${lot.id}`}>
+              <span className="flex-1 text-[13px]"><strong className="tabular-nums">{lot.received}</strong> × {lot.pieces!.size} <span className="text-muted">of {lot.pieces!.type} · {lot.id} · {dateTime(lot.receivedAt)}</span></span>
+            </RowLink>
+          ))}
+        </Panel>
+      )}
+      <p className="text-[12px] text-muted">The total by type and size is in <Link href="/reports/pieces" className="font-semibold text-green">Reports → Pieces made</Link>.</p>
     </>
   );
 }
