@@ -302,9 +302,9 @@ Older versions stay available. Each mixing run keeps the recipe version it used 
 Open **Reports** and choose a section:
 
 - **Pieces made** (the first section) — the number of pieces of each size for each chocolate type, and every lot of pieces with the chocolate and batch it came from.
-- **Weight loss by process** — compare input and useful output at each stage, follow one batch, or compare losses across processes.
+- **Yield by stage** — every batch as a share of its starting weight (the bag weight for a sack): the weight that went into each stage, and what became products, waste and loss. Follow one batch to see every output at every stage as a percentage of the stage input and of the starting weight, and **Where the batch went**, which adds up to 100%. Material sent on counts once, where it finally left the line; liquor and butter sent to mixing count as made into chocolate, because the chocolate also holds sugar and milk powder from store. **What a batch usually turns into** averages the completed batches of one kind; enter a weight, such as a 45 kg sack, to see what to expect from it. Loss at each process compares the processes.
 - **Waste & variance** — filter station records and compare waste, by-products, unaccounted variance, and configured limits.
-- **Batch history** — see all batches, statuses, stations, starting input, final useful output, and total variance.
+- **Batch history** — see all batches, statuses, stations, starting input, and the products, by-products, waste and unweighed loss of each, in kg and as a share of the starting weight.
 - **Corrections** — see every changed weight, reason, time, and user.
 - **Holds** — see when holds were placed, why, by whom, and whether they were released.
 

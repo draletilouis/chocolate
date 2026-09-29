@@ -6,6 +6,9 @@ import { useState, type FormEvent } from 'react';
 import { AlertTriangle, ArrowRight, Check, ChevronDown, Circle, Pause, PenLine, Pencil, Play, Trash2 } from 'lucide-react';
 import { Back, Badge, Button, Empty, Field, Input, LinkButton, Notice, PageHeader, Panel, Textarea, UnitInput } from '@/components/ui';
 import { PrintLabelButton } from '@/components/BatchLabel';
+import { WhereItWent } from '@/components/BatchFlow';
+import { percentOf } from '@/lib/balance';
+import { startName, startWeight } from '@/lib/outcomes';
 import { batchAlerts, batchById, batchDisplayName, batchSuppliers, chocolateWaiting, nextInput, recordBalance, recordFor, userName, waitingAt } from '@/lib/derive';
 import { piecesByTypeAndSize } from '@/lib/pieces';
 import { dateTime, destinationLabel, kg, num, pct } from '@/lib/format';
@@ -66,7 +69,14 @@ export default function BatchPage() {
       </Panel>}
 
       <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
-        <div><Steps batch={batch} /></div>
+        <div>
+          <Steps batch={batch} />
+          {batch.records.length > 0 && (
+            <Panel title="Where the batch went" subtitle={`Every output that left the line, as a share of the ${startName(batch)}. The rows add up to 100%.`}>
+              <WhereItWent batch={batch} />
+            </Panel>
+          )}
+        </div>
 
         <div>
           <Panel title="Actions">
@@ -126,6 +136,8 @@ function Steps({ batch }: { batch: Batch }) {
   const [open, setOpen] = useState<StationId | null>(null);
   const [fixing, setFixing] = useState<{ recordId: string; output: string } | null>(null);
   const [fix, setFix] = useState({ weight: '', reason: '' });
+  const start = startWeight(batch);
+  const of = startName(batch);
 
   async function saveFix(event: FormEvent) {
     event.preventDefault();
@@ -152,6 +164,8 @@ function Steps({ batch }: { batch: Batch }) {
             const limit = store.thresholds.variancePct[stationId] ?? 0;
             const over = Math.abs(balance.variancePct) > limit;
             const fixes = batch.corrections.filter((c) => c.recordId === record.id);
+            // Mixing also weighs in sugar, milk powder and other lots, so its weights are not shares of a sack
+            const mixesStore = stationId === 'mixing' && batch.startInput.weight > 0;
             return (
               <li key={stationId} className="step-row">
                 <span className={`step-icon ${record.destinationsSaved ? 'is-done' : 'is-warn'}`}>{record.destinationsSaved ? <Check size={13} /> : '!'}</span>
@@ -160,7 +174,8 @@ function Steps({ batch }: { batch: Batch }) {
                     <span className="flex flex-wrap items-center gap-2"><strong className="text-[14px]">{stationName(stationId)}</strong>{!record.destinationsSaved && (record.runs ? <Badge tone="green">In progress · {record.runs.length} run{record.runs.length === 1 ? '' : 's'}</Badge> : <Badge tone="warn">Not finished</Badge>)}</span>
                     <button type="button" className="verdict-toggle text-green" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : stationId)}>{expanded ? 'Hide' : 'Details'} <ChevronDown size={14} className={expanded ? 'rotate-180' : ''} /></button>
                   </div>
-                  <div className={over ? 'text-warn' : 'text-muted'}>In {kg(balance.input)} → out {kg(balance.measured)} · missing {kg(balance.variance)} ({pct(balance.variancePct)}){over ? ` · above the ${limit}% limit` : ''}</div>
+                  <div className={over ? 'text-warn' : 'text-muted'}>In {kg(balance.input)}{!mixesStore && ` (${pct(percentOf(balance.input, start))} of the ${of})`} → out {kg(balance.measured)} · {stationById[stationId].lossLabel?.toLowerCase() ?? 'missing'} {kg(balance.variance)} ({pct(balance.variancePct)}){over ? ` · above the ${limit}% limit` : ''}</div>
+                  {!expanded && !mixesStore && <div className="text-[12px] text-muted tabular-nums">{record.outputs.map((o) => `${o.name} ${pct(percentOf(o.weight, start))}`).join(' · ')}</div>}
                   {fixes.length > 0 && !expanded && <div className="text-muted"><PenLine size={12} className="inline" /> {fixes.length} correction{fixes.length > 1 ? 's' : ''}</div>}
                   {expanded && (
                     <div className="mt-2 grid gap-2">
@@ -171,7 +186,7 @@ function Steps({ batch }: { batch: Batch }) {
                           return (
                             <li key={o.name} className="rounded-md bg-paper px-3 py-2">
                               <div className="flex flex-wrap items-center justify-between gap-2">
-                                <span><strong>{o.name}</strong> <span className="tabular-nums">{record.packaging ? `${o.name === 'Accepted units' ? record.packaging.acceptedUnits : record.packaging.rejectedUnits} units` : kg(o.weight)}</span></span>
+                                <span><strong>{o.name}</strong> <span className="tabular-nums">{record.packaging ? `${o.name === 'Accepted units' ? record.packaging.acceptedUnits : record.packaging.rejectedUnits} units` : kg(o.weight)}</span> <span className="text-[12px] text-muted tabular-nums">{pct(percentOf(o.weight, record.inputWeight))} of this input{!mixesStore && ` · ${pct(percentOf(o.weight, start))} of the ${of}`}</span></span>
                                 {!record.packaging && !record.runs && <button type="button" className="btn-text inline-flex min-h-[44px] items-center gap-1" onClick={() => { setFixing(isFixing ? null : { recordId: record.id, output: o.name }); setFix({ weight: String(o.weight), reason: '' }); }} aria-label={`Correct ${o.name}`}><Pencil size={13} /> Correct</button>}
                               </div>
                               <div className="text-[12px] text-muted">{destinationLabel(o.destination, (s) => stationName(s as StationId))}{o.lotId && <> · <Link href={`/materials/${o.lotId}`} className="font-semibold text-green">{o.lotId}</Link></>}{o.container && <> · {kg(o.container.gross)} on the scale − {kg(o.container.tare)} {o.container.name.toLowerCase()}</>}</div>

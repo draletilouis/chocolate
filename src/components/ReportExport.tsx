@@ -12,7 +12,7 @@ export interface ReportRange { from?: string; to?: string; label: string }
 
 const reportOptions: { id: ProductionReportType; label: string }[] = [
   { id: 'pieces', label: 'Pieces made' },
-  { id: 'losses', label: 'Weight loss by process' },
+  { id: 'losses', label: 'Yield by stage' },
   { id: 'variance', label: 'Waste & variance' },
   { id: 'batches', label: 'Batch history' },
   { id: 'corrections', label: 'Corrections' },

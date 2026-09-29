@@ -7,9 +7,11 @@ import { AlertTriangle, ArrowRight, Check, CheckCircle2, Pencil, Plus, Trash2 } 
 import { Back, Button, Empty, LinkButton, Notice, PageHeader, Panel, inputClass } from '@/components/ui';
 import { BatchLabel } from '@/components/BatchLabel';
 import { MixingScreen } from '@/components/MixingScreen';
+import { WhereItWent } from '@/components/BatchFlow';
+import { batchStages, outcomeTotals, startName, startWeight } from '@/lib/outcomes';
 import { piecesByTypeAndSize } from '@/lib/pieces';
 import { BalanceVerdict, DestinationSelect, LiveBalance, WeightField, emptyWeight, netWeight, weightFrom, type WeightValue } from '@/components/weighing';
-import { calculateBalance, round2 } from '@/lib/balance';
+import { calculateBalance, percentOf, round2 } from '@/lib/balance';
 import { batchById, batchDisplayName, defaultDestination, isReadyAt, lastContainerId, nextInput, recordBalance, recordFor, recordStamp, userName, waitingAt } from '@/lib/derive';
 import { dateTime, destinationLabel, kg, pct } from '@/lib/format';
 import { useStore } from '@/lib/store';
@@ -50,7 +52,9 @@ export default function RecordPage() {
   if (station.retired && !record) {
     return <><Back href={`/production/batches/${batch.id}`} label={`Batch ${batchDisplayName(batch)}`} /><Notice tone="neutral">{station.name} is no longer part of the line. Chocolate is made in mixing runs.</Notice></>;
   }
-  if (!record && !isReadyAt(batch, station.id) && (!independent || station.form === 'mixing')) {
+  // A completed batch waits nowhere, but its completion screen stays open as the batch summary.
+  const completedSummary = station.form === 'completion' && batch.status === 'completed';
+  if (!record && !completedSummary && !isReadyAt(batch, station.id) && (!independent || station.form === 'mixing')) {
     const waiting = waitingAt(batch);
     return (
       <>
@@ -249,6 +253,7 @@ function SavedView({ batch, station, record, independent, justSaved, onEdit }: {
           <div key={o.name} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-line px-5 py-3 last:border-b-0">
             <span>
               <strong>{o.name}</strong> <span className="tabular-nums">{record.packaging ? `${o.name === 'Accepted units' ? record.packaging.acceptedUnits : record.packaging.rejectedUnits} units` : kg(o.weight)}</span>
+              <span className="block text-[12px] text-muted tabular-nums">{pct(percentOf(o.weight, record.inputWeight))} of this input · {pct(percentOf(o.weight, startWeight(fresh)))} of the {startName(fresh)}</span>
               {o.container && <span className="block text-[12px] text-muted">{kg(o.container.gross)} on the scale − {kg(o.container.tare)} {o.container.name.toLowerCase()}</span>}
             </span>
             <span className="text-[13px]">{destinationLabel(o.destination, (s) => stationName(s as StationId))}{o.lotId && <> · <Link href={`/materials/${o.lotId}`} className="font-semibold text-green">lot {o.lotId}</Link></>}</span>
@@ -280,9 +285,9 @@ function CompletionScreen({ batch }: { batch: Batch }) {
   const [saving, setSaving] = useState(false);
   const packaging = batch.records.find((r) => r.packaging)?.packaging;
   const lots = store.lots.filter((l) => l.source.type === 'batch' && l.source.batchId === batch.id);
-  const totalMissing = round2(batch.records.reduce((sum, r) => sum + recordBalance(r).variance, 0));
   const pending = batch.records.filter((r) => !r.destinationsSaved);
-  const finalUseful = batch.records.at(-1) ? recordBalance(batch.records.at(-1)!).useful : 0;
+  const totals = outcomeTotals(batch);
+  const of = startName(batch);
   // Chocolate made at mixing, added up by type
   const madeByType = new Map<string, number>();
   for (const run of recordFor(batch, 'mixing')?.runs ?? []) madeByType.set(run.type, round2((madeByType.get(run.type) ?? 0) + run.made));
@@ -296,23 +301,28 @@ function CompletionScreen({ batch }: { batch: Batch }) {
       <Panel title="Stations recorded">
         <div className="overflow-x-auto">
           <table className="w-full text-[13px]">
-            <thead><tr className="border-b border-line text-left text-[11px] font-bold tracking-wide text-faint uppercase"><th className="px-5 py-2">Station</th><th className="px-4 py-2 text-right">In</th><th className="px-4 py-2 text-right">Good output</th><th className="px-4 py-2 text-right">Waste / by-product</th><th className="px-5 py-2 text-right">Missing</th></tr></thead>
+            <thead><tr className="border-b border-line text-left text-[11px] font-bold tracking-wide text-faint uppercase"><th className="px-5 py-2">Station</th><th className="px-4 py-2 text-right">In</th><th className="px-4 py-2 text-right">% of {of}</th><th className="px-4 py-2 text-right">Good output</th><th className="px-4 py-2 text-right">Waste / by-product</th><th className="px-5 py-2 text-right">Missing</th></tr></thead>
             <tbody>
-              {batch.records.map((r) => { const b = recordBalance(r); return (
-                <tr key={r.id} className="border-b border-line last:border-b-0"><td className="px-5 py-2 font-medium">{stationName(r.station)}</td><td className="px-4 py-2 text-right tabular-nums">{kg(b.input)}</td><td className="px-4 py-2 text-right tabular-nums">{kg(b.useful)}</td><td className="px-4 py-2 text-right tabular-nums">{kg(b.recordedWaste)}</td><td className="px-5 py-2 text-right tabular-nums">{kg(b.variance)} ({pct(b.variancePct)})</td></tr>
-              ); })}
-              {batch.records.length === 0 && <tr><td colSpan={5}><Empty>Nothing recorded yet.</Empty></td></tr>}
+              {batchStages(batch).map(({ record: r, balance: b, inputOfStartPct, mixesOwnMaterial }) => (
+                <tr key={r.id} className="border-b border-line last:border-b-0"><td className="px-5 py-2 font-medium">{stationName(r.station)}</td><td className="px-4 py-2 text-right tabular-nums">{kg(b.input)}</td><td className="px-4 py-2 text-right tabular-nums">{mixesOwnMaterial ? <span className="text-muted" title="Mixing also weighs in sugar, milk powder and other lots from store">with store</span> : pct(inputOfStartPct)}</td><td className="px-4 py-2 text-right tabular-nums">{kg(b.useful)}</td><td className="px-4 py-2 text-right tabular-nums">{kg(b.recordedWaste)}</td><td className="px-5 py-2 text-right tabular-nums">{kg(b.variance)} ({pct(b.variancePct)})</td></tr>
+              ))}
+              {batch.records.length === 0 && <tr><td colSpan={6}><Empty>Nothing recorded yet.</Empty></td></tr>}
             </tbody>
           </table>
         </div>
       </Panel>
+      {batch.records.length > 0 && (
+        <Panel title="Where the batch went" subtitle={`Every output that left the line, as a share of the ${of}. The rows add up to 100%.`}>
+          <WhereItWent batch={batch} />
+        </Panel>
+      )}
       <Panel title="Finished quantities">
         <div className="grid gap-2 p-5 text-[13px] sm:grid-cols-2">
-          {batch.startInput.weight > 0 && <div className="flex justify-between"><span className="text-muted">Starting input</span><strong className="tabular-nums">{kg(batch.startInput.weight)}</strong></div>}
-          {madeByType.size === 0 && <div className="flex justify-between"><span className="text-muted">Last good output</span><strong className="tabular-nums">{kg(finalUseful)}</strong></div>}
+          {startWeight(batch) > 0 && <div className="flex justify-between"><span className="text-muted">Starting input ({of})</span><strong className="tabular-nums">{kg(startWeight(batch))}</strong></div>}
+          <div className="flex justify-between"><span className="text-muted">Products</span><strong className="tabular-nums">{kg(totals.product)} · {pct(totals.pct.product)}</strong></div>
+          <div className="flex justify-between"><span className="text-muted">Waste and lost, not weighed</span><strong className="tabular-nums">{kg(totals.gone)} · {pct(totals.pct.gone)}</strong></div>
           {Array.from(madeByType, ([type, made]) => <div key={type} className="flex justify-between"><span className="text-muted">{type} made</span><strong className="tabular-nums">{kg(made)}</strong></div>)}
           {piecesByTypeAndSize(lots).map((t) => <div key={`${t.type}-${t.size}`} className="flex justify-between"><span className="text-muted">{t.type} · {t.size}</span><strong className="tabular-nums">{t.pieces} pieces</strong></div>)}
-          <div className="flex justify-between"><span className="text-muted">Total missing weight</span><strong className="tabular-nums">{kg(totalMissing)}</strong></div>
           {packaging && <div className="flex justify-between"><span className="text-muted">Accepted units</span><strong className="tabular-nums">{packaging.acceptedUnits} × {packaging.packGrams} g</strong></div>}
           {packaging && <div className="flex justify-between"><span className="text-muted">Rejected units</span><strong className="tabular-nums">{packaging.rejectedUnits}</strong></div>}
         </div>
