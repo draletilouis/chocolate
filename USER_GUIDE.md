@@ -30,14 +30,15 @@ You are signed out on your own after a few minutes without use (10 by default; a
 What you see depends on your access:
 
 - **Operators** see **My work** and **Production line**.
-- **Managers** also see **Overview**, **Materials**, **Chocolate types**, **Reports** and **Setup**.
+- **Managers** also see **Overview**, **Production plan**, **Materials**, **Chocolate types**, **Reports** and **Setup**.
   - A manager who has their own stations also gets **My work**.
 
 The sections are:
 
 - **My work** — the batches waiting at your stations, each with one button to record it.
-- **Overview** — production summary and alerts.
+- **Overview** — production summary, the production plan's progress and alerts.
 - **Production line** — every active batch, where it is waiting, and the five parts of the line.
+- **Production plan** — the pieces to make of each chocolate type and size, how many are made and what is left. On a phone, open it from **Overview**. People working at Mixing or Pieces find it on **My work**.
 - **Materials** — raw materials, intermediate products, by-products, rework and finished-goods lots.
 - **Chocolate types** — each type's recipe, its versions and ingredient comparisons.
 - **Reports** — losses, missing weight, batch history, corrections and holds.
@@ -163,7 +164,26 @@ The chocolate from each run waits at **Pieces** until it is made into pieces, th
 4. The bar at the bottom shows how much chocolate that is and how much stays in the lot.
 5. Select **Save pieces**. Each size becomes a lot of pieces, such as `FIN-0004 · 70% Dark · 45 g bar · 500`, with a label that traces back to the batch and the supplier.
 
+Each size also shows how many pieces the production plan still needs of that type, for example *Plan: 300 still to make*.
+
 Chocolate left in the lot stays there for the next time. Entered the wrong count? Select **Undo** next to it under **Pieces made from this lot** and enter it again. **Reports → Pieces made** adds up the pieces by type and size for any period.
+
+### Follow the production plan
+
+The plan says how many pieces of each chocolate type and size to make, for example 2000 × 70% Dark 45 g bars. Open **Production plan** (on a phone, from **Overview** or **My work**). It shows:
+
+- **Pieces** — for each type and size: planned, made since the plan's start date, and left, with the chocolate the pieces left take.
+- **Chocolate still to mix** — the chocolate for the pieces left, less what is already mixed and waiting at Pieces. Use it to choose the next runs at Mixing.
+- **Ingredients to mix it** — the liquor, cocoa butter, sugar and milk powder that takes, against what is in store and at mixing. Anything short is marked in red.
+
+Pieces count towards the plan as soon as they are saved at Pieces. The ingredient figures are a guide: they do not include what a changeover adds or what the mixer keeps.
+
+**Managers: set or change the plan**
+
+1. Open **Production plan** and select **Set the plan** (or **Change the plan**).
+2. For each line, choose the chocolate type and size and enter the pieces to make. Select **Add a line** for more, or the bin to remove one. Each type and size goes on one line.
+3. Set **Count pieces made from** to the day the plan starts; pieces saved before that day do not count. Add a note if you like, such as the week or order.
+4. Select **Save plan**. Everyone sees the new plan straight away.
 
 ## 7. Put a batch on hold or release it
 
@@ -290,7 +310,7 @@ Open **Reports** and choose a section:
 
 Use the duration filter on any report to select all time, today, this week, this month, this year, or a custom date range. Select **Export report** to download the selected report; the default **Excel workbook (.xlsx)** contains a Summary sheet and separate filterable detail sheets. CSV and print/PDF options are also available.
 
-Use the Overview page for a quick view of active batches, alerts, completed batches, and recent station records.
+Use the Overview page for a quick view of active batches, alerts, completed batches, the production plan, and recent station records.
 
 ## 13. Respond to alerts
 

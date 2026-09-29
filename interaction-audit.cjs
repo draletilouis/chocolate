@@ -295,6 +295,32 @@ async function piecesFlow(page) {
   await waitForText(page, 'By type and size');
 }
 
+async function planFlow(page) {
+  await page.goto(`${BASE}/overview`);
+  await action(page, 'Open the production plan from Overview', page.getByRole('link', { name: 'Open the plan' }), async () => {
+    await waitForUrl(page, '**/plan');
+    await waitForText(page, 'pieces left to make');
+  });
+  await action(page, 'Change the plan', page.getByRole('button', { name: 'Change the plan' }), async () => {
+    await page.getByLabel('Line 1 pieces').waitFor();
+  });
+  await action(page, 'Add a line to the plan', page.getByRole('button', { name: 'Add a line' }), async () => {
+    await page.getByLabel('Line 6 pieces').waitFor();
+  });
+  await action(page, 'Remove the added line', page.getByRole('button', { name: 'Remove line 6' }), async () => {
+    await page.getByLabel('Line 6 pieces').waitFor({ state: 'detached' });
+  });
+  await action(page, 'Cancel changing the plan', page.getByRole('button', { name: 'Cancel' }), async () => {
+    await page.getByRole('button', { name: 'Change the plan' }).waitFor();
+  });
+  await page.getByRole('button', { name: 'Change the plan' }).click();
+  await page.getByLabel('Line 5 pieces').fill('450');
+  await action(page, 'Save the plan', page.getByRole('button', { name: 'Save plan' }), async () => {
+    await page.getByRole('button', { name: 'Change the plan' }).waitFor();
+    await waitForText(page, '450');
+  });
+}
+
 async function materialsAndRecipes(page) {
   await page.goto(`${BASE}/materials`);
   await action(page, 'Filter intermediate lots', page.getByRole('button', { name: 'Intermediate' }), async () => {
@@ -401,6 +427,7 @@ async function navigationAndFilters(page) {
     await batchControls(page);
     await chocolateFromStoreFlow(page);
     await piecesFlow(page);
+    await planFlow(page);
     await materialsAndRecipes(page);
     await setupControls(page);
     await navigationAndFilters(page);

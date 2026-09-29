@@ -1,11 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { AlertTriangle, ArrowRight } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Target } from 'lucide-react';
 import { Empty, LinkButton, PageHeader, Panel, RowLink, Stat } from '@/components/ui';
 import { round2 } from '@/lib/balance';
 import { activeBatches, allAlerts, batchDisplayName, recordBalance } from '@/lib/derive';
 import { kg, pct } from '@/lib/format';
+import { planProgress } from '@/lib/plan';
 import { useStore } from '@/lib/store';
 import { stationName } from '@/lib/stations';
 
@@ -18,6 +19,7 @@ export default function OverviewPage() {
   const records = store.batches.flatMap((b) => b.records.map((r) => ({ batch: b, record: r, balance: recordBalance(r) })));
   const totals = records.reduce((t, r) => ({ input: t.input + r.balance.input, waste: t.waste + r.balance.waste, variance: t.variance + r.balance.variance }), { input: 0, waste: 0, variance: 0 });
   const recent = records.sort((a, b) => b.record.recordedAt.localeCompare(a.record.recordedAt)).slice(0, 6);
+  const plan = planProgress(store);
 
   return (
     <>
@@ -28,6 +30,18 @@ export default function OverviewPage() {
         <Stat label="Completed today" value={completedToday} hint={`${store.batches.filter((b) => b.status === 'completed').length} completed in total`} />
         <Stat label="Unaccounted variance" value={kg(round2(totals.variance))} hint={`${pct(totals.input ? round2((totals.variance / totals.input) * 100) : 0)} of all station input`} />
       </div>
+
+      <Panel title="Production plan" subtitle={plan ? `Pieces made from ${plan.plan.from}${plan.plan.note ? ` · ${plan.plan.note}` : ''}` : 'How many pieces of each chocolate type and size to make.'}
+        action={<LinkButton variant="secondary" href="/plan"><Target size={15} /> {plan ? 'Open the plan' : 'Set the plan'}</LinkButton>}>
+        {!plan ? <Empty>No plan set yet.</Empty> : (
+          <>
+            <div className="px-5 py-3 text-[14px]"><strong className="tabular-nums">{plan.made}</strong> of <strong className="tabular-nums">{plan.planned}</strong> pieces made · <strong className="tabular-nums">{plan.left}</strong> left</div>
+            {plan.lines.filter((l) => l.left > 0).slice(0, 5).map((l) => (
+              <div key={`${l.recipeId}-${l.packSizeId}`} className="flex justify-between gap-3 border-t border-line px-5 py-2 text-[13px]"><span>{l.type} · {l.size}</span><span className="tabular-nums text-muted">{l.made} of {l.pieces} · <strong className="text-ink">{l.left} left</strong></span></div>
+            ))}
+          </>
+        )}
+      </Panel>
 
       <Panel title="Alerts" subtitle="Anything that needs a second look.">
         {alerts.length === 0 && <Empty>No alerts right now.</Empty>}

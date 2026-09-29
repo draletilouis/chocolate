@@ -13,6 +13,7 @@ Chocolate Factory records the movement of material through a chocolate-productio
 5. Liquor and cocoa butter go on to Mixing, where the chocolate types are made one after another. Each run is made on top of the chocolate the mixer kept from the run before, so the app works out what to add, and each type becomes a lot.
 6. At Pieces, the good pieces of each size are counted from each chocolate lot. The number of pieces of each size for each chocolate type is the end result (**Reports → Pieces made**).
 7. A batch is reviewed and closed at Completion.
+8. The **production plan** says how many pieces of each type and size to make. The app counts the pieces made against it and works out the chocolate still to mix and the ingredients that takes.
 
 The app also provides material-lot traceability, chocolate types with versioned recipes, alerts, holds, corrections, reports, and factory setup screens.
 
@@ -344,7 +345,21 @@ On `/production/pieces/[lot]` the operator enters the good pieces made of each s
 - makes one lot per size, counted in pieces and numbered `FIN-…`, named e.g. `70% Dark · 45 g bar`, with `pieces` naming the type, size, grams, the chocolate lot and who counted them; its source is the batch that mixed the chocolate, so its label traces to the supplier;
 - draws the chocolate lot down by the weight of the pieces, to the gram (`piecesKg()`), and records each use with the lot of pieces it made; more than the lot holds is refused.
 
+On the Pieces screen each size also shows how many pieces the production plan still needs of that type and size.
+
 Pieces entered by mistake can be undone while none of them is used (`removePieces`): the chocolate goes back to its lot and the `FIN` number stays taken. Sizes come from **Setup → Piece sizes**; a size already made cannot be deleted, and pieces keep the size name and grams they were made with. `piecesByTypeAndSize()` in `src/lib/pieces.ts` adds pieces up by type and size for the batch page, the completion screen and **Reports → Pieces made**.
+
+### Production plan
+
+The plan (`state.plan`, one shared setting) lists the pieces to make of each chocolate type and size, a start date and an optional note. Managers set it on `/plan` (`setPlan`); the server refuses a type or size that does not exist and the same type and size twice, drops lines of 0 pieces, and records who set it and when. Operators can read the plan but not change it. A new factory starts without one.
+
+`planProgress()` in `src/lib/plan.ts` works out, from the state alone:
+
+- **Pieces**: for each line, the pieces recorded at Pieces since the start date (lots of pieces with that chocolate type and size, by the day they were counted), what is left and the chocolate that takes (pieces × grams). Pieces made beyond a line do not count towards another.
+- **Chocolate still to mix**: per type, the chocolate for the pieces left less the chocolate already mixed and waiting in lots (the Pieces queue).
+- **Ingredients to mix it**: the chocolate still to mix times each type's current recipe, against what is in store (lots of that material, in kg) and the liquor and cocoa butter at mixing on batches not yet completed. What that does not cover is shown as short.
+
+It is a guide for the day's work: it does not take into account what a changeover adds or what the mixer keeps. **Overview** shows the plan's progress; My work links to it for people with Mixing or Pieces (or no stations of their own).
 
 ## 7. Mass balance and packaging calculations
 
@@ -432,7 +447,8 @@ Alerts appear in the Overview, in the production navigation counts, on batch pag
 | Route | Purpose |
 | --- | --- |
 | `/` | Home: My work for operators and for managers with their own stations, the production line for other managers. Shows the sign-in screen when nobody is signed in. |
-| `/overview` | Active-batch count, alert count, completed-today count, aggregate variance, alerts, and recent records. |
+| `/overview` | Active-batch count, alert count, completed-today count, aggregate variance, the production plan's progress, alerts, and recent records. |
+| `/plan` | **Production plan**: pieces planned, made and left per chocolate type and size, the chocolate still to mix, the ingredients it takes against store; managers set and change the plan. |
 | `/work` | My work: batches waiting at the signed-in person's stations (all stations for people without their own), with one button to record each, search, and **Receive a delivery**. |
 | `/search?q=` | Finds batches (name, ID, product, supplier) and lots (ID, material, supplier). |
 | `/scan/[code]` | Target of the QR codes on labels: opens the batch where it is waiting, or the lot. |
@@ -506,7 +522,7 @@ A real factory starts with the line configuration from `configState()`: the bean
 
 `Shell.tsx` provides:
 
-- a menu that depends on access: operators get **My work** and **Production line**; managers get Overview, Production line, Materials, Chocolate types, Reports and Setup, plus **My work** when they have their own stations;
+- a menu that depends on access: operators get **My work** and **Production line**; managers get Overview, Production line, Production plan, Materials, Chocolate types, Reports and Setup, plus **My work** when they have their own stations (the plan stays off the phone bar so it fits; Overview links to it);
 - production part links with waiting counts;
 - a desktop top bar with the current page and a search box;
 - a mobile header with the person's name, search and sign-out; and
@@ -542,7 +558,7 @@ node browser-check.cjs
 node interaction-audit.cjs
 ```
 
-Both browser scripts expect a demo instance to be running on port 3100: they sign in as the sample manager and reset the demo data first. They use Playwright with Microsoft Edge. The browser check covers PIN and email sign-in, the queues of all 13 stations of the line, one-screen recording with the live check, the nib split, labels, mixing runs with the changeover sheet's example, a blocked changeover and taking the leftover out, Chocolate from store, counting pieces from a chocolate lot and the Pieces made report, receiving a delivery in one form, the batch steps with inline corrections, holds, completion, the chocolate types and adding a new one, reports, setup, the phone layout and operator menus. `interaction-audit.cjs` clicks through the same flows, saving before/after screenshots and a report under its configured output directory.
+Both browser scripts expect a demo instance to be running on port 3100: they sign in as the sample manager and reset the demo data first. They use Playwright with Microsoft Edge. The browser check covers PIN and email sign-in, the queues of all 13 stations of the line, one-screen recording with the live check, the nib split, labels, mixing runs with the changeover sheet's example, a blocked changeover and taking the leftover out, Chocolate from store, counting pieces from a chocolate lot and the Pieces made report, the production plan (progress, a duplicate line refused, changing it, reading it as an operator), receiving a delivery in one form, the batch steps with inline corrections, holds, completion, the chocolate types and adding a new one, reports, setup, the phone layout and operator menus. `interaction-audit.cjs` clicks through the same flows, saving before/after screenshots and a report under its configured output directory.
 
 ## 15. Current scope and limitations
 

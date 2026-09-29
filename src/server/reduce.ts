@@ -300,7 +300,7 @@ function recordPieces(s: State, cmd: RecordPieces, ctx: CommandContext): Outcome
     made.push({
       id, material: `${chocolate.chocolate.type} · ${pack.name}`, category: 'Finished goods', received: entry.count, available: entry.count, unit: 'units',
       source: { type: 'batch', batchId, station: 'packaging' }, receivedAt: ctx.now, uses: [],
-      pieces: { type: chocolate.chocolate.type, packSizeId: pack.id, size: pack.name, grams: pack.grams, fromLotId: chocolate.id, recordedBy: ctx.userId },
+      pieces: { type: chocolate.chocolate.type, recipeId: chocolate.chocolate.recipeId, packSizeId: pack.id, size: pack.name, grams: pack.grams, fromLotId: chocolate.id, recordedBy: ctx.userId },
     });
     uses.push({ batchId, quantity: piecesKg(entry.count, pack.grams), station: 'packaging', at: ctx.now, madeLot: id });
   }
@@ -371,6 +371,16 @@ function runCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
     case 'finishMixing': return { state: finishMixing(s, cmd.batchId, cmd.note, ctx) };
     case 'setMixerKeeps': return { state: { ...s, mixerKeepsKg: round2(cmd.kg) } };
     case 'recordPieces': return recordPieces(s, cmd, ctx);
+    case 'setPlan': {
+      const seen = new Set<string>();
+      for (const line of cmd.lines) {
+        const recipe = s.recipes.find((r) => r.id === line.recipeId) ?? fail('A chocolate type in the plan was not found.');
+        const size = s.packSizes.find((p) => p.id === line.packSizeId) ?? fail('A piece size in the plan was not found.');
+        if (seen.has(`${line.recipeId}|${line.packSizeId}`)) fail(`${recipe.name} · ${size.name} is in the plan twice. Give it one line.`);
+        seen.add(`${line.recipeId}|${line.packSizeId}`);
+      }
+      return { state: { ...s, plan: { lines: cmd.lines.filter((l) => l.pieces > 0), from: cmd.from, note: cmd.note || undefined, updatedAt: ctx.now, updatedBy: ctx.userId } } };
+    }
     case 'removePieces': return { state: removePieces(s, cmd.lotId) };
     case 'completeBatch': {
       const b = findBatch(s, cmd.batchId);
@@ -580,7 +590,7 @@ export function migrateLegacy(stored: Record<string, unknown>): { state: State; 
     // Browsers kept no counters: numbers continue from the highest IDs, and applyCommand() keeps the server's.
     idCounters: { batches: {}, lots: {} },
     // Browsers made chocolate the older way, without mixing runs.
-    mixer: { holds: null, lastRunId: null }, mixerKeepsKg: seed.mixerKeepsKg,
+    mixer: { holds: null, lastRunId: null }, mixerKeepsKg: seed.mixerKeepsKg, plan: null,
   };
   return { state, secrets };
 }

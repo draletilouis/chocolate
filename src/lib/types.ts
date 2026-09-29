@@ -185,13 +185,19 @@ export interface Lot {
   /** Chocolate made at mixing: its type and the run that made it */
   chocolate?: { type: string; recipeId: string; recipeVersion: number; runId: string };
   /** Pieces of one size made from a chocolate lot; the lot counts pieces */
-  pieces?: { type: string; packSizeId: string; size: string; grams: number; fromLotId: string; recordedBy: string };
+  pieces?: { type: string; recipeId: string; packSizeId: string; size: string; grams: number; fromLotId: string; recordedBy: string };
 }
 
 export interface RecipeIngredient { name: string; percent: number }
 export interface RecipeVersion { version: number; createdAt: string; ingredients: RecipeIngredient[]; note?: string }
 /** A chocolate type and its recipe versions. Older data linked each recipe to a product. */
 export interface Recipe { id: string; name: string; productId?: string; currentVersion: number; versions: RecipeVersion[] }
+
+/** One line of the production plan: pieces of one size of one chocolate type */
+export interface PlanLine { recipeId: string; packSizeId: string; pieces: number }
+
+/** What the factory plans to make, in pieces. Pieces made on or after `from` count towards it. */
+export interface ProductionPlan { lines: PlanLine[]; from: string; note?: string; updatedAt: string; updatedBy: string }
 
 /** Chocolate the mixer holds between runs; the next run is made on top of it */
 export interface MixerContents { kg: number; type: string; recipeId: string; recipeVersion: number; batchId: string; runId: string; lotId: string }

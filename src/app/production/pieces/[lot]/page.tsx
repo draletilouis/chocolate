@@ -8,6 +8,7 @@ import { Back, Button, Empty, LinkButton, Notice, PageHeader, Panel, UnitInput }
 import { batchById, batchDisplayName, userName } from '@/lib/derive';
 import { dateTime, kg } from '@/lib/format';
 import { piecesFrom, piecesKg } from '@/lib/pieces';
+import { planProgress } from '@/lib/plan';
 import { useStore } from '@/lib/store';
 
 /** Pieces: good pieces of each size made from one lot of chocolate */
@@ -28,6 +29,7 @@ export default function PiecesPage() {
   const usedKg = Math.round(entries.reduce((sum, e) => sum + piecesKg(e.count, e.pack.grams), 0) * 1000) / 1000;
   const leftKg = Math.round((lot.available - usedKg) * 1000) / 1000;
   const total = entries.reduce((sum, e) => sum + e.count, 0);
+  const planned = planProgress(store)?.lines.filter((l) => l.recipeId === lot.chocolate!.recipeId) ?? [];
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -63,7 +65,7 @@ export default function PiecesPage() {
           <Panel title="Count the good pieces" subtitle="Enter the pieces of each size made from this lot. Leave a size empty if none were made. Sizes are set in Setup → Piece sizes.">
             {store.packSizes.map((p) => (
               <div key={p.id} className="grid grid-cols-[1fr_160px] items-center gap-3 border-b border-line px-5 py-3 last:border-b-0">
-                <span><strong>{p.name}</strong> <span className="text-[12px] text-muted">{p.grams} g each</span></span>
+                <span><strong>{p.name}</strong> <span className="text-[12px] text-muted">{p.grams} g each</span>{(() => { const line = planned.find((l) => l.packSizeId === p.id); return line && <span className="block text-[12px] text-muted">Plan: {line.left ? `${line.left} still to make` : 'done'}</span>; })()}</span>
                 <UnitInput unit="pieces" step="1" placeholder="0" value={counts[p.id] ?? ''} onChange={(e) => setCounts({ ...counts, [p.id]: e.target.value })} aria-label={`${p.name} pieces`} />
               </div>
             ))}

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { AlertTriangle, BarChart3, ChevronDown, ClipboardCheck, ClipboardList, FlaskConical, LayoutDashboard, LogOut, Package, Search, Settings2, WifiOff, X, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, BarChart3, ChevronDown, ClipboardCheck, ClipboardList, FlaskConical, LayoutDashboard, LogOut, Package, Search, Settings2, Target, WifiOff, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { activeBatches, allAlerts, waitingCount } from '@/lib/derive';
 import { useStore } from '@/lib/store';
@@ -10,12 +10,14 @@ import { groupBySlug, lineStations, stationById, stationGroups } from '@/lib/sta
 import { LoginScreen } from './LoginScreen';
 import { Button, Notice } from './ui';
 
-interface NavItem { href: string; label: string; short?: string; icon: LucideIcon; count?: 'alerts' | 'batches' | 'work'; managers?: boolean }
+interface NavItem { href: string; label: string; short?: string; icon: LucideIcon; count?: 'alerts' | 'batches' | 'work'; managers?: boolean; phone?: false }
 
 const navItems: NavItem[] = [
   { href: '/work', label: 'My work', icon: ClipboardCheck, count: 'work' },
   { href: '/overview', label: 'Overview', icon: LayoutDashboard, count: 'alerts', managers: true },
   { href: '/production', label: 'Production line', short: 'Production', icon: ClipboardList, count: 'batches' },
+  // Kept off the phone bar so it fits; Overview and My work link to the plan.
+  { href: '/plan', label: 'Production plan', short: 'Plan', icon: Target, managers: true, phone: false },
   { href: '/materials', label: 'Materials', icon: Package, managers: true },
   { href: '/recipes', label: 'Chocolate types', short: 'Chocolate', icon: FlaskConical, managers: true },
   { href: '/reports', label: 'Reports', icon: BarChart3, managers: true },
@@ -197,7 +199,7 @@ export function Shell({ children }: { children: ReactNode }) {
       {/* Mobile bottom navigation */}
       <nav className="bottom-nav md:hidden" aria-label="Mobile navigation">
         <div className="bottom-nav-container">
-          {items.map((item) => {
+          {items.filter((item) => item.phone !== false).map((item) => {
             const Icon = item.icon;
             const isActive = item === active;
             const count = item.count ? counts[item.count] : 0;

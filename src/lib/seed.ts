@@ -1,7 +1,7 @@
 import { mixingTotals } from './mixing';
 import { stations } from './stations';
 import type {
-  Batch, Container, Destination, IdCounters, Lot, Mixer, MixingRun, OutputCategory, OutputKind, PackSize, Product, Recipe, RecordedOutput, Route,
+  Batch, Container, Destination, IdCounters, Lot, Mixer, MixingRun, ProductionPlan, OutputCategory, OutputKind, PackSize, Product, Recipe, RecordedOutput, Route,
   StationId, StationRecord, Supplier, Thresholds, User, BusinessDetails,
 } from './types';
 
@@ -29,6 +29,8 @@ export interface State {
   mixer: Mixer;
   /** Chocolate usually left in the mixer for the next run, kg; suggested on each run */
   mixerKeepsKg: number;
+  /** The current production plan in pieces, shared by everyone; null until a manager sets one */
+  plan: ProductionPlan | null;
 }
 
 /** 2: sorting, butter & powder and liquor as separate parts of the line. 3: chocolate made in mixing runs. */
@@ -242,9 +244,9 @@ const lots: Lot[] = [
   // CH-017's chocolate, part of it made into bars the next morning
   { id: 'D70-0001', material: '70% Dark', category: 'Intermediate', received: 90, available: 12, unit: 'kg', source: { type: 'batch', batchId: 'CH-017', station: 'mixing' }, receivedAt: at('2026-09-15', '09:10'), uses: [{ batchId: 'CH-017', quantity: 54, station: 'packaging', at: at('2026-09-16', '10:00'), madeLot: 'FIN-0001' }, { batchId: 'CH-017', quantity: 24, station: 'packaging', at: at('2026-09-16', '10:00'), madeLot: 'FIN-0002' }], chocolate: { type: '70% Dark', recipeId: 'R-70', recipeVersion: 1, runId: 'run-ch017-1' } },
   { id: 'D85-0001', material: '85% Dark', category: 'Intermediate', received: 29.8, available: 11.8, unit: 'kg', source: { type: 'batch', batchId: 'CH-017', station: 'mixing' }, receivedAt: at('2026-09-15', '12:40'), uses: [{ batchId: 'CH-017', quantity: 18, station: 'packaging', at: at('2026-09-16', '11:30'), madeLot: 'FIN-0003' }], chocolate: { type: '85% Dark', recipeId: 'R-85', recipeVersion: 1, runId: 'run-ch017-2' } },
-  { id: 'FIN-0001', material: '70% Dark · 45 g bar', category: 'Finished goods', received: 1200, available: 1200, unit: 'units', source: { type: 'batch', batchId: 'CH-017', station: 'packaging' }, receivedAt: at('2026-09-16', '10:00'), uses: [], pieces: { type: '70% Dark', packSizeId: 'PK-45', size: '45 g bar', grams: 45, fromLotId: 'D70-0001', recordedBy: 'U-LF' } },
-  { id: 'FIN-0002', material: '70% Dark · 80 g bar', category: 'Finished goods', received: 300, available: 300, unit: 'units', source: { type: 'batch', batchId: 'CH-017', station: 'packaging' }, receivedAt: at('2026-09-16', '10:00'), uses: [], pieces: { type: '70% Dark', packSizeId: 'PK-80', size: '80 g bar', grams: 80, fromLotId: 'D70-0001', recordedBy: 'U-LF' } },
-  { id: 'FIN-0003', material: '85% Dark · 45 g bar', category: 'Finished goods', received: 400, available: 400, unit: 'units', source: { type: 'batch', batchId: 'CH-017', station: 'packaging' }, receivedAt: at('2026-09-16', '11:30'), uses: [], pieces: { type: '85% Dark', packSizeId: 'PK-45', size: '45 g bar', grams: 45, fromLotId: 'D85-0001', recordedBy: 'U-LF' } },
+  { id: 'FIN-0001', material: '70% Dark · 45 g bar', category: 'Finished goods', received: 1200, available: 1200, unit: 'units', source: { type: 'batch', batchId: 'CH-017', station: 'packaging' }, receivedAt: at('2026-09-16', '10:00'), uses: [], pieces: { type: '70% Dark', recipeId: 'R-70', packSizeId: 'PK-45', size: '45 g bar', grams: 45, fromLotId: 'D70-0001', recordedBy: 'U-LF' } },
+  { id: 'FIN-0002', material: '70% Dark · 80 g bar', category: 'Finished goods', received: 300, available: 300, unit: 'units', source: { type: 'batch', batchId: 'CH-017', station: 'packaging' }, receivedAt: at('2026-09-16', '10:00'), uses: [], pieces: { type: '70% Dark', recipeId: 'R-70', packSizeId: 'PK-80', size: '80 g bar', grams: 80, fromLotId: 'D70-0001', recordedBy: 'U-LF' } },
+  { id: 'FIN-0003', material: '85% Dark · 45 g bar', category: 'Finished goods', received: 400, available: 400, unit: 'units', source: { type: 'batch', batchId: 'CH-017', station: 'packaging' }, receivedAt: at('2026-09-16', '11:30'), uses: [], pieces: { type: '85% Dark', recipeId: 'R-85', packSizeId: 'PK-45', size: '45 g bar', grams: 45, fromLotId: 'D85-0001', recordedBy: 'U-LF' } },
 ];
 
 const business: BusinessDetails = {
@@ -264,10 +266,18 @@ export function seedState(): State {
     // CH-017's last run left 10 kg of 85% Dark in the mixer.
     mixer: { holds: { kg: 10, type: '85% Dark', recipeId: 'R-85', recipeVersion: 1, batchId: 'CH-017', runId: 'run-ch017-2', lotId: 'D85-0001' }, lastRunId: 'run-ch017-2' },
     mixerKeepsKg: 10,
+    plan: {
+      from: '2026-09-14', updatedAt: at('2026-09-14', '07:00'), updatedBy: 'U-AM', note: 'Orders for the second half of September.',
+      lines: [
+        { recipeId: 'R-70', packSizeId: 'PK-45', pieces: 2000 }, { recipeId: 'R-70', packSizeId: 'PK-80', pieces: 500 },
+        { recipeId: 'R-85', packSizeId: 'PK-45', pieces: 800 }, { recipeId: 'R-MILK', packSizeId: 'PK-45', pieces: 1000 },
+        { recipeId: 'R-54', packSizeId: 'PK-80', pieces: 400 },
+      ],
+    },
   });
 }
 
 /** A real factory's first start: the line configuration only. People, suppliers, contact details and records are added by the factory. */
 export function configState(): State {
-  return { ...seedState(), batches: [], lots: [], suppliers: [], users: [], business: { name: business.name, address: '', phone: '', email: '' }, mixer: { holds: null, lastRunId: null } };
+  return { ...seedState(), batches: [], lots: [], suppliers: [], users: [], business: { name: business.name, address: '', phone: '', email: '' }, mixer: { holds: null, lastRunId: null }, plan: null };
 }

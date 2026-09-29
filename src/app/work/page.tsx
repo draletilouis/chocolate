@@ -2,10 +2,12 @@
 
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
-import { ArrowRight, Pause, ScanLine, Truck } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowRight, Pause, ScanLine, Target, Truck } from 'lucide-react';
 import { Badge, Button, Empty, Input, LinkButton, PageHeader, Panel } from '@/components/ui';
 import { batchDisplayName, chocolateWaiting, nextInput, stationQueue } from '@/lib/derive';
 import { kg } from '@/lib/format';
+import { planProgress } from '@/lib/plan';
 import { useStore } from '@/lib/store';
 import { lineStations, stationById, stationName } from '@/lib/stations';
 
@@ -26,6 +28,8 @@ export default function WorkPage() {
   const quiet = queues.filter((q) => q.ready.length === 0 && q.held.length === 0 && (q.station.form !== 'pieces' || chocolate.length === 0));
   const total = busy.reduce((n, q) => n + q.ready.length, 0) + chocolate.length;
   const receives = everything || mine.includes('receiving');
+  // Mixing and pieces work to the plan, so it is one tap away for them
+  const plan = mine.some((s) => s === 'mixing' || s === 'packaging') || everything ? planProgress(store) : null;
 
   function search(event: FormEvent) {
     event.preventDefault();
@@ -45,6 +49,14 @@ export default function WorkPage() {
         <Button type="submit" variant="secondary">Find</Button>
       </form>
       <p className="mb-5 flex items-center gap-1.5 text-[12px] text-muted"><ScanLine size={14} /> Or scan the QR code on a batch card or label with your phone camera.</p>
+
+      {plan && (
+        <Link href="/plan" className="mb-5 flex items-center gap-3 rounded-xl border border-line bg-white px-4 py-3 text-[14px]" aria-label={`Production plan, ${plan.left} pieces left`}>
+          <Target size={18} className="shrink-0 text-green" />
+          <span className="min-w-0 flex-1"><strong>Production plan</strong> <span className="text-muted">· {plan.made} of {plan.planned} pieces made · {plan.left} left</span></span>
+          <ArrowRight size={16} className="shrink-0 text-muted" />
+        </Link>
+      )}
 
       {busy.map(({ station, ready, held }) => (
         <Panel key={station.id} title={station.name} subtitle={`${ready.length} waiting${held.length ? ` · ${held.length} on hold` : ''} · ${station.group}`}>

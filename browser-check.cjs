@@ -328,6 +328,31 @@ async function expectText(page, text) {
   }
   ok('reports: pieces made by type and size, waste & variance, batch history, corrections, holds');
 
+  // Production plan: pieces planned per type and size, counted from the pieces recorded since its start date.
+  await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Production plan' }).click();
+  await page.waitForURL('**/plan');
+  for (const t of ['2210 pieces left to make', 'Counting pieces made from 2026-09-14', '4700', '2490', 'Chocolate still to mix', 'Ingredients to mix it', 'Milk powder']) await expectText(page, t);
+  const planRow = page.getByRole('row').filter({ hasText: '70% Dark' }).filter({ hasText: '45 g bar' });
+  for (const t of ['2000', '1700', '300']) if (!(await planRow.innerText()).includes(t)) throw new Error(`Plan row for 70% Dark 45 g bar is missing ${t}`);
+  await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-plan.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Change the plan' }).click();
+  await page.getByLabel('Line 1 pieces').fill('2500');
+  await page.getByRole('button', { name: 'Add a line' }).click();
+  await page.getByLabel('Line 6 chocolate type').selectOption({ label: '70% Dark' });
+  await page.getByLabel('Line 6 size').selectOption({ label: '45 g bar (45 g)' });
+  await page.getByLabel('Line 6 pieces').fill('5');
+  await page.getByRole('button', { name: 'Save plan' }).click();
+  await expectText(page, '70% Dark · 45 g bar is in the plan twice. Give it one line.');
+  await page.getByLabel('Line 6 chocolate type').selectOption({ label: '60% Dark' });
+  await page.getByLabel('Line 6 size').selectOption({ label: '1 kg pack (1000 g)' });
+  await page.getByLabel('Line 6 pieces').fill('10');
+  await page.getByLabel('Plan note').fill('Week 40 orders');
+  await page.getByRole('button', { name: 'Save plan' }).click();
+  for (const t of ['2720 pieces left to make', 'Week 40 orders', '5210', '60% Dark']) await expectText(page, t);
+  await page.goto(`${BASE}/overview`);
+  for (const t of ['Production plan', '2490 of 5210 pieces made']) await expectText(page, t);
+  ok('production plan: pieces left per type and size from the pieces made (2210), a duplicate line refused, plan changed (2720), shown on Overview');
+
   // Setup.
   for (const [section, text] of [['products', 'Batch prefix'], ['pack-sizes', '45 g bar'], ['outputs', 'Nibs for liquor'], ['containers', 'Husk bin'], ['routes', 'Beans to chocolate'], ['suppliers', 'Kuapa Kokoo'], ['users', 'Current user'], ['alerts', 'Variance limit per station']]) {
     await page.goto(`${BASE}/setup/${section}`);
@@ -358,7 +383,13 @@ async function expectText(page, text) {
   overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   if (overflow) throw new Error('Horizontal overflow on mobile record page');
   await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-mobile-record.png`, fullPage: true });
-  ok('mobile layout: bottom navigation, no overflow');
+  if (await page.getByRole('navigation', { name: 'Mobile navigation' }).getByRole('link', { name: /Plan/ }).count()) throw new Error('The plan should stay off the phone bar');
+  await page.goto(`${BASE}/plan`);
+  await expectText(page, '2720 pieces left to make');
+  overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+  if (overflow) throw new Error('Horizontal overflow on mobile plan page');
+  await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-mobile-plan.png`, fullPage: true });
+  ok('mobile layout: bottom navigation, no overflow on production, record and plan pages');
 
   // Sign out returns to the login screen (mobile header button), and the login screen fits a phone.
   await page.getByRole('button', { name: 'Sign out' }).click();
@@ -376,6 +407,12 @@ async function expectText(page, text) {
   if ((await page.getByRole('navigation', { name: 'Mobile navigation' }).getByRole('link').count()) !== 2) throw new Error('Operators should see only My work and Production line');
   await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-my-work.png`, fullPage: true });
   ok('operator PIN sign-in lands on My work with a two-item menu');
+
+  // Operators can read the plan but not change it.
+  await page.goto(`${BASE}/plan`);
+  await expectText(page, '2720 pieces left to make');
+  if (await page.getByRole('button', { name: 'Change the plan' }).count()) throw new Error('Operators should not change the plan');
+  ok('operators read the plan without the button to change it');
 
   console.log(JSON.stringify({ checked, errors }, null, 2));
   await browser.close();
