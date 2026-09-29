@@ -4,8 +4,10 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { AlertTriangle, ArrowRight, Check, Circle, Pause, PenLine, Play } from 'lucide-react';
+import { WhereItWent } from '@/components/BatchFlow';
 import { Back, Badge, Button, Empty, Field, LinkButton, Notice, PageHeader, Panel, Select, Textarea, UnitInput } from '@/components/ui';
-import { batchAlerts, batchById, nextInput, recordBalance, stationYield, supplierName, userName } from '@/lib/derive';
+import { percentOf } from '@/lib/balance';
+import { batchAlerts, batchById, nextInput, recordBalance, startName, stationYield, supplierName, userName } from '@/lib/derive';
 import { dateTime, destinationLabel, kg, kindLabel, num, pct } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { isStationId, stationById, stationName } from '@/lib/stations';
@@ -26,6 +28,7 @@ export default function BatchPage() {
   const alerts = batchAlerts(store, batch);
   const activeHold = batch.holds.find((h) => !h.releasedAt);
   const ready = nextInput(batch);
+  const start = batch.startInput.weight;
 
   // Upcoming stations: follow the default path from the next station until completion.
   const upcoming: StationId[] = [];
@@ -89,16 +92,16 @@ export default function BatchPage() {
                     <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-green text-white"><Check size={13} /></span>
                     <div className="min-w-0 flex-1 text-[13px]">
                       <div className="flex flex-wrap items-center gap-2"><strong className="text-[14px]">{stationName(record.station)}</strong><span className="text-muted">{dateTime(record.recordedAt)} · {userName(store, record.recordedBy)}</span>{!record.destinationsSaved && <Badge tone="warn">Destinations not saved</Badge>}</div>
-                      <div className="text-muted">Input {record.inputMaterial.toLowerCase()} <strong className="text-ink tabular-nums">{kg(record.inputWeight)}</strong> → measured <strong className="text-ink tabular-nums">{kg(balance.measured)}</strong></div>
+                      <div className="text-muted">Input {record.inputMaterial.toLowerCase()} <strong className="text-ink tabular-nums">{kg(record.inputWeight)}</strong> <span className="tabular-nums">({pct(percentOf(record.inputWeight, start))} of the {startName(batch)})</span> → measured <strong className="text-ink tabular-nums">{kg(balance.measured)}</strong></div>
                       <ul className="mt-1.5 grid gap-1 sm:grid-cols-2">
                         {record.outputs.map((o) => (
                           <li key={o.name} className="rounded-md bg-paper px-2.5 py-1.5">
                             <span className="flex justify-between gap-2"><span>{o.name} <span className="text-[11px] text-faint">{kindLabel[o.kind]}</span></span><strong className="tabular-nums">{record.station === 'packaging' && record.packaging ? (o.name === 'Accepted units' ? `${record.packaging.acceptedUnits} units` : `${record.packaging.rejectedUnits} units`) : kg(o.weight)}</strong></span>
-                            <span className="block text-[11px] text-muted">→ {destinationLabel(o.destination, (s) => stationName(s as StationId))}{o.lotId && <> · <Link href={`/materials/${o.lotId}`} className="font-semibold text-green">{o.lotId}</Link></>}</span>
+                            <span className="flex justify-between gap-2 text-[11px] text-muted"><span>→ {destinationLabel(o.destination, (s) => stationName(s as StationId))}{o.lotId && <> · <Link href={`/materials/${o.lotId}`} className="font-semibold text-green">{o.lotId}</Link></>}</span><span className="tabular-nums" title={`${kg(o.weight)} of the ${kg(start)} ${startName(batch)}`}>{pct(percentOf(o.weight, start))} of {startName(batch)}</span></span>
                           </li>
                         ))}
                       </ul>
-                      <div className={`mt-1.5 ${over ? 'text-warn' : 'text-muted'}`}>Variance {kg(balance.variance)} ({pct(balance.variancePct)}){over ? ` · above ${limit}% limit` : ''} · {headline.label.toLowerCase()} {pct(headline.pct)} · waste {pct(balance.wastePct)}</div>
+                      <div className={`mt-1.5 ${over ? 'text-warn' : 'text-muted'}`}>{stationById[record.station]?.lossLabel ?? 'Variance'} {kg(balance.variance)} ({pct(balance.variancePct)} of this input, {pct(percentOf(balance.variance, start))} of the {startName(batch)}){over ? ` · above ${limit}% limit` : ''} · {headline.label.toLowerCase()} {pct(headline.pct)} · waste {pct(balance.wastePct)}</div>
                       {record.note && <div className="mt-1 text-muted">Note: {record.note}</div>}
                       {fixes.map((c) => <div key={c.id} className="mt-1 flex items-center gap-1 text-muted"><PenLine size={12} /> Corrected {c.output}: {num(c.previous)} → {num(c.corrected)} kg ({c.reason})</div>)}
                       {isStationId(record.station) && <Link href={`/production/batches/${batch.id}/record/${record.station}`} className="mt-1 inline-block text-[12px] font-semibold text-green">Open {stationName(record.station).toLowerCase()} record</Link>}
@@ -127,6 +130,12 @@ export default function BatchPage() {
               )}
             </ol>
           </Panel>
+
+          {batch.records.length > 0 && (
+            <Panel title="Where the batch went" subtitle={`Every output that left the line, as a share of the ${startName(batch)}. The rows add up to 100%.`}>
+              <WhereItWent batch={batch} />
+            </Panel>
+          )}
         </div>
 
         <div>

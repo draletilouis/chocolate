@@ -3,8 +3,8 @@
 import Link from 'next/link';
 import { AlertTriangle, ArrowRight } from 'lucide-react';
 import { Empty, LinkButton, PageHeader, Panel, RowLink, Stat } from '@/components/ui';
-import { round2 } from '@/lib/balance';
-import { activeBatches, allAlerts, recordBalance } from '@/lib/derive';
+import { percentOf, round2 } from '@/lib/balance';
+import { activeBatches, allAlerts, recordBalance, startName } from '@/lib/derive';
 import { kg, pct } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { stationName } from '@/lib/stations';
@@ -42,7 +42,7 @@ export default function OverviewPage() {
       <Panel title="Recently recorded">
         {recent.map(({ batch, record, balance }) => (
           <RowLink key={record.id} href={`/production/batches/${batch.id}`}>
-            <span className="flex-1 text-[13px]"><strong>{batch.id}</strong> · {stationName(record.station)} <span className="block text-muted">input {kg(balance.input)} · useful {kg(balance.useful)} · variance {pct(balance.variancePct)}</span></span>
+            <span className="flex-1 text-[13px]"><strong>{batch.id}</strong> · {stationName(record.station)} <span className="block text-muted">input {kg(balance.input)} ({pct(percentOf(balance.input, batch.startInput.weight))} of the {startName(batch)}) · {record.outputs.filter((o) => o.kind === 'useful').map((o) => `${o.name.toLowerCase()} ${pct(percentOf(o.weight, batch.startInput.weight))}`).join(' · ') || 'no useful output'} · unaccounted {pct(percentOf(balance.variance, batch.startInput.weight))}</span></span>
           </RowLink>
         ))}
       </Panel>

@@ -5,7 +5,7 @@ export const stations: Station[] = [
     id: 'roasting', name: 'Roasting', group: 'Bean processing',
     input: 'Raw beans (bag weight)', output: 'Roasted beans · beans taken off · unusable beans sorted off',
     rows: [{ name: 'Roasted beans', kind: 'useful' }, { name: 'Beans taken off', kind: 'useful' }, { name: 'Unusable beans sorted off', kind: 'waste' }, { name: 'Other measured loss', kind: 'waste' }],
-    next: ['winnowing'], form: 'weights',
+    next: ['winnowing'], form: 'weights', lossLabel: 'Moisture and roasting loss',
     help: 'The whole sack goes into the roaster. Weigh the roasted beans going on to winnowing, any beans taken off and the unusable beans sorted off: together they are the weight after roasting. Moisture lost in the roaster shows up as variance.',
   },
   {

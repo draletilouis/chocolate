@@ -54,7 +54,8 @@ node browser-check.cjs   # needs the dev server running against an initialised d
 - `src/server/migrations.mjs` and `migrations/*.sql` – numbered, transactional schema migrations
 - `src/app/api/[...resource]/route.ts` – authenticated domain API and role checks
 - `src/app/api/health/route.ts` – database-backed health endpoint
-- `src/lib/derive.ts` – queues, next input, alerts, traceability helpers
+- `src/lib/derive.ts` – queues, next input, alerts, traceability helpers, and where a batch's starting weight went (`batchOutcomes`: every output that left the line, unaccounted weight and material still in process, adding up to 100% of the start)
+- `src/components/BatchFlow.tsx` – stage-by-stage and "where the batch went" tables, each output as a share of the batch's starting weight (bag weight for a sack), used on reports, the batch page and the completion screen
 - `src/components/Shell.tsx` – sidebar (desktop) and bottom navigation (mobile)
 - `src/app/production/**` – production line, station queues, batch timeline, station recording flow
 - `src/app/materials`, `recipes`, `reports`, `setup` – supporting screens

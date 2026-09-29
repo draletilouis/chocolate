@@ -4,9 +4,10 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { AlertTriangle, ArrowRight, Check, CheckCircle2, Plus, Trash2 } from 'lucide-react';
+import { WhereItWent } from '@/components/BatchFlow';
 import { Back, Badge, Button, Empty, Field, LinkButton, Notice, PageHeader, Panel, Select, UnitInput, inputClass } from '@/components/ui';
-import { calculateBalance, calculatePackaging, round2 } from '@/lib/balance';
-import { batchById, nextInput, recordBalance, recordFor, stationYield } from '@/lib/derive';
+import { calculateBalance, calculatePackaging, percentOf, round2 } from '@/lib/balance';
+import { batchById, batchStages, nextInput, outcomeTotals, recordBalance, recordFor, startName, stationYield } from '@/lib/derive';
 import { destinationLabel, kg, kindLabel, num, pct } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { destinationOptions, isStationId, stationById, stationName } from '@/lib/stations';
@@ -37,7 +38,8 @@ export default function RecordPage() {
   if (batch.status === 'completed' && station.form !== 'completion' && !record) {
     return <><Back href={`/production/batches/${batch.id}`} label={`Batch ${batch.id}`} /><Notice tone="neutral">{batch.id} is completed. Nothing more can be recorded.</Notice></>;
   }
-  if (!record && batch.nextStation !== station.id) {
+  // A completed batch has no next station, but its completion screen stays open as the batch summary.
+  if (!record && batch.nextStation !== station.id && !(station.form === 'completion' && batch.status === 'completed')) {
     return (
       <>
         <Back href={`/production/stations/${station.id}`} label={station.name} />
@@ -212,7 +214,7 @@ function StationForm({ batch, station, record }: { batch: Batch; station: Statio
           <Panel title="Where does each output go?" subtitle={step === 'done' ? 'Destinations saved. Split outputs stay separate; only what you continue becomes the next input.' : 'Split outputs stay separate. Only what you continue becomes the input of the next station.'}>
             {record.outputs.map((o) => (
               <div key={o.name} className="grid grid-cols-1 items-center gap-2 border-b border-line px-5 py-3 last:border-b-0 sm:grid-cols-[1fr_260px]">
-                <span><strong>{o.name}</strong> <span className="text-muted tabular-nums">{kg(o.weight)}</span> <span className="ml-1 text-[11px] text-faint">{kindLabel[o.kind]}</span></span>
+                <span><strong>{o.name}</strong> <span className="text-muted tabular-nums">{kg(o.weight)}</span> <span className="ml-1 text-[11px] text-faint">{kindLabel[o.kind]}</span><span className="block text-[12px] text-muted tabular-nums">{pct(percentOf(o.weight, record.inputWeight))} of this input · {pct(percentOf(o.weight, batch.startInput.weight))} of the {startName(batch)}</span></span>
                 {step === 'done' ? (
                   <span className="text-[13px]">{destinationLabel(o.destination, (s) => stationName(s as StationId))}{o.lotId && <> · <Link href={`/materials/${o.lotId}`} className="font-semibold text-green">lot {o.lotId}</Link></>}</span>
                 ) : (
@@ -312,9 +314,9 @@ function CompletionScreen({ batch }: { batch: Batch }) {
   const [error, setError] = useState('');
   const packaging = batch.records.find((r) => r.packaging)?.packaging;
   const lots = store.lots.filter((l) => l.source.type === 'batch' && l.source.batchId === batch.id);
-  const totalVariance = round2(batch.records.reduce((sum, r) => sum + recordBalance(r).variance, 0));
   const pending = batch.records.filter((r) => !r.destinationsSaved);
-  const finalUseful = batch.records.at(-1) ? recordBalance(batch.records.at(-1)!).useful : 0;
+  const totals = outcomeTotals(batch);
+  const of = startName(batch);
 
   return (
     <>
@@ -326,21 +328,30 @@ function CompletionScreen({ batch }: { batch: Batch }) {
       <Panel title="Stations recorded">
         <div className="overflow-x-auto">
           <table className="w-full text-[13px]">
-            <thead><tr className="border-b border-line text-left text-[11px] font-bold tracking-wide text-faint uppercase"><th className="px-5 py-2">Station</th><th className="px-4 py-2 text-right">Input</th><th className="px-4 py-2 text-right">Useful output</th><th className="px-4 py-2 text-right">Waste / by-product</th><th className="px-5 py-2 text-right">Variance</th></tr></thead>
+            <thead><tr className="border-b border-line text-left text-[11px] font-bold tracking-wide text-faint uppercase"><th className="px-5 py-2">Station</th><th className="px-4 py-2 text-right">Input</th><th className="px-4 py-2 text-right">% of {of}</th><th className="px-4 py-2 text-right">Carried on</th><th className="px-4 py-2 text-right">Left the line</th><th className="px-5 py-2 text-right">Variance</th></tr></thead>
             <tbody>
-              {batch.records.map((r) => { const b = recordBalance(r); return (
-                <tr key={r.id} className="border-b border-line last:border-b-0"><td className="px-5 py-2 font-medium">{stationName(r.station)}</td><td className="px-4 py-2 text-right tabular-nums">{kg(b.input)}</td><td className="px-4 py-2 text-right tabular-nums">{kg(b.useful)}</td><td className="px-4 py-2 text-right tabular-nums">{kg(b.recordedWaste)}</td><td className="px-5 py-2 text-right tabular-nums">{kg(b.variance)} ({pct(b.variancePct)})</td></tr>
-              ); })}
-              {batch.records.length === 0 && <tr><td colSpan={5}><Empty>Nothing recorded yet.</Empty></td></tr>}
+              {batchStages(batch).map(({ record: r, balance: b, inputOfStartPct, varianceOfStartPct }) => {
+                const carried = round2(r.outputs.filter((o) => o.destination.startsWith('continue:')).reduce((t, o) => t + o.weight, 0));
+                return (
+                  <tr key={r.id} className="border-b border-line last:border-b-0"><td className="px-5 py-2 font-medium">{stationName(r.station)}</td><td className="px-4 py-2 text-right tabular-nums">{kg(b.input)}</td><td className="px-4 py-2 text-right tabular-nums">{pct(inputOfStartPct)}</td><td className="px-4 py-2 text-right tabular-nums">{kg(carried)}</td><td className="px-4 py-2 text-right tabular-nums">{kg(round2(b.measured - carried))}</td><td className="px-5 py-2 text-right tabular-nums">{kg(b.variance)} <span className="text-muted">({pct(varianceOfStartPct)} of {of})</span></td></tr>
+                );
+              })}
+              {batch.records.length === 0 && <tr><td colSpan={6}><Empty>Nothing recorded yet.</Empty></td></tr>}
             </tbody>
           </table>
         </div>
       </Panel>
+      {batch.records.length > 0 && (
+        <Panel title="Where the batch went" subtitle={`Every output that left the line, as a share of the ${of}. The rows add up to 100%.`}>
+          <WhereItWent batch={batch} />
+        </Panel>
+      )}
       <Panel title="Finished quantities">
         <div className="grid gap-2 p-5 text-[13px] sm:grid-cols-2">
-          <div className="flex justify-between"><span className="text-muted">Starting input</span><strong className="tabular-nums">{kg(batch.startInput.weight)}</strong></div>
-          <div className="flex justify-between"><span className="text-muted">Last useful output</span><strong className="tabular-nums">{kg(finalUseful)}</strong></div>
-          <div className="flex justify-between"><span className="text-muted">Total unaccounted variance</span><strong className="tabular-nums">{kg(totalVariance)}</strong></div>
+          <div className="flex justify-between"><span className="text-muted">Starting input ({of})</span><strong className="tabular-nums">{kg(batch.startInput.weight)}</strong></div>
+          <div className="flex justify-between"><span className="text-muted">Products</span><strong className="tabular-nums">{kg(totals.product)} · {pct(totals.pct.product)}</strong></div>
+          <div className="flex justify-between"><span className="text-muted">By-products</span><strong className="tabular-nums">{kg(totals.byproduct)} · {pct(totals.pct.byproduct)}</strong></div>
+          <div className="flex justify-between"><span className="text-muted">Waste and lost, not weighed</span><strong className="tabular-nums">{kg(totals.gone)} · {pct(totals.pct.gone)}</strong></div>
           {packaging && <div className="flex justify-between"><span className="text-muted">Accepted units</span><strong className="tabular-nums">{packaging.acceptedUnits} × {packaging.packGrams} g</strong></div>}
           {packaging && <div className="flex justify-between"><span className="text-muted">Rejected units</span><strong className="tabular-nums">{packaging.rejectedUnits}</strong></div>}
         </div>

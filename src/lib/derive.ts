@@ -1,9 +1,91 @@
-import { calculateBalance, outputYield } from './balance';
+import { calculateBalance, outputYield, percentOf, round2 } from './balance';
 import { stationById, stationName } from './stations';
 import type { State } from './seed';
-import type { Alert, Batch, Lot, StationId, StationRecord } from './types';
+import type { Alert, Balance, Batch, Destination, Lot, RecordedOutput, RouteId, StationId, StationRecord } from './types';
 
 export const recordBalance = (r: StationRecord) => calculateBalance(r.inputWeight, r.outputs);
+
+const startNames: Record<RouteId, string> = { beans: 'bag weight', pressing: 'nibs pressed', chocolate: 'batch weight' };
+
+/** What a batch's starting weight is called on the paper forms: the bag weight of a sack, the nibs pressed, the weight of a chocolate batch */
+export const startName = (batch: Batch) => startNames[batch.route] ?? 'start weight';
+
+const carriedOn = (o: RecordedOutput) => o.destination.startsWith('continue:');
+
+/** One recorded output at a stage, as a share of that stage's input and of the batch's starting weight */
+export interface StageOutput extends RecordedOutput { ofInputPct: number; ofStartPct: number }
+export interface BatchStage { record: StationRecord; balance: Balance; inputOfStartPct: number; varianceOfStartPct: number; outputs: StageOutput[] }
+
+/** Every recorded stage of a batch, with each output measured against the stage input and the batch's starting weight */
+export function batchStages(batch: Batch): BatchStage[] {
+  const start = batch.startInput.weight;
+  return batch.records.map((record) => {
+    const balance = recordBalance(record);
+    return {
+      record, balance,
+      inputOfStartPct: percentOf(record.inputWeight, start),
+      varianceOfStartPct: percentOf(balance.variance, start),
+      outputs: record.outputs.map((o) => ({ ...o, ofInputPct: percentOf(o.weight, record.inputWeight), ofStartPct: percentOf(o.weight, start) })),
+    };
+  });
+}
+
+/** product: useful material that left the line (stored, sold, reworked). lost: unaccounted or reweighing differences. process: waiting at the next station. */
+export type OutcomeGroup = 'product' | 'byproduct' | 'waste' | 'lost' | 'process';
+export interface Outcome { group: OutcomeGroup; label: string; station: StationId | null; weight: number; ofStartPct: number; destination?: Destination; lotId?: string }
+
+/**
+ * Where a batch's starting weight ended up: every output that left the line, each station's unaccounted weight,
+ * any difference found when material was reweighed between stations, and what is still waiting at the next
+ * station. Carried-forward outputs are not counted twice, so the weights add up to the starting weight.
+ */
+export function batchOutcomes(batch: Batch): Outcome[] {
+  const start = batch.startInput.weight;
+  const outcomes: Outcome[] = [];
+  const add = (o: Omit<Outcome, 'ofStartPct'>) => {
+    if (Math.abs(o.weight) >= 0.005) outcomes.push({ ...o, weight: round2(o.weight), ofStartPct: percentOf(o.weight, start) });
+  };
+  let arriving = start;
+  let next: StationId | null = batch.nextStation;
+  for (const record of batch.records) {
+    add({ group: 'lost', label: `Difference when reweighed before ${stationName(record.station).toLowerCase()}`, station: record.station, weight: arriving - record.inputWeight });
+    for (const o of record.outputs.filter((o) => !carriedOn(o))) {
+      add({ group: o.kind === 'useful' ? 'product' : o.kind, label: o.name, station: record.station, weight: o.weight, destination: o.destination, lotId: o.lotId });
+    }
+    add({ group: 'lost', label: stationById[record.station]?.lossLabel ?? 'Unaccounted', station: record.station, weight: recordBalance(record).variance });
+    const carried = record.outputs.filter(carriedOn);
+    arriving = carried.reduce((t, o) => t + o.weight, 0);
+    next = carried.length ? carried[0].destination.slice(9) as StationId : batch.nextStation;
+  }
+  add({ group: 'process', label: `Waiting at ${stationName(next).toLowerCase()}`, station: next, weight: arriving });
+  return outcomes;
+}
+
+/** Outcome weights added up by group, each also as a share of the batch's starting weight */
+export function outcomeTotals(batch: Batch, outcomes = batchOutcomes(batch)) {
+  const sum = (group: OutcomeGroup) => round2(outcomes.filter((o) => o.group === group).reduce((t, o) => t + o.weight, 0));
+  const totals = { product: sum('product'), byproduct: sum('byproduct'), waste: sum('waste'), lost: sum('lost'), process: sum('process') };
+  const start = batch.startInput.weight;
+  const pctOf = Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, percentOf(v, start)])) as Record<OutcomeGroup, number>;
+  return { ...totals, gone: round2(totals.waste + totals.lost), pct: { ...pctOf, gone: percentOf(totals.waste + totals.lost, start) } };
+}
+
+/**
+ * What pressing made from a stored lot, as the bean summary's derivatives: each pressing batch that drew on the lot,
+ * with its butter and powder scaled to the share of its nibs that came from this lot.
+ */
+export function pressedFrom(state: State, lotId: string | undefined) {
+  const lot = lotId ? lotById(state, lotId) : undefined;
+  if (!lot) return { lot, pressings: [] };
+  const pressings = lot.uses.flatMap((use) => {
+    const batch = batchById(state, use.batchId);
+    const record = batch?.records.find((r) => r.station === 'pressing');
+    if (!batch || !record || !(batch.startInput.weight > 0)) return [];
+    const share = Math.min(1, use.quantity / batch.startInput.weight);
+    return [{ batch, quantity: use.quantity, outputs: record.outputs.map((o) => ({ name: o.name, weight: round2(o.weight * share), ofPressedPct: percentOf(o.weight, record.inputWeight) })) }];
+  });
+  return { lot, pressings };
+}
 
 /** The yield a station reports: its one named output where the paper forms ask for that (butter from the nibs pressed), otherwise all useful output */
 export function stationYield(r: StationRecord): { label: string; pct: number } {

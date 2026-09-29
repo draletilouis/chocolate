@@ -2,7 +2,9 @@ import type { Balance, OutputKind } from './types';
 
 export const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
-const pct = (part: number, whole: number) => (whole > 0 ? round2((part / whole) * 100) : 0);
+/** Part as a percentage of whole, 0 when there is no whole */
+export const percentOf = (part: number, whole: number) => (whole > 0 ? round2((part / whole) * 100) : 0);
+const pct = percentOf;
 
 /**
  * Mass balance for one station. The worker only supplies observed weights;

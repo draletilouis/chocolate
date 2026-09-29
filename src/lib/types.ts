@@ -27,6 +27,8 @@ export interface Station {
   strictBalance?: boolean;
   /** The one output whose share of the input is this station's yield, as the paper forms report it (pressing: butter from the nibs pressed) */
   yieldOf?: { output: string; label: string };
+  /** What this station's unaccounted weight usually is, where it has a known cause (roasting: moisture driven off) */
+  lossLabel?: string;
   help: string;
 }
 
