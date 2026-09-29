@@ -1,10 +1,12 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { Check, Plus } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
-import { Badge, Button, Field, Input, Notice, PageHeader, Panel, RowLink } from '@/components/ui';
+import { RowActions } from '@/components/RowActions';
+import { Badge, Button, Field, Input, Notice, PageHeader, Panel } from '@/components/ui';
 import { round2 } from '@/lib/balance';
 import { num } from '@/lib/format';
 import { useStore } from '@/lib/store';
@@ -65,15 +67,19 @@ export default function RecipesPage() {
 
       <Panel>
         {store.recipes.map((recipe) => {
-          const current = recipe.versions.find((v) => v.version === recipe.currentVersion)!;
-          const used = store.batches.filter((b) => b.recipeId === recipe.id).length;
+          const current = recipe.versions.find((v) => v.version === recipe.currentVersion);
+          const used = store.batches.filter((b) => b.recipeId === recipe.id || b.productId === recipe.productId).length;
           return (
-            <RowLink key={recipe.id} href={`/recipes/${recipe.id}`}>
-              <span className="min-w-0 flex-1">
-                <span className="flex flex-wrap items-center gap-2"><strong>{recipe.name}</strong><Badge tone="green">v{recipe.currentVersion} current</Badge><span className="text-[12px] text-muted">{recipe.versions.length} version{recipe.versions.length > 1 ? 's' : ''} · used by {used} batch{used === 1 ? '' : 'es'}</span></span>
-                <span className="block text-[12px] text-muted">{current.ingredients.map((i) => `${i.name} ${i.percent}%`).join(' · ')}</span>
-              </span>
-            </RowLink>
+            <div key={recipe.id} className="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0 md:px-5">
+              <Link href={`/recipes/${recipe.id}`} className="group min-w-0 flex-1">
+                <span className="flex flex-wrap items-center gap-2"><strong className="group-hover:underline">{recipe.name}</strong><Badge tone="green">v{recipe.currentVersion} current</Badge><span className="text-[12px] text-muted">{recipe.versions.length} version{recipe.versions.length > 1 ? 's' : ''} · used by {used} batch{used === 1 ? '' : 'es'}</span></span>
+                <span className="block text-[12px] text-muted">{current?.ingredients.map((i) => `${i.name} ${i.percent}%`).join(' · ')}</span>
+              </Link>
+              {user.role === 'admin' && (
+                <RowActions name={recipe.name} onEdit={() => router.push(`/recipes/${recipe.id}?edit=1`)} onDelete={() => store.deleteRecipe(recipe.id)}
+                  blocked={used ? `${recipe.name} is used by ${used} batch${used === 1 ? '' : 'es'}, so it can't be deleted. You can edit it instead.` : undefined} />
+              )}
+            </div>
           );
         })}
       </Panel>

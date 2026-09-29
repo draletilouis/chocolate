@@ -28,6 +28,19 @@ interface Actions {
   setThresholds: (patch: Partial<Thresholds>) => Promise<void>;
   setStationVariance: (station: StationId, value: number) => Promise<void>;
   addOutputCategory: (station: StationId, name: string, kind: OutputKind) => Promise<void>;
+  /** Edit and delete, the same shape for every list */
+  updateProduct: (id: string, product: Omit<Product, 'id'>) => Promise<void>;
+  deleteProduct: (id: string) => Promise<void>;
+  updatePackSize: (id: string, pack: Omit<PackSize, 'id'>) => Promise<void>;
+  deletePackSize: (id: string) => Promise<void>;
+  updateSupplier: (id: string, supplier: Omit<Supplier, 'id'>) => Promise<void>;
+  deleteSupplier: (id: string) => Promise<void>;
+  updateOutputCategory: (id: number, name: string, kind: OutputKind) => Promise<void>;
+  deleteOutputCategory: (id: number) => Promise<void>;
+  updateRecipe: (id: string, name: string, ingredients: RecipeIngredient[], note: string) => Promise<{ version: number; versioned: boolean }>;
+  deleteRecipe: (id: string) => Promise<void>;
+  updateLot: (id: string, patch: { material: string; quantity: number; supplierId: string; reference?: string }) => Promise<void>;
+  deleteLot: (id: string) => Promise<void>;
   resetData: () => Promise<void>;
 }
 
@@ -41,8 +54,8 @@ export function StoreProvider({ children, authUser }: { children: ReactNode; aut
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const applyResponse = useCallback((data: { state?: State }) => { if (data.state) setState(data.state); setLoadError(null); }, []);
-  const callApi = useCallback(async <T extends { state?: State; id?: string; recordId?: string }>(path: string, method: 'POST' | 'PATCH', body?: unknown): Promise<T> => {
-    const result = await api<T>(path, { method, body: JSON.stringify(body ?? {}) });
+  const callApi = useCallback(async <T extends { state?: State; id?: string; recordId?: string }>(path: string, method: 'POST' | 'PATCH' | 'DELETE', body?: unknown): Promise<T> => {
+    const result = await api<T>(path, method === 'DELETE' ? { method } : { method, body: JSON.stringify(body ?? {}) });
     if (result.status === 401) { window.location.assign('/login'); throw new Error('Your session has expired.'); }
     if (!result.ok) throw new Error(result.data.message || 'The server could not save this change.');
     applyResponse(result.data);
@@ -78,6 +91,18 @@ export function StoreProvider({ children, authUser }: { children: ReactNode; aut
     async setThresholds(patch) { await callApi('/api/config/thresholds', 'POST', patch); },
     async setStationVariance(station, value) { await callApi('/api/config/thresholds', 'POST', { variancePct: { [station]: value } }); },
     async addOutputCategory(station, name, kind) { await callApi('/api/config/output-categories', 'POST', { station, name, kind }); },
+    async updateProduct(id, product) { await callApi(`/api/config/products/${encodeURIComponent(id)}`, 'PATCH', product); },
+    async deleteProduct(id) { await callApi(`/api/config/products/${encodeURIComponent(id)}`, 'DELETE'); },
+    async updatePackSize(id, pack) { await callApi(`/api/config/pack-sizes/${encodeURIComponent(id)}`, 'PATCH', pack); },
+    async deletePackSize(id) { await callApi(`/api/config/pack-sizes/${encodeURIComponent(id)}`, 'DELETE'); },
+    async updateSupplier(id, supplier) { await callApi(`/api/config/suppliers/${encodeURIComponent(id)}`, 'PATCH', supplier); },
+    async deleteSupplier(id) { await callApi(`/api/config/suppliers/${encodeURIComponent(id)}`, 'DELETE'); },
+    async updateOutputCategory(id, name, kind) { await callApi(`/api/config/output-categories/${id}`, 'PATCH', { name, kind }); },
+    async deleteOutputCategory(id) { await callApi(`/api/config/output-categories/${id}`, 'DELETE'); },
+    async updateRecipe(id, name, ingredients, note) { const r = await callApi<{ version?: number; versioned?: boolean; state?: State }>(`/api/config/recipes/${encodeURIComponent(id)}`, 'PATCH', { name, ingredients, note }); return { version: r.version ?? 0, versioned: r.versioned ?? false }; },
+    async deleteRecipe(id) { await callApi(`/api/config/recipes/${encodeURIComponent(id)}`, 'DELETE'); },
+    async updateLot(id, patch) { await callApi(`/api/lots/${encodeURIComponent(id)}`, 'PATCH', patch); },
+    async deleteLot(id) { await callApi(`/api/lots/${encodeURIComponent(id)}`, 'DELETE'); },
     async resetData() { await callApi('/api/admin/reset-demo', 'POST'); },
   }), [callApi]);
 

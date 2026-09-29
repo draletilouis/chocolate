@@ -1,64 +1,74 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
-import { Check, Plus } from 'lucide-react';
-import { Back, Badge, Button, Empty, Field, Input, LinkButton, Notice, PageHeader, Panel, Table, td, tdNum } from '@/components/ui';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useState } from 'react';
+import { useAuth } from '@/components/AuthProvider';
+import { EditForm, RowActions } from '@/components/RowActions';
+import { Back, Badge, Empty, Field, Input, LinkButton, Notice, PageHeader, Panel, Table, td, tdNum } from '@/components/ui';
 import { round2 } from '@/lib/balance';
 import { dateTime, num } from '@/lib/format';
 import { useStore } from '@/lib/store';
 
 export default function RecipePage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+  const search = useSearchParams();
   const store = useStore();
+  const { user } = useAuth();
+  const isAdmin = user.role === 'admin';
   const recipe = store.recipes.find((r) => r.id === id);
-  const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState<{ name: string; percent: string }[]>([]);
-  const [note, setNote] = useState('');
+  const [editing, setEditing] = useState(search.get('edit') === '1');
+  const [draft, setDraft] = useState<{ name: string; percent: string }[] | null>(null);
+  const [saved, setSaved] = useState('');
   if (!recipe) return <Empty>Recipe {id} was not found.</Empty>;
 
   const product = store.products.find((p) => p.id === recipe.productId);
+  const current = recipe.versions.find((v) => v.version === recipe.currentVersion);
   const batches = store.batches.filter((b) => b.recipeId === recipe.id && b.ingredients);
-  const total = round2(draft.reduce((s, d) => s + (Number(d.percent) || 0), 0));
+  const used = store.batches.filter((b) => b.recipeId === recipe.id || b.productId === recipe.productId).length;
+  const rows = draft ?? (current?.ingredients ?? []).map((i) => ({ name: i.name, percent: String(i.percent) }));
+  const total = round2(rows.reduce((s, d) => s + (Number(d.percent) || 0), 0));
+  const currentUsed = store.batches.some((b) => b.recipeId === recipe.id && b.recipeVersion === recipe.currentVersion);
 
-  function startDraft() {
-    const current = recipe!.versions.find((v) => v.version === recipe!.currentVersion)!;
-    setDraft(current.ingredients.map((i) => ({ name: i.name, percent: String(i.percent) })));
-    setAdding(true);
-  }
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (Math.abs(total - 100) > 0.01) return;
-    try {
-      await store.addRecipeVersion(recipe!.id, draft.filter((d) => d.name.trim()).map((d) => ({ name: d.name.trim(), percent: Number(d.percent) || 0 })), note);
-      setAdding(false); setNote('');
-    } catch { /* The API error is surfaced by the server response; leave the form open for retry. */ }
-  }
+  function close() { setEditing(false); setDraft(null); }
 
   return (
     <>
       <Back href="/recipes" label="Recipes" />
       <PageHeader eyebrow="Recipe" title={recipe.name} subtitle={`Product: ${product?.name ?? recipe.productId} · current version v${recipe.currentVersion}`}
-        action={<><LinkButton variant="secondary" href="/production/new">Start a batch</LinkButton>{!adding && <Button onClick={startDraft}><Plus size={15} /> New version</Button>}</>} />
+        action={<span className="flex flex-wrap items-center gap-3"><LinkButton variant="secondary" href="/production/new">Start a batch</LinkButton>
+          {isAdmin && !editing && <RowActions name={recipe.name} onEdit={() => { setEditing(true); setSaved(''); }}
+            onDelete={async () => { await store.deleteRecipe(recipe.id); router.push('/recipes'); }}
+            blocked={used ? `${recipe.name} is used by ${used} batch${used === 1 ? '' : 'es'}, so it can't be deleted. You can edit it instead.` : undefined} />}</span>} />
 
-      {adding && (
-        <form onSubmit={submit}>
-          <Panel title={`New version v${recipe.versions.length + 1}`} subtitle="Percentages must add up to 100. The new version becomes current.">
-            <div className="p-5">
-              {draft.map((d, i) => (
-                <div key={i} className="mb-2 grid grid-cols-[1fr_120px] gap-2">
-                  <Input value={d.name} onChange={(e) => setDraft(draft.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} aria-label={`Ingredient ${i + 1}`} />
-                  <Input type="number" step="0.1" min="0" value={d.percent} onChange={(e) => setDraft(draft.map((x, j) => (j === i ? { ...x, percent: e.target.value } : x)))} aria-label={`Ingredient ${i + 1} percent`} />
+      {saved && <Notice tone="green">{saved}</Notice>}
+
+      {editing && isAdmin && (
+        <Panel title="Edit recipe" subtitle={currentUsed
+          ? `Batches have used v${recipe.currentVersion}, so new figures are saved as v${recipe.versions.length + 1} and v${recipe.currentVersion} stays as it was. A new name applies straight away.`
+          : `No batch has used v${recipe.currentVersion} yet, so the figures are corrected in place. Percentages must add up to 100.`}>
+          <div className="p-5">
+            <EditForm className="grid gap-2" onCancel={close} onSubmit={async (d) => {
+              if (Math.abs(total - 100) > 0.01) throw new Error(`The percentages add up to ${num(total)}%. They must add up to 100%.`);
+              const ingredients = rows.filter((r) => r.name.trim() && Number(r.percent) > 0).map((r) => ({ name: r.name.trim(), percent: Number(r.percent) }));
+              const result = await store.updateRecipe(recipe.id, String(d.get('name')), ingredients, String(d.get('note') ?? ''));
+              setSaved(result.versioned ? `Saved as v${result.version}. The earlier version stays as it was for the batches that used it.` : `Saved. v${result.version} is updated.`);
+              close();
+            }}>
+              <Field label="Name" hint="Also the name of the product it makes."><Input name="name" defaultValue={recipe.name} required aria-label="Recipe name" /></Field>
+              {rows.map((d, i) => (
+                <div key={i} className="grid grid-cols-[1fr_120px] gap-2">
+                  <Input value={d.name} onChange={(e) => setDraft(rows.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} aria-label={`Ingredient ${i + 1}`} />
+                  <Input type="number" step="0.1" min="0" value={d.percent} onChange={(e) => setDraft(rows.map((x, j) => (j === i ? { ...x, percent: e.target.value } : x)))} aria-label={`Ingredient ${i + 1} percent`} placeholder="%" />
                 </div>
               ))}
-              <button type="button" className="mb-3 text-[13px] font-semibold text-green" onClick={() => setDraft([...draft, { name: '', percent: '' }])}>+ Add ingredient</button>
-              <div className={`mb-3 text-[13px] ${Math.abs(total - 100) > 0.01 ? 'text-danger' : 'text-muted'}`}>Total {num(total)}%</div>
-              <Field label="What changed?"><Input value={note} onChange={(e) => setNote(e.target.value)} required /></Field>
-              <div className="mt-3 flex justify-end gap-2"><Button variant="secondary" onClick={() => setAdding(false)}>Cancel</Button><Button type="submit" disabled={Math.abs(total - 100) > 0.01}><Check size={15} /> Save version</Button></div>
-            </div>
-          </Panel>
-        </form>
+              <button type="button" className="justify-self-start text-[13px] font-semibold text-green" onClick={() => setDraft([...rows, { name: '', percent: '' }])}>+ Add ingredient</button>
+              <div className={`text-[13px] ${Math.abs(total - 100) > 0.01 ? 'text-danger' : 'text-muted'}`}>Total {num(total)}%</div>
+              <Field label="What changed? (optional)"><Input name="note" placeholder="For example: new figures from the factory" /></Field>
+            </EditForm>
+          </div>
+        </Panel>
       )}
 
       <Panel title="Versions">
@@ -87,7 +97,7 @@ export default function RecipePage() {
           );
         })}
       </Panel>
-      {!adding && recipe.versions.length > 1 && <Notice tone="neutral">Older versions stay on record so past batches can still be compared with what they used.</Notice>}
+      {!editing && recipe.versions.length > 1 && <Notice tone="neutral">Older versions stay on record so past batches can still be compared with what they used.</Notice>}
     </>
   );
 }

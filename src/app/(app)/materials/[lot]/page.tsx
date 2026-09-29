@@ -1,19 +1,28 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { ArrowDown } from 'lucide-react';
-import { Back, Badge, Empty, PageHeader, Panel, Stat } from '@/components/ui';
-import { batchById, lotOrigin, recordBalance } from '@/lib/derive';
-import { dateTime } from '@/lib/format';
+import { useAuth } from '@/components/AuthProvider';
+import { EditForm, RowActions } from '@/components/RowActions';
+import { Back, Badge, Empty, Field, Input, PageHeader, Panel, Select, Stat, UnitInput } from '@/components/ui';
+import { batchById, lotOrigin, recordBalance, supplierName } from '@/lib/derive';
+import { dateTime, kg } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { stationName } from '@/lib/stations';
 
 export default function LotPage() {
   const { lot: id } = useParams<{ lot: string }>();
+  const router = useRouter();
   const store = useStore();
+  const { user } = useAuth();
+  const [editing, setEditing] = useState(false);
   const lot = store.lots.find((l) => l.id === id);
   if (!lot) return <Empty>Lot {id} was not found.</Empty>;
+  // Only a delivery nothing has drawn from can change; everything else is corrected through its batch
+  const delivery = lot.source.type === 'supplier' ? lot.source : undefined;
+  const drawnBy = lot.uses.length;
 
   const sourceBatch = lot.source.type === 'batch' ? batchById(store, lot.source.batchId) : undefined;
   const sourceRecord = sourceBatch?.records.find((r) => r.outputs.some((o) => o.lotId === lot.id));
@@ -31,6 +40,28 @@ export default function LotPage() {
         <Stat label="Used" value={`${Math.round((lot.received - lot.available) * 100) / 100} ${lot.unit}`} />
         <Stat label="Available" value={`${lot.available} ${lot.unit}`} tone={lot.category === 'Raw material' && lot.available < store.thresholds.lowStockKg ? 'warn' : undefined} />
       </div>
+
+      {user.role === 'admin' && delivery && (
+        <Panel title="Delivery" subtitle={drawnBy ? undefined : 'Nothing has drawn from this lot yet, so the delivery can still be corrected or deleted.'}
+          action={!editing ? <RowActions name={lot.id} onEdit={drawnBy ? undefined : () => setEditing(true)} onDelete={async () => { await store.deleteLot(lot.id); router.push('/materials'); }}
+            blocked={drawnBy ? `${lot.id} has already been drawn from by ${drawnBy} batch${drawnBy === 1 ? '' : 'es'}, so it can't be changed.` : undefined} /> : undefined}>
+          {editing ? (
+            <div className="p-5">
+              <EditForm onCancel={() => setEditing(false)} onSubmit={async (d) => {
+                await store.updateLot(lot.id, { material: String(d.get('material')), quantity: Number(d.get('quantity')), supplierId: String(d.get('supplier')), reference: String(d.get('reference') ?? '') || undefined });
+                setEditing(false);
+              }}>
+                <Field label="Material"><Input name="material" defaultValue={lot.material} required autoFocus /></Field>
+                <Field label="Supplier"><Select name="supplier" defaultValue={delivery.supplierId}>{store.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
+                <Field label="Delivery note or invoice"><Input name="reference" defaultValue={delivery.reference ?? ''} placeholder="Optional" /></Field>
+                <Field label="Measured weight"><UnitInput unit="kg" name="quantity" defaultValue={String(lot.received)} required aria-label="Measured weight" /></Field>
+              </EditForm>
+            </div>
+          ) : (
+            <div className="px-5 py-3 text-[13px]">{lot.material} · {kg(lot.received)} from <strong>{supplierName(store, delivery.supplierId)}</strong>{delivery.reference && <span className="text-muted"> · {delivery.reference}</span>}</div>
+          )}
+        </Panel>
+      )}
 
       <Panel title="Traceability" subtitle="Where this lot came from and where it went.">
         <ol className="px-5 py-3 text-[13px]">

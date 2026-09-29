@@ -1,7 +1,12 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { getSession, type SessionInfo } from '@/server/auth/session';
-import { addCorrection, addOutputCategory, addPackSize, addProduct, addRecipe, addRecipeVersion, addSupplier, completeBatch, createBatch, loadState, placeHold, receiveLot, releaseHold, resetDemoData, saveDestinations, saveMeasurements, savePackaging, setThresholds } from '@/server/domain';
+import {
+  addCorrection, addOutputCategory, addPackSize, addProduct, addRecipe, addRecipeVersion, addSupplier, completeBatch, createBatch,
+  deleteLot, deleteOutputCategory, deletePackSize, deleteProduct, deleteRecipe, deleteSupplier, loadState, placeHold, receiveLot,
+  releaseHold, resetDemoData, saveDestinations, saveMeasurements, savePackaging, setThresholds,
+  updateLot, updateOutputCategory, updatePackSize, updateProduct, updateRecipe, updateSupplier,
+} from '@/server/domain';
 import { jsonError, parseBody, requestInfo, sameOrigin } from '@/server/http';
 import { captureException } from '@/server/monitoring';
 import type { Destination, OutputKind, StationId } from '@/lib/types';
@@ -27,6 +32,8 @@ const productSchema = z.object({ name: z.string().trim().min(1).max(120), prefix
 const packSchema = z.object({ name: z.string().trim().min(1).max(120), grams: z.number().positive() });
 const supplierSchema = z.object({ name: z.string().trim().min(1).max(120), supplies: z.string().trim().max(500), contact: z.string().trim().max(200) });
 const outputCategorySchema = z.object({ station, name: z.string().trim().min(1).max(120), kind });
+const outputCategoryUpdateSchema = z.object({ name: z.string().trim().min(1).max(120), kind });
+const lotUpdateSchema = z.object({ material: z.string().trim().min(1).max(120), quantity: z.number().finite().positive(), supplierId: z.string().min(1), reference: z.string().max(200).optional() });
 const thresholdSchema = z.object({ variancePct: z.record(z.string(), nonNegative).optional(), wastePct: nonNegative.optional(), lowStockKg: nonNegative.optional() });
 const destinationsSchema = z.object({ destinations: z.record(z.string(), destination) });
 
@@ -92,9 +99,40 @@ export async function POST(req: NextRequest, context: Context) {
   }, admin);
 }
 
+/** Setup lists and delivered lots are changed by admins only */
+const adminResource = (resource: string[]) => resource[0] === 'config' || resource[0] === 'lots';
+
 export async function PATCH(req: NextRequest, context: Context) {
-  return guard(req, context, async (request, session, parts) => {
+  const { resource } = await context.params;
+  return guard(req, { params: Promise.resolve({ resource }) }, async (request, session, parts) => {
     if (parts[0] === 'batches' && parts.length === 5 && parts[2] === 'records' && parts[4] === 'destinations') { const parsed = await parseBody(request, destinationsSchema); if ('error' in parsed) return parsed.error; await saveDestinations(parts[1], parts[3], parsed.data.destinations as Record<string, Destination>, actor(session)); return stateResponse(session); }
+    if (parts[0] === 'config' && parts.length === 3) {
+      const id = parts[2];
+      if (parts[1] === 'products') { const parsed = await parseBody(request, productSchema); if ('error' in parsed) return parsed.error; await updateProduct(id, parsed.data, actor(session)); return stateResponse(session); }
+      if (parts[1] === 'pack-sizes') { const parsed = await parseBody(request, packSchema); if ('error' in parsed) return parsed.error; await updatePackSize(id, parsed.data, actor(session)); return stateResponse(session); }
+      if (parts[1] === 'suppliers') { const parsed = await parseBody(request, supplierSchema); if ('error' in parsed) return parsed.error; await updateSupplier(id, parsed.data, actor(session)); return stateResponse(session); }
+      if (parts[1] === 'output-categories') { const parsed = await parseBody(request, outputCategoryUpdateSchema); if ('error' in parsed) return parsed.error; await updateOutputCategory(Number(id), { name: parsed.data.name, kind: parsed.data.kind as OutputKind }, actor(session)); return stateResponse(session); }
+      if (parts[1] === 'recipes') { const parsed = await parseBody(request, recipeSchema); if ('error' in parsed) return parsed.error; const result = await updateRecipe(id, parsed.data, actor(session)); return stateResponse(session, result); }
+    }
+    if (parts[0] === 'lots' && parts.length === 2) { const parsed = await parseBody(request, lotUpdateSchema); if ('error' in parsed) return parsed.error; await updateLot(parts[1], parsed.data, actor(session)); return stateResponse(session); }
     return jsonError(404, 'API resource not found');
-  });
+  }, adminResource(resource));
+}
+
+export async function DELETE(req: NextRequest, context: Context) {
+  const { resource } = await context.params;
+  return guard(req, { params: Promise.resolve({ resource }) }, async (request, session, parts) => {
+    // No body to parse, so the cross-site check that parseBody does is made here
+    if (!sameOrigin(request)) return jsonError(403, 'Cross-site request rejected');
+    if (parts[0] === 'config' && parts.length === 3) {
+      const id = parts[2];
+      if (parts[1] === 'products') { await deleteProduct(id, actor(session)); return stateResponse(session); }
+      if (parts[1] === 'pack-sizes') { await deletePackSize(id, actor(session)); return stateResponse(session); }
+      if (parts[1] === 'suppliers') { await deleteSupplier(id, actor(session)); return stateResponse(session); }
+      if (parts[1] === 'output-categories') { await deleteOutputCategory(Number(id), actor(session)); return stateResponse(session); }
+      if (parts[1] === 'recipes') { await deleteRecipe(id, actor(session)); return stateResponse(session); }
+    }
+    if (parts[0] === 'lots' && parts.length === 2) { await deleteLot(parts[1], actor(session)); return stateResponse(session); }
+    return jsonError(404, 'API resource not found');
+  }, adminResource(resource));
 }

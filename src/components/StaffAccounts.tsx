@@ -16,6 +16,7 @@ export function StaffAccounts() {
   const [notice, setNotice] = useState('');
   const [adding, setAdding] = useState(false);
   const [issuing, setIssuing] = useState<PublicUser | null>(null);
+  const [editing, setEditing] = useState<PublicUser | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -30,7 +31,7 @@ export function StaffAccounts() {
     const r = await api(`/api/users/${target.id}`, { method: 'PATCH', body: JSON.stringify(body) });
     setBusy(false);
     if (!r.ok) return setError(r.data.message ?? 'The change was not saved.');
-    setNotice(done); setIssuing(null);
+    setNotice(done); setIssuing(null); setEditing(null);
     await load();
   }
 
@@ -46,7 +47,7 @@ export function StaffAccounts() {
   }
 
   return (
-    <Panel title="Staff accounts" subtitle={isAdmin ? 'Everyone signs in with their own email and password. New accounts get a temporary password.' : 'Ask a production manager to add or change accounts.'}
+    <Panel title="Staff accounts" subtitle={isAdmin ? 'Everyone signs in with their own email and password. New accounts get a temporary password. Accounts are deactivated rather than deleted, so their name stays on the records they made.' : 'Ask a production manager to add or change accounts.'}
       action={isAdmin && !adding ? <Button onClick={() => setAdding(true)}><Plus size={15} /> Add account</Button> : undefined}>
       {notice && <div className="px-5 pt-4"><Notice tone="green">{notice}</Notice></div>}
       {error && <div className="px-5 pt-4"><Notice tone="danger">{error}</Notice></div>}
@@ -66,6 +67,13 @@ export function StaffAccounts() {
           <div className="flex items-end gap-2"><Button variant="secondary" onClick={() => setIssuing(null)}>Cancel</Button><Button type="submit" disabled={busy}>Set password</Button></div>
         </form>
       )}
+      {editing && (
+        <form onSubmit={(e) => { e.preventDefault(); const data = new FormData(e.currentTarget); void patch(editing, { name: String(data.get('name')), roleLabel: String(data.get('roleLabel') ?? '') || null }, `${String(data.get('name'))} updated.`); }} className="grid gap-3 border-b border-line p-5 md:grid-cols-2">
+          <Field label="Name"><Input name="name" defaultValue={editing.name} required minLength={2} autoFocus /></Field>
+          <Field label="Job title (optional)"><Input name="roleLabel" defaultValue={editing.roleLabel} placeholder="e.g. Winnowing operator" /></Field>
+          <div className="flex justify-end gap-2 md:col-span-2"><Button variant="secondary" onClick={() => setEditing(null)}>Cancel</Button><Button type="submit" disabled={busy}>Save changes</Button></div>
+        </form>
+      )}
       {users === null ? <Empty>Loading accounts…</Empty> : users.length === 0 ? <Empty>No accounts yet.</Empty> : (
         <Table head={isAdmin ? ['Name', 'Access', 'Email', 'Status', 'Last sign-in', 'Actions'] : ['Name', 'Access', 'Email', 'Status', 'Last sign-in']}>
           {users.map((u) => (
@@ -78,6 +86,7 @@ export function StaffAccounts() {
               {isAdmin && (
                 <td className={td}>
                   <span className="flex flex-wrap justify-center gap-3">
+                    <button className="btn-text" disabled={busy} onClick={() => { setEditing(u); setIssuing(null); }} aria-label={`Edit ${u.name}`}>Edit</button>
                     {u.id !== me.id && (u.isActive
                       ? <button className="btn-text" disabled={busy} onClick={() => patch(u, { isActive: false }, `${u.name} deactivated.`)}>Deactivate</button>
                       : <button className="btn-text" disabled={busy} onClick={() => patch(u, { isActive: true }, `${u.name} reactivated.`)}>Reactivate</button>)}

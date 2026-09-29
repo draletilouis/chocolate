@@ -170,7 +170,7 @@ export interface Supplier { id: string; name: string; supplies: string; contact:
 /** Someone who appears on records. Accounts and passwords live on the server, never here. */
 export interface User { id: string; name: string; role: string; initials: string; email?: string }
 
-export interface OutputCategory extends OutputRowDef { station: StationId; custom?: boolean }
+export interface OutputCategory extends OutputRowDef { station: StationId; custom?: boolean; /** Database id, used to edit or delete the row */ id?: number }
 
 export interface Thresholds {
   /** Allowed unaccounted variance per station, in percent of input */

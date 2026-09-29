@@ -171,7 +171,7 @@ export async function loadState(actorId: number): Promise<State> {
       COALESCE((SELECT json_agg(to_jsonb(x)) FROM (SELECT id, name, stations, start_material, note FROM routes ORDER BY sort_order, name) x), '[]'::json) AS routes,
       COALESCE((SELECT json_agg(to_jsonb(x)) FROM (SELECT id, name, grams FROM pack_sizes ORDER BY sort_order, grams) x), '[]'::json) AS pack_sizes,
       COALESCE((SELECT json_agg(to_jsonb(x)) FROM (SELECT id, name, supplies, contact FROM suppliers ORDER BY sort_order, name) x), '[]'::json) AS suppliers,
-      COALESCE((SELECT json_agg(to_jsonb(x)) FROM (SELECT station, name, kind, custom FROM output_categories ORDER BY id) x), '[]'::json) AS output_categories,
+      COALESCE((SELECT json_agg(to_jsonb(x)) FROM (SELECT id, station, name, kind, custom FROM output_categories ORDER BY id) x), '[]'::json) AS output_categories,
       (SELECT to_jsonb(x) FROM (SELECT variance_pct, waste_pct, low_stock_kg FROM thresholds WHERE id = 'default') x) AS thresholds,
       COALESCE((SELECT json_agg(to_jsonb(x)) FROM (SELECT id, name, role, role_label, email, is_active, password_reset_required, last_login_at FROM users ORDER BY name) x), '[]'::json) AS users
   `)).rows[0];
@@ -188,6 +188,7 @@ export async function loadState(actorId: number): Promise<State> {
     currentUserId: `db-${actorId}`,
     thresholds: { variancePct: threshold?.variance_pct ?? seedState().thresholds.variancePct, wastePct: number(threshold?.waste_pct), lowStockKg: number(threshold?.low_stock_kg) },
     outputCategories: aggregate.output_categories.map((row) => ({
+      id: Number((row as { id: unknown }).id),
       station: (row as { station: StationId }).station,
       name: (row as { name: string }).name,
       kind: (row as { kind: OutputKind }).kind,
@@ -422,6 +423,207 @@ export async function addSupplier(supplier: Omit<Supplier, 'id'>) {
 
 export async function addOutputCategory(station: StationId, name: string, kind: OutputKind) {
   await query('INSERT INTO output_categories(station, name, kind, custom) VALUES ($1, $2, $3, TRUE)', [station, name.trim(), kind]);
+}
+
+// ---------------------------------------------------------------------------
+// Edit and delete, the same way for every list. Something recorded data still
+// points to cannot be deleted (the reason names what uses it); it can be edited.
+
+const countOf = async (client: PoolClient, sql: string, params: unknown[]) => Number((await client.query<{ count: string }>(sql, params)).rows[0]?.count ?? 0);
+
+function refuseIfUsed(name: string, uses: [count: number, one: string, many: string][]) {
+  const parts = uses.filter(([count]) => count > 0).map(([count, one, many]) => `${count} ${count === 1 ? one : many}`);
+  if (parts.length) throw conflict(`${name} is used by ${parts.join(' and ')}, so it can't be deleted. You can edit it instead.`);
+}
+
+async function auditChange(actor: Actor, action: string, entityType: string, entityId: string | number, description: string, metadata?: Record<string, unknown>) {
+  await audited({ category: 'administration', action, entityType, entityId, description, severity: action.endsWith('.deleted') ? 'warning' : 'info', metadata }, actor);
+}
+
+export async function updateProduct(id: string, patch: Omit<Product, 'id'>, actor: Actor) {
+  const name = patch.name.trim();
+  await transaction(async (client) => {
+    const row = (await client.query<{ name: string; route_id: string }>('SELECT name, route_id FROM products WHERE id = $1 FOR UPDATE', [id])).rows[0];
+    if (!row) throw missing('Product not found');
+    if ((await client.query('SELECT 1 FROM products WHERE LOWER(name) = LOWER($1) AND id <> $2', [name, id])).rowCount) throw conflict(`There is already a product called ${name}.`);
+    if (patch.route !== row.route_id && await countOf(client, 'SELECT COUNT(*) FROM batches WHERE product_id = $1', [id])) throw conflict(`${row.name} already has batches, so its route can't change.`);
+    await client.query('UPDATE products SET name = $2, prefix = $3, route_id = $4, recipe_id = $5 WHERE id = $1', [id, name, patch.prefix.trim().toUpperCase(), patch.route, patch.recipeId || null]);
+    // A chocolate and its recipe share one name
+    await client.query('UPDATE recipes SET name = $2 WHERE product_id = $1', [id, name]);
+  });
+  await auditChange(actor, 'product.updated', 'product', id, `Product ${name} updated`, { ...patch });
+}
+
+export async function deleteProduct(id: string, actor: Actor) {
+  let name = id;
+  await transaction(async (client) => {
+    const row = (await client.query<{ name: string }>('SELECT name FROM products WHERE id = $1 FOR UPDATE', [id])).rows[0];
+    if (!row) throw missing('Product not found');
+    name = row.name;
+    refuseIfUsed(row.name, [[await countOf(client, 'SELECT COUNT(*) FROM batches WHERE product_id = $1', [id]), 'batch', 'batches']]);
+    const shared = (await client.query<{ name: string }>('SELECT p.name FROM products p JOIN recipes r ON r.id = p.recipe_id WHERE r.product_id = $1 AND p.id <> $1', [id])).rows[0];
+    if (shared) throw conflict(`${row.name}'s recipe is also used by ${shared.name}, so it can't be deleted.`);
+    // The recipe only exists to make this product, so it goes with it
+    await client.query('DELETE FROM recipes WHERE product_id = $1', [id]);
+    await client.query('DELETE FROM products WHERE id = $1', [id]);
+  });
+  await auditChange(actor, 'product.deleted', 'product', id, `Product ${name} deleted`);
+}
+
+export async function updatePackSize(id: string, pack: Omit<PackSize, 'id'>, actor: Actor) {
+  const result = await query('UPDATE pack_sizes SET name = $2, grams = $3 WHERE id = $1', [id, pack.name.trim(), pack.grams]);
+  if (!result.rowCount) throw missing('Pack size not found');
+  await auditChange(actor, 'pack_size.updated', 'pack_size', id, `Pack size ${pack.name.trim()} updated`, { ...pack });
+}
+
+export async function deletePackSize(id: string, actor: Actor) {
+  let name = id;
+  await transaction(async (client) => {
+    const row = (await client.query<{ name: string }>('SELECT name FROM pack_sizes WHERE id = $1 FOR UPDATE', [id])).rows[0];
+    if (!row) throw missing('Pack size not found');
+    name = row.name;
+    refuseIfUsed(row.name, [[await countOf(client, `SELECT COUNT(*) FROM batches b, jsonb_array_elements(b.records) AS r WHERE r->'packaging'->>'packSizeId' = $1`, [id]), 'packaging record', 'packaging records']]);
+    await client.query('DELETE FROM pack_sizes WHERE id = $1', [id]);
+  });
+  await auditChange(actor, 'pack_size.deleted', 'pack_size', id, `Pack size ${name} deleted`);
+}
+
+export async function updateSupplier(id: string, supplier: Omit<Supplier, 'id'>, actor: Actor) {
+  const name = supplier.name.trim();
+  await transaction(async (client) => {
+    if ((await client.query('SELECT 1 FROM suppliers WHERE LOWER(name) = LOWER($1) AND id <> $2', [name, id])).rowCount) throw conflict(`There is already a supplier called ${name}.`);
+    const result = await client.query('UPDATE suppliers SET name = $2, supplies = $3, contact = $4 WHERE id = $1', [id, name, supplier.supplies.trim(), supplier.contact.trim()]);
+    if (!result.rowCount) throw missing('Supplier not found');
+  });
+  await auditChange(actor, 'supplier.updated', 'supplier', id, `Supplier ${name} updated`, { ...supplier });
+}
+
+export async function deleteSupplier(id: string, actor: Actor) {
+  let name = id;
+  await transaction(async (client) => {
+    const row = (await client.query<{ name: string }>('SELECT name FROM suppliers WHERE id = $1 FOR UPDATE', [id])).rows[0];
+    if (!row) throw missing('Supplier not found');
+    name = row.name;
+    refuseIfUsed(row.name, [
+      [await countOf(client, 'SELECT COUNT(*) FROM batches WHERE supplier_id = $1', [id]), 'batch', 'batches'],
+      [await countOf(client, `SELECT COUNT(*) FROM lots WHERE source->>'type' = 'supplier' AND source->>'supplierId' = $1`, [id]), 'delivered lot', 'delivered lots'],
+    ]);
+    await client.query('DELETE FROM suppliers WHERE id = $1', [id]);
+  });
+  await auditChange(actor, 'supplier.deleted', 'supplier', id, `Supplier ${name} deleted`);
+}
+
+/** Output rows the app ships with are part of the process: only their type can change. Rows added on site can change freely. */
+export async function updateOutputCategory(id: number, patch: { name: string; kind: OutputKind }, actor: Actor) {
+  const name = patch.name.trim();
+  await transaction(async (client) => {
+    const row = (await client.query<{ station: StationId; name: string; custom: boolean }>('SELECT station, name, custom FROM output_categories WHERE id = $1 FOR UPDATE', [id])).rows[0];
+    if (!row) throw missing('Output row not found');
+    if (!row.custom && name !== row.name) throw invalid(`${row.name} is part of the process at ${stationById[row.station]?.name.toLowerCase() ?? row.station}, so only its type can change.`);
+    if ((await client.query('SELECT 1 FROM output_categories WHERE station = $1 AND LOWER(name) = LOWER($2) AND id <> $3', [row.station, name, id])).rowCount) throw conflict(`${stationById[row.station]?.name ?? row.station} already has a row called ${name}.`);
+    await client.query('UPDATE output_categories SET name = $2, kind = $3 WHERE id = $1', [id, name, patch.kind]);
+  });
+  await auditChange(actor, 'output_category.updated', 'output_category', id, `Output row ${name} updated`, { ...patch });
+}
+
+export async function deleteOutputCategory(id: number, actor: Actor) {
+  let name = String(id);
+  await transaction(async (client) => {
+    const row = (await client.query<{ station: StationId; name: string; custom: boolean }>('SELECT station, name, custom FROM output_categories WHERE id = $1 FOR UPDATE', [id])).rows[0];
+    if (!row) throw missing('Output row not found');
+    name = row.name;
+    if (!row.custom) throw conflict(`${row.name} is part of the process at ${stationById[row.station]?.name.toLowerCase() ?? row.station}, so it can't be deleted.`);
+    // Recorded weights keep their own output names, so history is unaffected
+    await client.query('DELETE FROM output_categories WHERE id = $1', [id]);
+  });
+  await auditChange(actor, 'output_category.deleted', 'output_category', id, `Output row ${name} deleted`);
+}
+
+const sameIngredients = (a: RecipeIngredient[], b: RecipeIngredient[]) =>
+  JSON.stringify(a.map((i) => [i.name.trim(), round2(i.percent)])) === JSON.stringify(b.map((i) => [i.name.trim(), round2(i.percent)]));
+
+/**
+ * Renames a recipe (and its product) and saves new figures. The figures change the current
+ * version in place while no batch has used it; once a batch has, they become a new current
+ * version so that batch keeps what it was made with.
+ */
+export async function updateRecipe(id: string, input: { name: string; ingredients: RecipeIngredient[]; note: string }, actor: Actor) {
+  const total = round2(input.ingredients.reduce((sum, ingredient) => sum + ingredient.percent, 0));
+  if (Math.abs(total - 100) > 0.01) throw invalid(`The ingredients must add up to 100%, not ${total}%.`);
+  const name = input.name.trim();
+  const result = await transaction(async (client) => {
+    const row = (await client.query<{ product_id: string; versions: Recipe['versions']; current_version: number }>('SELECT product_id, versions, current_version FROM recipes WHERE id = $1 FOR UPDATE', [id])).rows[0];
+    if (!row) throw missing('Recipe not found');
+    const taken = await client.query('SELECT 1 FROM recipes WHERE LOWER(name) = LOWER($1) AND id <> $2 UNION ALL SELECT 1 FROM products WHERE LOWER(name) = LOWER($1) AND id <> $3', [name, id, row.product_id]);
+    if (taken.rowCount) throw conflict(`There is already a product or recipe called ${name}.`);
+    const versions = [...(row.versions ?? [])];
+    const index = versions.findIndex((v) => v.version === row.current_version);
+    const current = versions[index];
+    let version = row.current_version;
+    let versioned = false;
+    if (!current || !sameIngredients(current.ingredients, input.ingredients)) {
+      const used = await countOf(client, 'SELECT COUNT(*) FROM batches WHERE recipe_id = $1 AND recipe_version = $2', [id, row.current_version]);
+      if (!current || used) {
+        version = versions.length + 1;
+        versions.push({ version, createdAt: now(), ingredients: input.ingredients, note: input.note || 'Edited' });
+        versioned = true;
+      } else {
+        versions[index] = { ...current, ingredients: input.ingredients, note: input.note || current.note };
+      }
+    } else if (input.note && input.note !== current.note) {
+      versions[index] = { ...current, note: input.note };
+    }
+    await client.query('UPDATE recipes SET name = $2, versions = $3::jsonb, current_version = $4 WHERE id = $1', [id, name, json(versions), version]);
+    await client.query('UPDATE products SET name = $2 WHERE id = $1', [row.product_id, name]);
+    return { version, versioned };
+  });
+  await auditChange(actor, 'recipe.updated', 'recipe', id, `Recipe ${name} ${result.versioned ? `saved as version ${result.version}` : `version ${result.version} updated`}`, { ingredients: input.ingredients });
+  return result;
+}
+
+/** Deletes a recipe and the product it makes, once no batch has used it */
+export async function deleteRecipe(id: string, actor: Actor) {
+  let name = id;
+  await transaction(async (client) => {
+    const row = (await client.query<{ name: string; product_id: string }>('SELECT name, product_id FROM recipes WHERE id = $1 FOR UPDATE', [id])).rows[0];
+    if (!row) throw missing('Recipe not found');
+    name = row.name;
+    refuseIfUsed(row.name, [[await countOf(client, 'SELECT COUNT(*) FROM batches WHERE recipe_id = $1 OR product_id = $2', [id, row.product_id]), 'batch', 'batches']]);
+    const other = (await client.query<{ name: string }>('SELECT name FROM products WHERE recipe_id = $1 AND id <> $2', [id, row.product_id])).rows[0];
+    if (other) throw conflict(`${row.name} is also the recipe of ${other.name}, so it can't be deleted.`);
+    await client.query('DELETE FROM recipes WHERE id = $1', [id]);
+    await client.query('DELETE FROM products WHERE id = $1', [row.product_id]);
+  });
+  await auditChange(actor, 'recipe.deleted', 'recipe', id, `Recipe ${name} and its product deleted`);
+}
+
+/** Only a delivery nothing has drawn from yet can change; anything else is corrected through its batch */
+async function editableLot(client: PoolClient, id: string) {
+  const row = (await client.query<{ source: Lot['source']; uses: Lot['uses'] }>('SELECT source, uses FROM lots WHERE id = $1 FOR UPDATE', [id])).rows[0];
+  if (!row) throw missing(`Lot ${id} not found`);
+  if (row.source.type === 'batch') throw conflict(`${id} was made by batch ${row.source.batchId}, so it changes through that batch's station record.`);
+  if (row.uses?.length) throw conflict(`${id} has already been drawn from by ${row.uses.length} batch${row.uses.length === 1 ? '' : 'es'}, so it can't be changed.`);
+  return row;
+}
+
+export async function updateLot(id: string, patch: { material: string; quantity: number; supplierId: string; reference?: string }, actor: Actor) {
+  await transaction(async (client) => {
+    await editableLot(client, id);
+    if (!(await client.query('SELECT 1 FROM suppliers WHERE id = $1', [patch.supplierId])).rowCount) throw missing('Supplier not found');
+    const material = patch.material.trim();
+    const category: LotCategory = material === 'Liquor' ? 'Intermediate' : 'Raw material';
+    await client.query('UPDATE lots SET material = $2, category = $3, received = $4, available = $4, source = $5::jsonb, updated_at = NOW() WHERE id = $1',
+      [id, material, category, round2(patch.quantity), json({ type: 'supplier', supplierId: patch.supplierId, reference: patch.reference || undefined })]);
+  });
+  await auditChange(actor, 'lot.updated', 'lot', id, `Lot ${id} updated`, { ...patch });
+}
+
+export async function deleteLot(id: string, actor: Actor) {
+  await transaction(async (client) => {
+    await editableLot(client, id);
+    await client.query('DELETE FROM lots WHERE id = $1', [id]);
+  });
+  await auditChange(actor, 'lot.deleted', 'lot', id, `Lot ${id} deleted`);
 }
 
 export async function setThresholds(patch: Partial<Thresholds>) {

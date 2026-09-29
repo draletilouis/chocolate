@@ -46,48 +46,29 @@ export const products: Product[] = [
   { id: 'P-WHITE', name: '34% White chocolate', prefix: 'CH', route: 'chocolate', recipeId: 'R-WHITE' },
   { id: 'P-MILK', name: '40% Milk chocolate', prefix: 'CH', route: 'chocolate', recipeId: 'R-MILK' },
   { id: 'P-50', name: '50% Dark milk chocolate', prefix: 'CH', route: 'chocolate', recipeId: 'R-50' },
+  { id: 'P-54', name: '54% Dark chocolate', prefix: 'CH', route: 'chocolate', recipeId: 'R-54' },
   { id: 'P-56', name: '56% Dark chocolate', prefix: 'CH', route: 'chocolate', recipeId: 'R-56' },
   { id: 'P-70', name: '70% Dark chocolate', prefix: 'CH', route: 'chocolate', recipeId: 'R-70' },
   { id: 'P-85', name: '85% Dark chocolate', prefix: 'CH', route: 'chocolate', recipeId: 'R-85' },
   { id: 'P-100', name: '100% Dark chocolate', prefix: 'CH', route: 'chocolate', recipeId: 'R-100' },
 ];
 
-/** Recipes on the production summary that have no figures from the factory yet: liquor + butter make up the cocoa percentage */
-const sampleNote = "Sample recipe: replace it with the factory's figures as a new version.";
+/** The factory's recipe sheet ("Dark Chocolate types Changeover Recipes.xlsx", Regular recipes), as percent of the batch */
+const factoryNote = 'Factory recipe sheet';
+const factory = (id: string, name: string, productId: string, ingredients: [string, number][]): Recipe => ({
+  id, name, productId, currentVersion: 1,
+  versions: [{ version: 1, createdAt: at('2026-09-24', '09:00'), ingredients: ingredients.map(([ingredient, percent]) => ({ name: ingredient, percent })), note: factoryNote }],
+});
 
 export const recipes: Recipe[] = [
-  {
-    id: 'R-WHITE', name: '34% White chocolate', productId: 'P-WHITE', currentVersion: 1,
-    versions: [{ version: 1, createdAt: at('2026-09-23', '09:00'), ingredients: [{ name: 'Cocoa butter', percent: 34 }, { name: 'Sugar', percent: 45.6 }, { name: 'Milk powder', percent: 20 }, { name: 'Lecithin', percent: 0.4 }], note: sampleNote }],
-  },
-  {
-    id: 'R-MILK', name: '40% Milk chocolate', productId: 'P-MILK', currentVersion: 1,
-    versions: [{ version: 1, createdAt: at('2026-06-22', '08:45'), ingredients: [{ name: 'Liquor', percent: 25 }, { name: 'Cocoa butter', percent: 15 }, { name: 'Sugar', percent: 40 }, { name: 'Milk powder', percent: 19.6 }, { name: 'Lecithin', percent: 0.4 }] }],
-  },
-  {
-    id: 'R-50', name: '50% Dark milk chocolate', productId: 'P-50', currentVersion: 1,
-    versions: [{ version: 1, createdAt: at('2026-09-23', '09:00'), ingredients: [{ name: 'Liquor', percent: 38 }, { name: 'Cocoa butter', percent: 12 }, { name: 'Sugar', percent: 30 }, { name: 'Milk powder', percent: 19.6 }, { name: 'Lecithin', percent: 0.4 }], note: sampleNote }],
-  },
-  {
-    id: 'R-56', name: '56% Dark chocolate', productId: 'P-56', currentVersion: 1,
-    versions: [{ version: 1, createdAt: at('2026-09-23', '09:00'), ingredients: [{ name: 'Liquor', percent: 50 }, { name: 'Cocoa butter', percent: 6 }, { name: 'Sugar', percent: 43.6 }, { name: 'Lecithin', percent: 0.4 }], note: sampleNote }],
-  },
-  {
-    id: 'R-70', name: '70% Dark chocolate', productId: 'P-70', currentVersion: 3,
-    versions: [
-      { version: 1, createdAt: at('2026-03-02', '09:00'), ingredients: [{ name: 'Liquor', percent: 60 }, { name: 'Cocoa butter', percent: 10 }, { name: 'Sugar', percent: 29.5 }, { name: 'Lecithin', percent: 0.5 }], note: 'Original recipe.' },
-      { version: 2, createdAt: at('2026-05-18', '14:20'), ingredients: [{ name: 'Liquor', percent: 61 }, { name: 'Cocoa butter', percent: 9 }, { name: 'Sugar', percent: 29.6 }, { name: 'Lecithin', percent: 0.4 }], note: 'Less butter for a firmer snap.' },
-      { version: 3, createdAt: at('2026-08-01', '10:05'), ingredients: [{ name: 'Liquor', percent: 62 }, { name: 'Cocoa butter', percent: 8 }, { name: 'Sugar', percent: 29.7 }, { name: 'Lecithin', percent: 0.3 }], note: 'Current recipe.' },
-    ],
-  },
-  {
-    id: 'R-85', name: '85% Dark chocolate', productId: 'P-85', currentVersion: 1,
-    versions: [{ version: 1, createdAt: at('2026-04-11', '11:30'), ingredients: [{ name: 'Liquor', percent: 78 }, { name: 'Cocoa butter', percent: 7 }, { name: 'Sugar', percent: 14.7 }, { name: 'Lecithin', percent: 0.3 }] }],
-  },
-  {
-    id: 'R-100', name: '100% Dark chocolate', productId: 'P-100', currentVersion: 1,
-    versions: [{ version: 1, createdAt: at('2026-09-23', '09:00'), ingredients: [{ name: 'Liquor', percent: 100 }], note: sampleNote }],
-  },
+  factory('R-WHITE', '34% White chocolate', 'P-WHITE', [['Cocoa butter', 35], ['Sugar', 35], ['Milk powder', 30]]),
+  factory('R-MILK', '40% Milk chocolate', 'P-MILK', [['Liquor', 11], ['Cocoa butter', 30], ['Sugar', 34], ['Milk powder', 25]]),
+  factory('R-50', '50% Dark milk chocolate', 'P-50', [['Liquor', 25], ['Cocoa butter', 25], ['Sugar', 25], ['Milk powder', 25]]),
+  factory('R-54', '54% Dark chocolate', 'P-54', [['Liquor', 44], ['Cocoa butter', 10], ['Sugar', 46]]),
+  factory('R-56', '56% Dark chocolate', 'P-56', [['Liquor', 50], ['Cocoa butter', 10], ['Sugar', 40]]),
+  factory('R-70', '70% Dark chocolate', 'P-70', [['Liquor', 60], ['Cocoa butter', 10], ['Sugar', 30]]),
+  factory('R-85', '85% Dark chocolate', 'P-85', [['Liquor', 75], ['Cocoa butter', 10], ['Sugar', 15]]),
+  factory('R-100', '100% Dark chocolate', 'P-100', [['Liquor', 90], ['Cocoa butter', 10]]),
 ];
 
 export const suppliers: Supplier[] = [
@@ -170,28 +151,28 @@ const batches: Batch[] = [
   },
   {
     id: 'CH-017', productId: 'P-70', product: '70% Dark chocolate', route: 'chocolate', startedAt: at('2026-09-13', '08:30'), status: 'hold', nextStation: 'conching', supplierId: 'S-KUAPA',
-    startInput: { material: 'Liquor + recipe additions', weight: 100, lotIds: ['LIQ-023', 'BUT-019', 'SUG-031', 'LEC-004'] },
-    recipeId: 'R-70', recipeVersion: 3,
+    startInput: { material: 'Liquor + recipe additions', weight: 100, lotIds: ['LIQ-023', 'BUT-019', 'SUG-031'] },
+    recipeId: 'R-70', recipeVersion: 1,
     ingredients: [
-      { name: 'Liquor', expected: 62, actual: 62, lotId: 'LIQ-023' }, { name: 'Cocoa butter', expected: 8, actual: 8, lotId: 'BUT-019' },
-      { name: 'Sugar', expected: 29.7, actual: 29.7, lotId: 'SUG-031' }, { name: 'Lecithin', expected: 0.3, actual: 0.3, lotId: 'LEC-004' },
+      { name: 'Liquor', expected: 60, actual: 60, lotId: 'LIQ-023' }, { name: 'Cocoa butter', expected: 10, actual: 10, lotId: 'BUT-019' },
+      { name: 'Sugar', expected: 30, actual: 30, lotId: 'SUG-031' },
     ],
     records: [
-      record('refining', 'Liquor + recipe additions', 100, ['LIQ-023', 'BUT-019', 'SUG-031', 'LEC-004'], [['Refined chocolate', 'useful', 95.2, 'continue:conching'], ['Machine residue', 'byproduct', 1, 'rework', 'REW-017'], ['Waste', 'waste', 0.5, 'waste']], at('2026-09-13', '13:10'), 'U-KM'),
+      record('refining', 'Liquor + recipe additions', 100, ['LIQ-023', 'BUT-019', 'SUG-031'], [['Refined chocolate', 'useful', 95.2, 'continue:conching'], ['Machine residue', 'byproduct', 1, 'rework', 'REW-017'], ['Waste', 'waste', 0.5, 'waste']], at('2026-09-13', '13:10'), 'U-KM'),
     ],
     holds: [{ id: 'h-1', reason: 'Refining variance above limit. Waiting for quality check before conching.', placedAt: at('2026-09-13', '13:25'), placedBy: 'U-SO', station: 'conching' }],
     corrections: [],
   },
   {
     id: 'CH-018', productId: 'P-70', product: '70% Dark chocolate', route: 'chocolate', startedAt: at('2026-09-14', '06:50'), status: 'active', nextStation: 'moulding', supplierId: 'S-KUAPA',
-    startInput: { material: 'Liquor + recipe additions', weight: 100.1, lotIds: ['LIQ-023', 'BUT-019', 'SUG-031', 'LEC-004'] },
-    recipeId: 'R-70', recipeVersion: 3,
+    startInput: { material: 'Liquor + recipe additions', weight: 100.1, lotIds: ['LIQ-023', 'BUT-019', 'SUG-031'] },
+    recipeId: 'R-70', recipeVersion: 1,
     ingredients: [
-      { name: 'Liquor', expected: 62, actual: 62.1, lotId: 'LIQ-023' }, { name: 'Cocoa butter', expected: 8, actual: 7.9, lotId: 'BUT-019' },
-      { name: 'Sugar', expected: 29.7, actual: 29.8, lotId: 'SUG-031' }, { name: 'Lecithin', expected: 0.3, actual: 0.3, lotId: 'LEC-004' },
+      { name: 'Liquor', expected: 60, actual: 60.1, lotId: 'LIQ-023' }, { name: 'Cocoa butter', expected: 10, actual: 9.9, lotId: 'BUT-019' },
+      { name: 'Sugar', expected: 30, actual: 30.1, lotId: 'SUG-031' },
     ],
     records: [
-      record('refining', 'Liquor + recipe additions', 100.1, ['LIQ-023', 'BUT-019', 'SUG-031', 'LEC-004'], [['Refined chocolate', 'useful', 98.6, 'continue:conching'], ['Machine residue', 'byproduct', 0.5, 'rework', 'REW-018'], ['Waste', 'waste', 0.3, 'waste']], at('2026-09-14', '09:15'), 'U-KM'),
+      record('refining', 'Liquor + recipe additions', 100.1, ['LIQ-023', 'BUT-019', 'SUG-031'], [['Refined chocolate', 'useful', 98.6, 'continue:conching'], ['Machine residue', 'byproduct', 0.5, 'rework', 'REW-018'], ['Waste', 'waste', 0.3, 'waste']], at('2026-09-14', '09:15'), 'U-KM'),
       record('conching', 'Refined chocolate', 98.6, [], [['Conched chocolate', 'useful', 97.9, 'continue:tempering'], ['Machine residue', 'byproduct', 0.4, 'waste'], ['Waste', 'waste', 0.1, 'waste']], at('2026-09-14', '11:05'), 'U-KM'),
       record('tempering', 'Conched chocolate', 97.9, [], [['Tempered chocolate', 'useful', 96.8, 'continue:moulding'], ['Machine residue', 'byproduct', 0.6, 'waste'], ['Waste', 'waste', 0.2, 'waste']], at('2026-09-14', '12:10'), 'U-KM'),
     ],
@@ -202,11 +183,11 @@ const batches: Batch[] = [
 const lots: Lot[] = [
   { id: 'BEAN-0905', material: 'Cocoa beans', category: 'Raw material', received: 400, available: 120, unit: 'kg', source: { type: 'supplier', supplierId: 'S-KUAPA', reference: 'DN-2211' }, receivedAt: at('2026-09-05', '10:00'), uses: [{ batchId: 'CB-023', quantity: 200, station: 'roasting', at: at('2026-09-10', '07:30') }, { batchId: 'CB-024', quantity: 80, station: 'roasting', at: at('2026-09-13', '07:20') }] },
   { id: 'BEAN-0912', material: 'Cocoa beans', category: 'Raw material', received: 300, available: 200, unit: 'kg', source: { type: 'supplier', supplierId: 'S-HILLSIDE', reference: 'DN-2238' }, receivedAt: at('2026-09-12', '09:15'), uses: [{ batchId: 'CB-025', quantity: 100, station: 'roasting', at: at('2026-09-14', '07:15') }] },
-  { id: 'SUG-031', material: 'Sugar', category: 'Raw material', received: 500, available: 440.5, unit: 'kg', source: { type: 'supplier', supplierId: 'S-MZANSI', reference: 'INV-88120' }, receivedAt: at('2026-09-01', '13:00'), uses: [{ batchId: 'CH-017', quantity: 29.7, station: 'refining', at: at('2026-09-13', '08:30') }, { batchId: 'CH-018', quantity: 29.8, station: 'refining', at: at('2026-09-14', '06:50') }] },
-  { id: 'BUT-019', material: 'Cocoa butter', category: 'Raw material', received: 80, available: 64.1, unit: 'kg', source: { type: 'supplier', supplierId: 'S-GOLDEN', reference: 'GB-4471' }, receivedAt: at('2026-08-28', '11:20'), uses: [{ batchId: 'CH-017', quantity: 8, station: 'refining', at: at('2026-09-13', '08:30') }, { batchId: 'CH-018', quantity: 7.9, station: 'refining', at: at('2026-09-14', '06:50') }] },
-  { id: 'LEC-004', material: 'Lecithin', category: 'Raw material', received: 10, available: 9.4, unit: 'kg', source: { type: 'supplier', supplierId: 'S-GOLDEN', reference: 'GB-4471' }, receivedAt: at('2026-08-28', '11:20'), uses: [{ batchId: 'CH-017', quantity: 0.3, station: 'refining', at: at('2026-09-13', '08:30') }, { batchId: 'CH-018', quantity: 0.3, station: 'refining', at: at('2026-09-14', '06:50') }] },
+  { id: 'SUG-031', material: 'Sugar', category: 'Raw material', received: 500, available: 439.9, unit: 'kg', source: { type: 'supplier', supplierId: 'S-MZANSI', reference: 'INV-88120' }, receivedAt: at('2026-09-01', '13:00'), uses: [{ batchId: 'CH-017', quantity: 30, station: 'refining', at: at('2026-09-13', '08:30') }, { batchId: 'CH-018', quantity: 30.1, station: 'refining', at: at('2026-09-14', '06:50') }] },
+  { id: 'BUT-019', material: 'Cocoa butter', category: 'Raw material', received: 80, available: 60.1, unit: 'kg', source: { type: 'supplier', supplierId: 'S-GOLDEN', reference: 'GB-4471' }, receivedAt: at('2026-08-28', '11:20'), uses: [{ batchId: 'CH-017', quantity: 10, station: 'refining', at: at('2026-09-13', '08:30') }, { batchId: 'CH-018', quantity: 9.9, station: 'refining', at: at('2026-09-14', '06:50') }] },
+  { id: 'LEC-004', material: 'Lecithin', category: 'Raw material', received: 10, available: 10, unit: 'kg', source: { type: 'supplier', supplierId: 'S-GOLDEN', reference: 'GB-4471' }, receivedAt: at('2026-08-28', '11:20'), uses: [] },
   { id: 'MLK-002', material: 'Milk powder', category: 'Raw material', received: 60, available: 38, unit: 'kg', source: { type: 'supplier', supplierId: 'S-GOLDEN', reference: 'GB-4390' }, receivedAt: at('2026-08-14', '10:00'), uses: [] },
-  { id: 'LIQ-023', material: 'Liquor', category: 'Intermediate', received: 128.9, available: 4.8, unit: 'kg', source: { type: 'batch', batchId: 'CB-023', station: 'grinding' }, receivedAt: at('2026-09-10', '16:00'), uses: [{ batchId: 'CH-017', quantity: 62, station: 'refining', at: at('2026-09-13', '08:30') }, { batchId: 'CH-018', quantity: 62.1, station: 'refining', at: at('2026-09-14', '06:50') }] },
+  { id: 'LIQ-023', material: 'Liquor', category: 'Intermediate', received: 128.9, available: 8.8, unit: 'kg', source: { type: 'batch', batchId: 'CB-023', station: 'grinding' }, receivedAt: at('2026-09-10', '16:00'), uses: [{ batchId: 'CH-017', quantity: 60, station: 'refining', at: at('2026-09-13', '08:30') }, { batchId: 'CH-018', quantity: 60.1, station: 'refining', at: at('2026-09-14', '06:50') }] },
   { id: 'LIQ-024', material: 'Liquor', category: 'Intermediate', received: 44.6, available: 44.6, unit: 'kg', source: { type: 'batch', batchId: 'CB-024', station: 'grinding' }, receivedAt: at('2026-09-13', '14:45'), uses: [] },
   { id: 'RST-023', material: 'Beans taken off', category: 'Finished goods', received: 2, available: 2, unit: 'kg', source: { type: 'batch', batchId: 'CB-023', station: 'roasting' }, receivedAt: at('2026-09-10', '10:10'), uses: [] },
   { id: 'NIB-023', material: 'Crushed nibs for butter', category: 'Intermediate', received: 18, available: 0, unit: 'kg', source: { type: 'batch', batchId: 'CB-023', station: 'winnowing' }, receivedAt: at('2026-09-10', '12:30'), uses: [{ batchId: 'PB-007', quantity: 18, station: 'pressing', at: at('2026-09-11', '08:00') }] },
