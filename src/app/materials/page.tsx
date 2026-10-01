@@ -17,7 +17,8 @@ export default function MaterialsPage() {
 
   return (
     <>
-      <PageHeader eyebrow="Materials" title="Material lots" subtitle="Every lot in the factory, where it came from and what used it." action={<LinkButton href="/materials/receive"><Plus size={16} /> Receive material</LinkButton>} />
+      <PageHeader eyebrow="Materials" title="Material lots" subtitle="Every lot in the factory, where it came from and what used it."
+        action={<><LinkButton variant="secondary" href="/store">Store</LinkButton><LinkButton variant="secondary" href="/trace">Trace a batch</LinkButton><LinkButton href="/materials/receive"><Plus size={16} /> Receive material</LinkButton></>} />
       <div className="sub-nav-tabs" role="group" aria-label="Material groups">
         {categories.map((c) => (
           <button key={c} type="button" onClick={() => setCategory(c)} className={`sub-nav-btn ${c === category ? 'active' : ''}`} aria-pressed={c === category}>{c}</button>

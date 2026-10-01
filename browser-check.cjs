@@ -288,6 +288,15 @@ async function expectText(page, text) {
   await expectText(page, 'Kuapa Kokoo');
   ok('materials list, lot traceability (upstream and downstream), receive material');
 
+  // Store and batch tracing: finished pieces back to every delivery, a delivery on to the pieces.
+  await page.goto(`${BASE}/store`);
+  for (const t of ['Other stored products', 'SUG-031', 'BEAN-0912', 'SILK-024', 'FIN-0001']) await expectText(page, t);
+  await page.goto(`${BASE}/trace/FIN-0003`);
+  for (const t of ['Deliveries behind it', 'BUT-019', 'SUG-031', 'BEAN-0905', 'Left in the mixer: 70% Dark']) await expectText(page, t);
+  await page.goto(`${BASE}/trace/SUG-031`);
+  for (const t of ['Where it went', 'FIN-0001', 'FIN-0003']) await expectText(page, t);
+  ok('store, and a batch traced from the pieces back to the deliveries and forward again');
+
   // Chocolate types: the sheet's recipes, versions and expected vs actual.
   await page.goto(`${BASE}/recipes`);
   for (const t of ['34% White', '50% Milk', '56% Dark', '100% Dark','Liquor 44% · Cocoa butter 10% · Sugar 46%']) await expectText(page, t);

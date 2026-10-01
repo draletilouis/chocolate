@@ -439,7 +439,7 @@ function runCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
       if (!s.suppliers.some((x) => x.id === cmd.input.supplierId)) fail('Choose a supplier.');
       if (!(cmd.input.quantity > 0)) fail('Enter the weight you measured on delivery.');
       const id = nextLotId(s, cmd.input.material);
-      const lot: Lot = { id, material: cmd.input.material, category: cmd.input.category, received: round2(cmd.input.quantity), available: round2(cmd.input.quantity), unit: cmd.input.unit, source: { type: 'supplier', supplierId: cmd.input.supplierId, reference: cmd.input.reference || undefined }, receivedAt: ctx.now, uses: [] };
+      const lot: Lot = { id, material: cmd.input.material, category: cmd.input.category, received: round2(cmd.input.quantity), available: round2(cmd.input.quantity), unit: cmd.input.unit, source: { type: 'supplier', supplierId: cmd.input.supplierId, reference: cmd.input.reference || undefined, supplierBatch: cmd.input.supplierBatch?.trim() || undefined }, receivedAt: ctx.now, uses: [] };
       return { state: { ...s, lots: [...s.lots, lot] }, result: id };
     }
     case 'updateLot': {
@@ -447,7 +447,7 @@ function runCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
       if (lot.source.type !== 'supplier') fail('Lots made by production are corrected from their batch.');
       if (cmd.supplierId && !s.suppliers.some((x) => x.id === cmd.supplierId)) fail('That supplier was not found.');
       const source = lot.source;
-      const next: Lot = { ...lot, material: cmd.material, category: cmd.category, source: { ...source, supplierId: cmd.supplierId || source.supplierId, reference: cmd.reference || undefined } };
+      const next: Lot = { ...lot, material: cmd.material, category: cmd.category, source: { ...source, supplierId: cmd.supplierId || source.supplierId, reference: cmd.reference || undefined, supplierBatch: cmd.supplierBatch?.trim() || undefined } };
       return { state: { ...s, lots: s.lots.map((l) => (l.id === lot.id ? next : l)) } };
     }
     case 'deleteLot': {

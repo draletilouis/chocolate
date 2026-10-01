@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { AlertTriangle, BarChart3, ChevronDown, ClipboardCheck, ClipboardList, FlaskConical, LayoutDashboard, LogOut, Package, Search, Settings2, Target, WifiOff, X, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, BarChart3, ChevronDown, ClipboardCheck, ClipboardList, FlaskConical, LayoutDashboard, LogOut, Package, Search, Settings2, Target, Warehouse, Waypoints, WifiOff, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { activeBatches, allAlerts, waitingCount } from '@/lib/derive';
 import { useStore } from '@/lib/store';
@@ -18,7 +18,10 @@ const navItems: NavItem[] = [
   { href: '/production', label: 'Production line', short: 'Production', icon: ClipboardList, count: 'batches' },
   // Kept off the phone bar so it fits; Overview and My work link to the plan.
   { href: '/plan', label: 'Production plan', short: 'Plan', icon: Target, managers: true, phone: false },
+  // Off the phone bar too; Materials links to both.
+  { href: '/store', label: 'Store', icon: Warehouse, managers: true, phone: false },
   { href: '/materials', label: 'Materials', icon: Package, managers: true },
+  { href: '/trace', label: 'Batch tracing', short: 'Trace', icon: Waypoints, managers: true, phone: false },
   { href: '/recipes', label: 'Chocolate types', short: 'Chocolate', icon: FlaskConical, managers: true },
   { href: '/reports', label: 'Reports', icon: BarChart3, managers: true },
   { href: '/setup', label: 'Setup', icon: Settings2, managers: true },

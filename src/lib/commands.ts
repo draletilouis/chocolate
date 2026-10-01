@@ -64,8 +64,8 @@ export const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('placeHold'), batchId: id, reason: text(500).min(1) }),
   z.object({ type: z.literal('releaseHold'), batchId: id, note: text(500).min(1) }),
   z.object({ type: z.literal('addCorrection'), batchId: id, recordId: id, output: text(80).min(1), corrected: qty, reason: text(500).min(1) }),
-  z.object({ type: z.literal('receiveLot'), input: z.object({ material: text(80).min(1), category: lotCategory, quantity: qty, unit: z.enum(['kg', 'units']), supplierId: id, reference: text(120).optional() }) }),
-  z.object({ type: z.literal('updateLot'), lotId: id, material: text(80).min(1), category: lotCategory, supplierId: text(80).optional(), reference: text(120).optional() }),
+  z.object({ type: z.literal('receiveLot'), input: z.object({ material: text(80).min(1), category: lotCategory, quantity: qty, unit: z.enum(['kg', 'units']), supplierId: id, reference: text(120).optional(), supplierBatch: text(80).optional() }) }),
+  z.object({ type: z.literal('updateLot'), lotId: id, material: text(80).min(1), category: lotCategory, supplierId: text(80).optional(), reference: text(120).optional(), supplierBatch: text(80).optional() }),
   z.object({ type: z.literal('deleteLot'), lotId: id }),
   z.object({ type: z.literal('addRecipeVersion'), recipeId: id, ingredients: recipeIngredients, note: text(500) }),
   // A new chocolate type: its product and the first version of its recipe, made together.

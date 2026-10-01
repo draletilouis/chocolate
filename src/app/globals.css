@@ -361,4 +361,11 @@
   .step-icon.is-next { border: 2px solid var(--color-green); color: var(--color-green); }
   .step-icon.is-hold { border: 2px solid var(--color-danger); color: var(--color-danger); }
   .step-icon.is-later { color: #cbd5e1; }
+
+  /* ---------- Batch tracing ---------- */
+  .trace-tree { margin: 8px 0 0 6px; padding-left: 14px; border-left: 2px solid var(--color-moss-dark); font-size: 13px; }
+  .trace-tree.is-root { margin: 0; padding: 6px 20px 10px; border-left: 0; }
+  .trace-step { padding: 8px 0; }
+  .trace-tree.is-root > .trace-step { border-top: 1px solid #f1f5f9; padding: 12px 0; }
+  .trace-tree.is-root > .trace-step:first-child { border-top: 0; }
 }

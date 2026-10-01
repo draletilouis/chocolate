@@ -30,7 +30,7 @@ You are signed out on your own after a few minutes without use (10 by default; a
 What you see depends on your access:
 
 - **Operators** see **My work** and **Production line**.
-- **Managers** also see **Overview**, **Production plan**, **Materials**, **Chocolate types**, **Reports** and **Setup**.
+- **Managers** also see **Overview**, **Production plan**, **Store**, **Materials**, **Batch tracing**, **Chocolate types**, **Reports** and **Setup**.
   - A manager who has their own stations also gets **My work**.
 
 The sections are:
@@ -39,7 +39,9 @@ The sections are:
 - **Overview** — production summary, the production plan's progress and alerts.
 - **Production line** — every active batch, where it is waiting, and the five parts of the line.
 - **Production plan** — the pieces to make of each chocolate type and size, how many are made and what is left. On a phone, open it from **Overview**. People working at Mixing or Pieces find it on **My work**.
+- **Store** — everything in store by batch number: the ingredients (cocoa beans, liquor, cocoa butter, sugar, milk powder), the chocolate, the finished pieces and every other product the line kept, such as butter, powder and nibs. On a phone, open it from **Materials**.
 - **Materials** — raw materials, intermediate products, by-products, rework and finished-goods lots.
+- **Batch tracing** — enter a batch or lot number to see everything that went into it and everything it went into. On a phone, open it from **Materials**.
 - **Chocolate types** — each type's recipe, its versions and ingredient comparisons.
 - **Reports** — losses, missing weight, batch history, corrections and holds.
 - **Setup** — products, piece sizes, containers, output rows, routes, suppliers, users and thresholds.
@@ -53,7 +55,7 @@ On a phone, use the bottom bar. On a desktop, use the sidebar.
 ### Receive a delivery of beans
 
 1. On **My work**, select **Receive a delivery** (or **New batch** on the production line).
-2. Choose the **Supplier**. The **Batch name** fills itself in from the supplier and the date, for example `Kuapa 28 Sep`; change it if you like. The name and supplier are printed on labels.
+2. Choose the **Supplier**. If the beans were already received into the store, choose their lot under **Beans from** instead: the weight you enter is taken off that lot. The **Batch name** fills itself in from the supplier and the date, for example `Kuapa 28 Sep`; change it if you like. The name and supplier are printed on labels.
 3. Weigh the delivery and enter the **Delivered weight**.
 4. Enter the **Accepted beans** and any **Rejected beans**. The bar at the bottom checks the balance while you type.
 5. Select **Save delivery**.
@@ -66,7 +68,7 @@ For stored nibs (butter & powder), or to make chocolate from liquor and cocoa bu
 
 1. Choose the product: **Stored nibs (butter & powder)** or **Chocolate from store**.
 2. Enter the batch date and an optional name.
-3. For stored nibs, enter the starting weight. Chocolate from store needs none: its ingredients are weighed in at mixing.
+3. For stored nibs, choose the lot they are **Taken from** (the oldest in store is suggested) and enter the starting weight. The weight is taken off that lot. Chocolate from store needs none: its ingredients are weighed in at mixing, and each one is taken off the lot it came from.
 4. Select **Create batch and record…**.
 
 You can also start Chocolate from store from the Mixing queue (**Mix from store**) or from a liquor, cocoa butter, sugar or milk powder lot (**Mix chocolate from store**).
@@ -237,11 +239,36 @@ Enter an optional closing note and select **Complete batch**. A completed batch 
 2. Select **Receive material**.
 3. Choose the material.
 4. Choose the supplier.
-5. Add an invoice or delivery reference if needed.
+5. Enter the **Supplier's batch number** printed on the bag or the delivery note, and an invoice or delivery reference, if there are any.
 6. Enter the physically measured weight.
 7. Select **Save receipt**.
 
-The system creates a new lot. The lot's available quantity starts at the received quantity.
+The system creates a new lot. The lot's available quantity starts at the received quantity. The lot ID, such as `SUG-0032`, is the delivery's **batch number**: it is never given to another delivery, and every later use is recorded against it. The supplier's own batch number is kept with it, shown on the trace, and found by search.
+
+### Check the store
+
+Open **Store** to see everything in store, in four parts:
+
+- **Ingredients** — cocoa beans, liquor, cocoa butter, sugar and milk powder (and anything else a supplier delivered), with the kg in store, marked when it is below the low-stock limit;
+- **Chocolate** — each type mixed and waiting to be made into pieces;
+- **Finished pieces** — the counted pieces of each type and size; and
+- **Other stored products** — everything else the line kept: silk butter, butter and nibs for sale, nibs for butter, cocoa powder, whole roasted beans, by-products and rework.
+
+Under each one is every batch number with stock: who delivered it or which batch made it, the date, the amount received or made and what is left, and the batches that used it. Under **Cocoa beans** are also the beans received straight onto the production line, where the production batch is the batch number.
+
+**Stock goes down by itself.** Whenever material is taken from the store, the weight comes off its lot: an ingredient weighed into a mixing run, beans or nibs a new batch starts from, chocolate made into pieces. Nobody adjusts the store by hand.
+
+Select **Show used-up batches** to list the ones with nothing left. Select a batch number to trace it.
+
+### Trace a batch from beginning to end
+
+Open **Batch tracing** and enter the number of a finished product, a chocolate lot, an ingredient or a production batch (or pick one from the lists). The same page opens from **Trace** on any lot or batch.
+
+- **Deliveries behind it** — one row for every purchased batch that went into it: ingredient, batch number, supplier, the supplier's batch number, delivery note and date.
+- **How it was made** — each line is what went into the line above it, with the weight used. Pieces come from a chocolate lot; the chocolate from the ingredients of its mixing run and from what the mixer still held; liquor from the batch that ground it, back to the beans.
+- **Where it went** — the other direction: the chocolate an ingredient was mixed into and the pieces counted from it. Use it to find every product that contains one delivery.
+
+Chocolate left in the mixer links each run to the one before. It is followed three runs back (or forward); open the last lot shown to go further.
 
 ### Review a lot
 
