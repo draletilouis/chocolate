@@ -202,7 +202,7 @@ Liquor is weighed once, after fine grinding. The Liquor grinding result screen s
 - The batch name is suggested from the supplier and date by `suggestBatchName()`, e.g. `Kuapa 28 Sep`. It is made unique with a number when needed, and can be edited.
 - **Save delivery** calls `createBatch()` and then `saveRecord()` for Receiving, then opens the saved receiving screen with the printable batch card.
 
-For stored-nib products the worker chooses the lot of the route's start material the nibs are taken from (the oldest in store by default, or the lot in `?lot=`) and enters a starting weight; `createBatch()` takes it off the lot and records the use. **Chocolate from store** needs no starting weight: the batch opens at Mixing, where each run takes its ingredients from lots.
+For stored-nib products the worker chooses the lot of the route's start material the nibs are taken from (the oldest in store by default, or the lot in `?lot=`) and enters a starting weight; `createBatch()` takes it off the lot and records the use. The nibs can come from several lots: the form holds one line per lot with its weight, sends one `lotUses` entry for each, and the starting weight is their total. When a weight is more than its lot holds, the form offers to take the rest from the next lot, oldest first. **Chocolate from store** needs no starting weight: the batch opens at Mixing, where each run takes its ingredients from lots.
 
 **Chocolate types.** A chocolate type is a recipe (`Recipe` in `src/lib/types.ts`, seeded in `src/lib/seed.ts`), chosen for each run at mixing rather than as a product. The eight types and their recipes come from the factory's "Regular recipes" table, as percentages of the batch weight; ingredients at 0% are left out, and none uses lecithin:
 
