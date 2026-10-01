@@ -67,7 +67,7 @@ async function expectText(page, text) {
 
   // Sidebar: six destinations, active state, counts, no "All screens".
   const nav = page.getByRole('navigation', { name: 'Main navigation' });
-  for (const label of ['Overview', 'Production line', 'Materials', 'Chocolate types', 'Reports', 'Setup']) await nav.getByRole('link', { name: label }).waitFor();
+  for (const label of ['Overview', 'Production line', 'Store', 'Batch tracing', 'Chocolate types', 'Reports', 'Setup']) await nav.getByRole('link', { name: label }).waitFor();
   if (await nav.getByText('All screens').count()) throw new Error('"All screens" link still present');
   const active = await nav.locator('[aria-current="page"]').innerText();
   if (!active.includes('Production line')) throw new Error(`Expected Production line active, got ${active}`);
@@ -272,21 +272,29 @@ async function expectText(page, text) {
   await page.getByRole('link', { name: /Record sorting/ }).waitFor();
   ok('receive a delivery: batch and receiving saved in one form, batch card printed from there');
 
-  // Materials: lots, traceability, receive.
+  // Lot records: traceability, labels, receive. The old Materials list now opens the Store.
   await page.goto(`${BASE}/materials`);
-  await page.getByRole('link', { name: /LIQ-024/ }).click();
+  await page.waitForURL('**/store');
+  await page.goto(`${BASE}/materials/LIQ-024`);
   await page.getByRole('heading', { name: 'Traceability' }).waitFor();
   for (const t of ['CB-024', 'BEAN-0905', 'CH-017', 'Print label']) await expectText(page, t);
-  await page.goto(`${BASE}/materials`);
-  await page.getByRole('button', { name: 'Finished goods' }).click();
-  await page.getByRole('link', { name: /FIN-0001/ }).click();
+  await page.goto(`${BASE}/materials/FIN-0001`);
   for (const t of ['1200 pieces of 45 g bar', 'D70-0001', 'CH-017', 'Print label']) await expectText(page, t);
   await page.goto(`${BASE}/materials/receive`);
   await page.getByLabel('Measured weight').fill('120');
   await page.getByRole('button', { name: 'Save receipt' }).click();
   await page.waitForURL('**/materials/BEAN-*');
   await expectText(page, 'Kuapa Kokoo');
-  ok('materials list, lot traceability (upstream and downstream), receive material');
+  ok('lot records: traceability (upstream and downstream), labels, receive material');
+
+  // Store and batch tracing: finished pieces back to every delivery, a delivery on to the pieces.
+  await page.goto(`${BASE}/store`);
+  for (const t of ['Other stored products', 'SUG-031', 'BEAN-0912', 'SILK-024', 'FIN-0001']) await expectText(page, t);
+  await page.goto(`${BASE}/trace/FIN-0003`);
+  for (const t of ['Deliveries behind it', 'BUT-019', 'SUG-031', 'BEAN-0905', 'Left in the mixer: 70% Dark']) await expectText(page, t);
+  await page.goto(`${BASE}/trace/SUG-031`);
+  for (const t of ['Where it went', 'FIN-0001', 'FIN-0003']) await expectText(page, t);
+  ok('store, and a batch traced from the pieces back to the deliveries and forward again');
 
   // Chocolate types: the sheet's recipes, versions and expected vs actual.
   await page.goto(`${BASE}/recipes`);

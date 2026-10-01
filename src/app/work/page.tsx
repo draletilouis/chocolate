@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Pause, ScanLine, Target, Truck } from 'lucide-react';
+import { ArrowRight, Pause, Target, Truck } from 'lucide-react';
 import { Badge, Button, Empty, Input, LinkButton, PageHeader, Panel } from '@/components/ui';
 import { batchDisplayName, chocolateWaiting, nextInput, stationQueue } from '@/lib/derive';
 import { kg } from '@/lib/format';
@@ -44,11 +44,10 @@ export default function WorkPage() {
         subtitle={everything ? 'All stations. Give people their stations in Setup → Users and each person sees only their own.' : `Your stations: ${mine.map((s) => stationName(s)).join(', ')}`}
         action={receives ? <LinkButton href="/production/new"><Truck size={16} /> Receive a delivery</LinkButton> : undefined} />
 
-      <form className="search-form mb-2" onSubmit={search} role="search">
+      <form className="search-form mb-5" onSubmit={search} role="search">
         <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a batch or lot: name, ID or supplier" aria-label="Find a batch or lot" />
         <Button type="submit" variant="secondary">Find</Button>
       </form>
-      <p className="mb-5 flex items-center gap-1.5 text-[12px] text-muted"><ScanLine size={14} /> Or scan the QR code on a batch card or label with your phone camera.</p>
 
       {plan && (
         <Link href="/plan" className="mb-5 flex items-center gap-3 rounded-xl border border-line bg-white px-4 py-3 text-[14px]" aria-label={`Production plan, ${plan.left} pieces left`}>

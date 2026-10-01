@@ -34,7 +34,7 @@ export interface NewBatchInput {
   note?: string;
 }
 
-export interface NewLotInput { material: string; category: LotCategory; quantity: number; unit: 'kg' | 'units'; supplierId: string; reference?: string }
+export interface NewLotInput { material: string; category: LotCategory; quantity: number; unit: 'kg' | 'units'; supplierId: string; reference?: string; supplierBatch?: string }
 
 /** Staff fields edited in Setup; password and PIN travel to the server once and are stored there as hashes */
 export interface UserInput { name: string; role: string; email: string; access: Access; stations: StationId[] }
@@ -71,7 +71,7 @@ interface Actions {
   releaseHold: (batchId: string, note: string) => Promise<boolean>;
   addCorrection: (batchId: string, recordId: string, output: string, corrected: number, reason: string) => Promise<boolean>;
   receiveLot: (input: NewLotInput) => Promise<string | undefined>;
-  updateLot: (lotId: string, patch: { material: string; category: LotCategory; supplierId?: string; reference?: string }) => Promise<boolean>;
+  updateLot: (lotId: string, patch: { material: string; category: LotCategory; supplierId?: string; reference?: string; supplierBatch?: string }) => Promise<boolean>;
   deleteLot: (lotId: string) => Promise<boolean>;
   addRecipeVersion: (recipeId: string, ingredients: RecipeIngredient[], note: string) => Promise<boolean>;
   /** A new chocolate type with the first version of its recipe; answers the recipe ID */

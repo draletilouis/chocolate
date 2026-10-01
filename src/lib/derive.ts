@@ -132,7 +132,7 @@ export function batchSuppliers(state: State, batch: Batch, seen = new Set<string
 /** Plain description of the step that produced a lot */
 export function lotOrigin(state: State, lot: Lot) {
   const source = lot.source;
-  if (source.type === 'supplier') return `Delivered by ${supplierName(state, source.supplierId)}${source.reference ? ` · ${source.reference}` : ''}`;
+  if (source.type === 'supplier') return `Delivered by ${supplierName(state, source.supplierId)}${source.supplierBatch ? ` · supplier's batch ${source.supplierBatch}` : ''}${source.reference ? ` · ${source.reference}` : ''}`;
   const batch = state.batches.find((b) => b.id === source.batchId);
   const label = batch ? batchDisplayName(batch) : source.batchId;
   return `Made by batch ${label}${batch?.name ? ` (ID ${batch.id})` : ''} at ${stationById[source.station].name.toLowerCase()}`;
@@ -229,20 +229,8 @@ export function searchRecords(state: State, query: string) {
   const hit = (...values: (string | undefined)[]) => values.some((v) => v?.toLowerCase().includes(q));
   return {
     batches: state.batches.filter((b) => hit(b.id, b.name, b.product, ...batchSuppliers(state, b))).sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
-    lots: state.lots.filter((l) => hit(l.id, l.material, l.source.type === 'supplier' ? supplierName(state, l.source.supplierId) : l.source.batchId)).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt)),
+    lots: state.lots.filter((l) => hit(l.id, l.material, ...(l.source.type === 'supplier' ? [supplierName(state, l.source.supplierId), l.source.supplierBatch] : [l.source.batchId]))).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt)),
   };
-}
-
-/** Where a scanned code should open: a batch at the station it is waiting at, or a lot */
-export function scanTarget(state: State, code: string): string | null {
-  const id = decodeURIComponent(code).trim().toUpperCase();
-  const batch = state.batches.find((b) => b.id.toUpperCase() === id);
-  if (batch) {
-    const stations = waitingAt(batch);
-    return batch.status === 'active' && stations.length === 1 ? `/production/batches/${batch.id}/record/${stations[0]}` : `/production/batches/${batch.id}`;
-  }
-  const lot = state.lots.find((l) => l.id.toUpperCase() === id);
-  return lot ? `/materials/${lot.id}` : null;
 }
 
 /** Suggested destination for an output: the row's own default, else by kind */

@@ -158,7 +158,8 @@ export interface Batch {
 }
 
 export type LotSource =
-  | { type: 'supplier'; supplierId: string; reference?: string }
+  /** supplierBatch is the supplier's own batch number, as printed on the bag or the delivery note */
+  | { type: 'supplier'; supplierId: string; reference?: string; supplierBatch?: string }
   | { type: 'batch'; batchId: string; station: StationId };
 
 export interface LotUse {

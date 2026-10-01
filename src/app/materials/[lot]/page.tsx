@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { ArrowDown, Pencil, Trash2 } from 'lucide-react';
+import { ArrowDown, Pencil, Trash2, Waypoints } from 'lucide-react';
 import { Back, Badge, Button, Empty, Field, Input, LinkButton, Notice, PageHeader, Panel, Select, Stat } from '@/components/ui';
 import { BatchLabel } from '@/components/BatchLabel';
 import { batchById, lotOrigin, recordBalance, userName } from '@/lib/derive';
@@ -33,11 +33,13 @@ export default function LotPage() {
   const unit = lot.pieces ? 'pieces' : lot.unit;
   const madePieces = lot.chocolate ? piecesFrom(store, lot.id) : [];
   const usedInRecipes = lot.unit === 'kg' && lot.available > 0 && store.recipes.some((r) => r.versions.find((v) => v.version === r.currentVersion)?.ingredients.some((i) => i.name === lot.material));
+  // Beans or nibs in store start the batch that takes them; the weight used comes off this lot.
+  const startsBatch = lot.unit === 'kg' && lot.available > 0 && store.products.some((p) => (lot.material === 'Cocoa beans' ? p.route === 'beans' : store.routes.find((r) => r.id === p.route)?.startMaterial === lot.material));
 
   return (
     <>
-      <Back href="/materials" label="Materials" />
-      <PageHeader eyebrow={lot.category} title={`${lot.id} · ${lot.material}`} subtitle={`${lotOrigin(store, lot)} · received ${dateTime(lot.receivedAt)}`} action={<div className="flex flex-wrap gap-2">{usedInRecipes && <LinkButton href={`/production/new?lot=${lot.id}`}>Mix chocolate from store</LinkButton>}{lot.chocolate && lot.available > 0.004 && <LinkButton href={`/production/pieces/${lot.id}`}>Record pieces</LinkButton>}<Button variant="secondary" onClick={() => setEditing((value) => !value)}><Pencil size={14} /> Edit</Button><Button variant="danger" disabled={!canDelete} title={canDelete ? 'Delete lot' : 'Only unused supplier lots can be deleted.'} onClick={async () => { if (canDelete && window.confirm(`Delete lot ${lot.id}?`) && await store.deleteLot(lot.id)) router.push('/materials'); }}><Trash2 size={14} /> Delete</Button></div>} />
+      <Back href="/store" label="Store" />
+      <PageHeader eyebrow={lot.category} title={`${lot.id} · ${lot.material}`} subtitle={`${lotOrigin(store, lot)} · received ${dateTime(lot.receivedAt)}`} action={<div className="flex flex-wrap gap-2">{usedInRecipes && <LinkButton href={`/production/new?lot=${lot.id}`}>Mix chocolate from store</LinkButton>}{startsBatch && <LinkButton href={`/production/new?lot=${lot.id}`}>Start a batch from this lot</LinkButton>}{lot.chocolate && lot.available > 0.004 && <LinkButton href={`/production/pieces/${lot.id}`}>Record pieces</LinkButton>}<LinkButton variant="secondary" href={`/trace/${lot.id}`}><Waypoints size={14} /> Trace</LinkButton><Button variant="secondary" onClick={() => setEditing((value) => !value)}><Pencil size={14} /> Edit</Button><Button variant="danger" disabled={!canDelete} title={canDelete ? 'Delete lot' : 'Only unused supplier lots can be deleted.'} onClick={async () => { if (canDelete && window.confirm(`Delete lot ${lot.id}?`) && await store.deleteLot(lot.id)) router.push('/store'); }}><Trash2 size={14} /> Delete</Button></div>} />
       <div className="mb-5 grid grid-cols-3 gap-3">
         <Stat label={lot.pieces ? 'Made' : 'Received'} value={`${lot.received} ${unit}`} />
         <Stat label="Used" value={`${Math.round((lot.received - lot.available) * 1000) / 1000} ${unit}`} />
@@ -48,10 +50,11 @@ export default function LotPage() {
 
       {editing && lot.source.type === 'supplier' && (
         <Panel title="Edit lot details" subtitle="Material identity and supplier reference can be corrected. Received quantity and usage history stay locked.">
-          <form className="grid gap-4 p-5 md:grid-cols-2" onSubmit={async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); if (await store.updateLot(lot.id, { material: String(form.get('material')), category: form.get('category') as LotCategory, supplierId: String(form.get('supplier')), reference: String(form.get('reference')) })) setEditing(false); }}>
+          <form className="grid gap-4 p-5 md:grid-cols-2" onSubmit={async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); if (await store.updateLot(lot.id, { material: String(form.get('material')), category: form.get('category') as LotCategory, supplierId: String(form.get('supplier')), reference: String(form.get('reference')), supplierBatch: String(form.get('supplierBatch')) })) setEditing(false); }}>
             <Field label="Material"><Input name="material" defaultValue={lot.material} required /></Field>
             <Field label="Category"><Select name="category" defaultValue={lot.category}>{(['Raw material', 'Intermediate', 'By-product', 'Rework', 'Finished goods'] as LotCategory[]).map((category) => <option key={category} value={category}>{category}</option>)}</Select></Field>
             <Field label="Supplier"><Select name="supplier" defaultValue={lot.source.supplierId}>{store.suppliers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></Field>
+            <Field label="Supplier's batch number"><Input name="supplierBatch" defaultValue={lot.source.supplierBatch ?? ''} maxLength={80} placeholder="As printed on the bag or the delivery note" /></Field>
             <Field label="Reference"><Input name="reference" defaultValue={lot.source.reference ?? ''} placeholder="Delivery note or supplier reference" /></Field>
             <div className="flex justify-end gap-2 md:col-span-2"><Button variant="secondary" onClick={() => setEditing(false)}>Cancel</Button><Button type="submit">Save changes</Button></div>
           </form>
@@ -74,7 +77,7 @@ export default function LotPage() {
           <li className="py-2">
             <span className="text-[11px] font-bold tracking-wide text-faint uppercase">Came from</span>
             {lot.source.type === 'supplier' ? (
-              <div>Delivered by <strong>{supplier?.name}</strong>{lot.source.reference && <span className="text-muted"> · {lot.source.reference}</span>}</div>
+              <div>Delivered by <strong>{supplier?.name}</strong>{lot.source.supplierBatch && <span className="text-muted"> · supplier&apos;s batch {lot.source.supplierBatch}</span>}{lot.source.reference && <span className="text-muted"> · {lot.source.reference}</span>}</div>
             ) : (
               <div>
                 Batch <Link href={`/production/batches/${lot.source.batchId}`} className="font-semibold text-green">{lot.source.batchId}</Link> at {stationName(lot.source.station).toLowerCase()}
