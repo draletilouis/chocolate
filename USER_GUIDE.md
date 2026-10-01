@@ -67,7 +67,7 @@ For stored nibs (butter & powder), or to make chocolate from liquor and cocoa bu
 
 1. Choose the product: **Stored nibs (butter & powder)** or **Chocolate from store**.
 2. Enter the batch date and an optional name.
-3. For stored nibs, choose the lot they are **Taken from** (the oldest in store is suggested) and enter the starting weight. The weight is taken off that lot. Chocolate from store needs none: its ingredients are weighed in at mixing, and each one is taken off the lot it came from.
+3. For stored nibs, choose the lot they are **Taken from** (the oldest in store is suggested) and enter the starting weight. The weight is taken off that lot. If the nibs come from more than one lot, select **+ From another lot too** and enter the weight from each; if you enter more than a lot holds, the screen offers to take the rest from the next lot. Each lot is drawn down by its own weight, and the starting weight is their total. Chocolate from store needs none: its ingredients are weighed in at mixing, and each one is taken off the lot it came from.
 4. Select **Create batch and record…**.
 
 You can also start Chocolate from store from the Mixing queue (**Mix from store**) or from a liquor, cocoa butter, sugar or milk powder lot (**Mix chocolate from store**).
@@ -142,6 +142,7 @@ Liquor from liquor grinding and cocoa butter from the filter pan go on to **Mixi
 2. Choose the **Chocolate type** and enter the **Fresh ingredients to run** in kg.
 3. For each ingredient the screen shows what the mixer already holds and what to **add**. For 30 kg of 70% Dark on 10 kg of 85% Dark: add 16.50 kg liquor, 3.00 kg cocoa butter and 10.50 kg sugar.
 4. Weigh each ingredient in and enter the weight. Choose where it comes from: **This batch** (its own liquor or cocoa butter) or a lot in store.
+   - **When one lot is not enough:** if you enter more than the lot holds, the screen says so and offers **Take the other … kg from** the next lot. Select it and the ingredient is split: each lot gets its own line and weight. You can also select **+ From another lot too** and enter the weights yourself. Each lot is drawn down by its own weight, and the trace shows both.
 5. Enter the **Chocolate taken out** and what is **Kept in the mixer for the next run** (0 if you run the mixer empty). The bar at the bottom checks the balance.
 6. Select **Save** (for example **Save 70% Dark**). The chocolate becomes a lot, such as `D70-0002`.
 

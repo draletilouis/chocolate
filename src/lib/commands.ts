@@ -48,7 +48,7 @@ export const commandSchema = z.discriminatedUnion('type', [
   // expectRecord: recordStamp() of the record the form was opened on (null for a new one), so two people cannot overwrite each other unseen.
   z.object({ type: z.literal('saveRecord'), batchId: id, station, input: z.object({ weight: qty, container: container.optional() }), outputs: z.array(output).max(30), note: text(1000).optional(), options, expectRecord: z.string().max(200).nullable().optional() }),
   // Mixing: one chocolate type per run, made on top of what the mixer holds (expectMixer: mixerStamp() the form was opened on).
-  z.object({ type: z.literal('saveMixingRun'), batchId: id, recipeId: id, toRun: qty, ingredients: z.array(z.object({ name: text(80).min(1), actual: qty, lotId: text(80).optional() })).min(1).max(20), made: qty, kept: qty, expectMixer: z.string().max(200) }),
+  z.object({ type: z.literal('saveMixingRun'), batchId: id, recipeId: id, toRun: qty, ingredients: z.array(z.object({ name: text(80).min(1), actual: qty, lotId: text(80).optional() })).min(1).max(60), made: qty, kept: qty, expectMixer: z.string().max(200) }),
   z.object({ type: z.literal('undoMixingRun'), batchId: id, runId: id }),
   z.object({ type: z.literal('emptyMixer'), expectMixer: z.string().max(200) }),
   z.object({ type: z.literal('finishMixing'), batchId: id, note: text(1000).optional() }),

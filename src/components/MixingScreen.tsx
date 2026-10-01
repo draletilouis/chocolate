@@ -2,18 +2,34 @@
 
 import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
-import { AlertTriangle, ArrowRight, Check, CheckCircle2, PackageOpen, Undo2 } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Check, CheckCircle2, PackageOpen, Undo2, X } from 'lucide-react';
 import { Back, Badge, Button, Field, LinkButton, Notice, PageHeader, Panel, Select, UnitInput, inputClass } from '@/components/ui';
 import { BalanceVerdict, LiveBalance } from '@/components/weighing';
 import { calculateBalance, round2 } from '@/lib/balance';
 import { batchById, batchDisplayName, recordBalance, userName } from '@/lib/derive';
 import { dateTime, kg, num } from '@/lib/format';
-import { batchMaterialAtMixing, changeover, ingredientsOf, mixerStamp, versionOf } from '@/lib/mixing';
+import { batchMaterialAtMixing, changeover, ingredientsOf, mixerStamp, sourcesOf, versionOf } from '@/lib/mixing';
 import { useStore } from '@/lib/store';
 import { stationName } from '@/lib/stations';
-import type { Batch, MixerContents, MixingRun, Station, StationRecord } from '@/lib/types';
+import type { Batch, MixerContents, MixingRun, RunSource, Station, StationRecord } from '@/lib/types';
 
 const heldText = (held: MixerContents) => `${kg(held.kg)} of ${held.type}`;
+
+/** Where an ingredient came from: its lot, the batch itself, or each place with its weight when it was split */
+export function RunSources({ ingredient, own = 'this batch' }: { ingredient: { actual: number; lotId?: string; sources?: RunSource[] }; own?: string }) {
+  const sources = sourcesOf(ingredient);
+  return (
+    <>
+      {sources.map((s, index) => (
+        <span key={s.lotId ?? ''}>
+          {index > 0 && ' + '}
+          {s.lotId ? <Link href={`/materials/${s.lotId}`} className="font-semibold text-green">{s.lotId}</Link> : own}
+          {sources.length > 1 && <span className="tabular-nums"> {num(s.kg)} kg</span>}
+        </span>
+      ))}
+    </>
+  );
+}
 
 /**
  * Mixing: the chocolate types made one after another. Each run is entered on its own and saved at once;
@@ -114,7 +130,7 @@ export function MixingScreen({ batch, station, record }: { batch: Batch; station
                 </div>
                 <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-muted">
                   {run.ingredients.filter((i) => i.expected > 0 || i.actual > 0).map((i) => (
-                    <span key={i.name}>{i.name} <span className={`tabular-nums ${Math.abs(i.actual - i.expected) > 0.005 ? 'font-semibold text-warn' : 'text-ink'}`}>{num(i.actual)}</span> of {num(i.expected)} kg · {i.lotId ? <Link href={`/materials/${i.lotId}`} className="font-semibold text-green">{i.lotId}</Link> : 'this batch'}</span>
+                    <span key={i.name}>{i.name} <span className={`tabular-nums ${Math.abs(i.actual - i.expected) > 0.005 ? 'font-semibold text-warn' : 'text-ink'}`}>{num(i.actual)}</span> of {num(i.expected)} kg · <RunSources ingredient={i} /></span>
                   ))}
                 </div>
               </div>
@@ -147,7 +163,8 @@ export function MixingScreen({ batch, station, record }: { batch: Batch; station
   );
 }
 
-interface Line { actual?: string; source?: string }
+/** One place an ingredient is weighed from in the form: '' is the batch itself, otherwise a lot. Only the first part may be left to its defaults. */
+interface Part { kg?: string; source?: string }
 
 /** One run: the type and how much to run, what to add on top of what the mixer holds, and what came out */
 function RunForm({ batch, onSaved, onRestart }: { batch: Batch; onSaved: (message: string) => void; onRestart: () => void }) {
@@ -157,7 +174,7 @@ function RunForm({ batch, onSaved, onRestart }: { batch: Batch; onSaved: (messag
   const changedElsewhere = mixerStamp(store.mixer) !== openedOn;
   const [recipeId, setRecipeId] = useState('');
   const [toRun, setToRun] = useState('');
-  const [lines, setLines] = useState<Record<string, Line>>({});
+  const [lines, setLines] = useState<Record<string, Part[]>>({});
   const [made, setMade] = useState<string | undefined>();
   const [kept, setKept] = useState(String(store.mixerKeepsKg));
   const [error, setError] = useState('');
@@ -173,18 +190,32 @@ function RunForm({ batch, onSaved, onRestart }: { batch: Batch; onSaved: (messag
     const add = Math.max(0, line?.add ?? 0);
     const lots = store.lots.filter((l) => l.material === i.name && l.unit === 'kg' && l.available > 0).sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
     const fromBatch = material.get(i.name) ?? 0;
-    const given = lines[i.name] ?? {};
-    const source = given.source ?? (fromBatch > 0 ? '' : lots[0]?.id ?? '');
-    return { name: i.name, percent: i.percent, inMixer: line?.inMixer ?? 0, add, actual: given.actual ?? (add ? String(add) : ''), source, lots, fromBatch };
+    // Where it can come from, in the order it is used: the batch's own first, then the oldest lot.
+    const places = [...(fromBatch > 0 ? [''] : []), ...lots.map((l) => l.id)];
+    const has = (source: string) => (source === '' ? fromBatch : lots.find((l) => l.id === source)?.available ?? 0);
+    const given = lines[i.name] ?? [{}];
+    const parts = given.map((p, index) => {
+      const source = p.source ?? places[0] ?? '';
+      return { source, kg: p.kg ?? (index === 0 && add ? String(add) : ''), has: has(source), free: places.filter((s) => s === source || !given.some((x, j) => j !== index && (x.source ?? places[0] ?? '') === s)) };
+    });
+    const unused = places.filter((s) => !parts.some((p) => p.source === s));
+    return { name: i.name, percent: i.percent, inMixer: line?.inMixer ?? 0, add, actual: round2(parts.reduce((sum, p) => sum + (Number(p.kg) || 0), 0)), parts, unused, has, lots, fromBatch };
   });
-  const freshKg = round2(rows.reduce((sum, r) => sum + (Number(r.actual) || 0), 0));
+  const freshKg = round2(rows.reduce((sum, r) => sum + r.actual, 0));
   const heldKg = held?.kg ?? 0;
   const keptKg = Number(kept) || 0;
   const madeKg = made === undefined ? Math.max(0, round2(freshKg + heldKg - keptKg)) : Number(made) || 0;
   const balance = calculateBalance(round2(freshKg + heldKg), [{ kind: 'useful', weight: madeKg }, { kind: 'useful', weight: keptKg }]);
   const blocked = held && plan && plan.blocked.length > 0;
   const tooSmall = held && plan && !blocked && plan.lines.some((l) => l.add < -0.005);
-  const setLine = (name: string, patch: Line) => setLines({ ...lines, [name]: { ...lines[name], ...patch } });
+  const setParts = (name: string, parts: Part[]) => setLines({ ...lines, [name]: parts });
+  const setPart = (row: (typeof rows)[number], index: number, patch: Part) => setParts(row.name, row.parts.map((p, j) => (j === index ? { kg: p.kg, source: p.source, ...patch } : { kg: p.kg, source: p.source })));
+  /** The lot does not hold the weight entered: it gives what it has, and the rest comes from the next place */
+  const takeRest = (row: (typeof rows)[number], index: number) => {
+    const part = row.parts[index];
+    const rest = round2((Number(part.kg) || 0) - part.has);
+    setParts(row.name, [...row.parts.map((p, j) => ({ kg: j === index ? String(part.has) : p.kg, source: p.source })), { kg: String(rest), source: row.unused[0] }]);
+  };
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -193,14 +224,15 @@ function RunForm({ batch, onSaved, onRestart }: { batch: Batch; onSaved: (messag
     if (!recipe || !version) return setError('Choose the chocolate type.');
     if (!(Number(toRun) > 0)) return setError('Enter how many kg to run.');
     if (blocked || tooSmall) return setError('This run cannot be made on top of what the mixer holds.');
-    const bad = rows.find((r) => r.source === '' && (Number(r.actual) || 0) > r.fromBatch + 0.005);
+    const bad = rows.find((r) => r.parts.some((p) => p.source === '' && (Number(p.kg) || 0) > r.fromBatch + 0.005));
     if (bad) return setError(`Only ${kg(bad.fromBatch)} of ${bad.name.toLowerCase()} from this batch is left. Take the rest from a lot.`);
     if (!(freshKg > 0)) return setError('Enter the ingredients weighed in.');
     if (!(madeKg > 0)) return setError('Enter the chocolate taken out.');
     setSaving(true);
     const lot = await store.saveMixingRun({
       batchId: batch.id, recipeId: recipe.id, toRun: Number(toRun), made: madeKg, kept: keptKg, expectMixer: openedOn,
-      ingredients: rows.map((r) => ({ name: r.name, actual: Number(r.actual) || 0, lotId: r.source || undefined })),
+      // One entry for each place an ingredient came from.
+      ingredients: rows.flatMap((r) => r.parts.filter((p) => Number(p.kg) > 0).map((p) => ({ name: r.name, actual: Number(p.kg), lotId: p.source || undefined }))),
     });
     setSaving(false);
     if (lot) onSaved(`${recipe.name} saved: ${kg(madeKg)} made as lot ${lot}${keptKg > 0 ? `, ${kg(keptKg)} kept in the mixer` : ''}.`);
@@ -231,16 +263,45 @@ function RunForm({ batch, onSaved, onRestart }: { batch: Batch; onSaved: (messag
           <div className="border-t border-line">
             <div className="hidden grid-cols-[1fr_90px_110px_140px_1fr] gap-3 px-5 py-2 text-[11px] font-bold tracking-wide text-faint uppercase md:grid"><span>Ingredient</span><span className="text-right">In mixer</span><span className="text-right">To add</span><span>Weighed in</span><span>From</span></div>
             {rows.map((r) => (
-              <div key={r.name} className="grid gap-2 border-t border-line px-5 py-3 md:grid-cols-[1fr_90px_110px_140px_1fr] md:items-center md:gap-3">
-                <span><strong>{r.name}</strong> <span className="text-[12px] text-muted">{r.percent}%</span></span>
-                <span className="text-[13px] text-muted md:text-right">{r.inMixer > 0 ? `${kg(r.inMixer)} in mixer` : <span className="md:hidden">nothing in mixer</span>}</span>
-                <span className="text-[13px] md:text-right">Add <strong className="tabular-nums">{kg(r.add)}</strong></span>
-                <UnitInput unit="kg" value={r.actual} onChange={(e) => setLine(r.name, { actual: e.target.value })} aria-label={`${r.name} weighed in`} />
-                <Select value={r.source} onChange={(e) => setLine(r.name, { source: e.target.value })} aria-label={`${r.name} from`}>
-                  {r.fromBatch > 0 && <option value="">This batch · {kg(r.fromBatch)} left</option>}
-                  {r.lots.map((l) => <option key={l.id} value={l.id}>{l.id} · {kg(l.available)} available</option>)}
-                  {r.fromBatch <= 0 && r.lots.length === 0 && <option value="">No {r.name.toLowerCase()} in store</option>}
-                </Select>
+              <div key={r.name} className="border-t border-line px-5 py-3">
+                {r.parts.map((p, index) => {
+                  const nth = index ? ` (${index + 1})` : '';
+                  // More than the place holds on record: offer to take the rest from the next one.
+                  const short = (p.source !== '' || r.fromBatch > 0) && (Number(p.kg) || 0) > p.has + 0.005;
+                  return (
+                    <div key={index} className={index ? 'mt-2' : undefined}>
+                      <div className="grid gap-2 md:grid-cols-[1fr_90px_110px_140px_1fr] md:items-center md:gap-3">
+                        {index === 0 ? (
+                          <>
+                            <span><strong>{r.name}</strong> <span className="text-[12px] text-muted">{r.percent}%</span></span>
+                            <span className="text-[13px] text-muted md:text-right">{r.inMixer > 0 ? `${kg(r.inMixer)} in mixer` : <span className="md:hidden">nothing in mixer</span>}</span>
+                            <span className="text-[13px] md:text-right">Add <strong className="tabular-nums">{kg(r.add)}</strong></span>
+                          </>
+                        ) : <span className="text-[12px] text-muted md:col-span-3 md:text-right">and from</span>}
+                        <UnitInput unit="kg" value={p.kg} onChange={(e) => setPart(r, index, { kg: e.target.value })} aria-label={`${r.name} weighed in${nth}`} />
+                        <span className="flex items-center gap-2">
+                          <Select value={p.source} onChange={(e) => setPart(r, index, { source: e.target.value })} aria-label={`${r.name} from${nth}`}>
+                            {p.free.map((s) => <option key={s} value={s}>{s === '' ? `This batch · ${kg(r.fromBatch)} left` : `${s} · ${kg(r.has(s))} available`}</option>)}
+                            {p.free.length === 0 && <option value="">No {r.name.toLowerCase()} in store</option>}
+                          </Select>
+                          {index > 0 && <button type="button" className="btn btn-ghost" style={{ minHeight: 44, padding: '6px 10px' }} onClick={() => setParts(r.name, r.parts.filter((_, j) => j !== index).map((x) => ({ kg: x.kg, source: x.source })))} aria-label={`Remove ${r.name} from ${p.source || 'this batch'}`}><X size={15} /></button>}
+                        </span>
+                      </div>
+                      {short && (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12px] text-warn">
+                          <span>{p.source || 'This batch'} has only {kg(p.has)}.</span>
+                          {r.unused.length > 0
+                            ? <button type="button" className="btn-text font-semibold" onClick={() => takeRest(r, index)}>Take the other {kg(round2((Number(p.kg) || 0) - p.has))} from {r.unused[0] || 'this batch'}</button>
+                            : <span>{p.source ? `No other lot of ${r.name.toLowerCase()} is in store: the lot is saved as used up.` : `No lot of ${r.name.toLowerCase()} is in store.`}</span>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-[12px] text-muted">
+                  {r.unused.length > 0 ? <button type="button" className="btn-text font-semibold text-green" onClick={() => setParts(r.name, [...r.parts.map((x) => ({ kg: x.kg, source: x.source })), { kg: '', source: r.unused[0] }])}>+ From another lot too</button> : <span />}
+                  {r.parts.length > 1 && <span>{r.name} weighed in: <strong className="text-ink tabular-nums">{kg(r.actual)}</strong></span>}
+                </div>
               </div>
             ))}
             <div className="grid gap-4 border-t border-line p-5 sm:grid-cols-2">

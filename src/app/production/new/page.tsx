@@ -2,10 +2,10 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowRight, Check } from 'lucide-react';
+import { ArrowRight, Check, X } from 'lucide-react';
 import { Back, Button, Field, Input, LinkButton, Notice, PageHeader, Panel, Select, Textarea, UnitInput } from '@/components/ui';
 import { DestinationSelect, LiveBalance, WeightField, emptyWeight, netWeight, type WeightValue } from '@/components/weighing';
-import { calculateBalance } from '@/lib/balance';
+import { calculateBalance, round2 } from '@/lib/balance';
 import { defaultDestination, lotOrigin, suggestBatchName } from '@/lib/derive';
 import { kg } from '@/lib/format';
 import { useStore } from '@/lib/store';
@@ -13,6 +13,9 @@ import { stationById, stationName } from '@/lib/stations';
 import type { Destination, Lot, OutputKind } from '@/lib/types';
 
 const beans = 'Cocoa beans';
+
+/** One lot a new batch takes its starting material from, with the weight taken */
+interface Part { kg: string; source?: string }
 
 /** Lots of a material with stock, oldest first: what a new batch can take from the store */
 const inStore = (lots: Lot[], material: string) => lots.filter((l) => l.unit === 'kg' && l.available > 0 && l.material === material).sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
@@ -31,11 +34,11 @@ function NewBatch() {
   const startsFrom = (material: string) => batchableProducts.find((p) => (material === beans ? p.route === 'beans' : store.routes.find((r) => r.id === p.route)?.startMaterial === material));
   const fromStore = params.has('lot') || params.has('chocolate');
   const [productId, setProductId] = useState(() => (startLot && startsFrom(startLot.material)?.id) || (fromStore && batchableProducts.find((p) => p.route === 'chocolate')?.id) || batchableProducts[0]?.id || '');
-  // null: the lot the page was opened from, else the oldest in store; '': not from a lot
-  const [lotId, setLotId] = useState<string | null>(null);
+  // What the batch starts from: one line for each lot, with the weight taken from it. A line without a
+  // source takes the lot the page was opened from, else the oldest in store; '' is not from a lot.
+  const [parts, setParts] = useState<Part[]>([{ kg: '' }]);
   const [batchName, setBatchName] = useState('');
   const [batchDate, setBatchDate] = useState(new Date().toISOString().slice(0, 10));
-  const [weight, setWeight] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -43,7 +46,23 @@ function NewBatch() {
   const product = batchableProducts.find((p) => p.id === productId);
   const route = store.routes.find((r) => r.id === product?.route);
   const stored = route ? inStore(store.lots, route.startMaterial) : [];
-  const fromLot = stored.find((l) => l.id === (lotId ?? (stored.some((x) => x.id === startLot?.id) ? startLot!.id : stored[0]?.id)));
+  const first = stored.some((x) => x.id === startLot?.id) ? startLot!.id : stored[0]?.id ?? '';
+  const lines = parts.map((p, index) => {
+    const lot = stored.find((l) => l.id === (p.source ?? first));
+    const taken = parts.filter((_, j) => j !== index).map((x) => x.source ?? first);
+    // A lot is offered on one line only.
+    return { kg: p.kg, lot, source: lot?.id ?? '', free: stored.filter((l) => l.id === lot?.id || !taken.includes(l.id)) };
+  });
+  const unused = stored.filter((l) => !lines.some((line) => line.source === l.id));
+  const startWeight = round2(lines.reduce((sum, line) => sum + (Number(line.kg) || 0), 0));
+  const keep = () => lines.map((line): Part => ({ kg: line.kg, source: line.source }));
+  const setPart = (index: number, patch: Partial<Part>) => setParts(keep().map((p, j) => (j === index ? { ...p, ...patch } : p)));
+  /** The lot does not hold the weight entered: it gives what it has, and the rest comes from the next lot */
+  const takeRest = (index: number) => {
+    const line = lines[index];
+    const rest = round2((Number(line.kg) || 0) - line.lot!.available);
+    setParts([...keep().map((p, j) => (j === index ? { ...p, kg: String(line.lot!.available) } : p)), { kg: String(rest), source: unused[0].id }]);
+  };
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (saving) return;
@@ -55,10 +74,10 @@ function NewBatch() {
       setSaving(true);
       id = await store.createBatch({ productId, name: batchName, batchDate, startWeight: 0, note, lotUses: [] });
     } else {
-      const startWeight = Number(weight);
       if (!(startWeight > 0)) return setError('Enter the weight from the scale.');
       setSaving(true);
-      id = await store.createBatch({ productId, name: batchName, batchDate, startWeight, note, lotUses: fromLot ? [{ lotId: fromLot.id, quantity: startWeight }] : [] });
+      // Each lot gives its own weight; a line that is not from a lot only counts towards the starting weight.
+      id = await store.createBatch({ productId, name: batchName, batchDate, startWeight, note, lotUses: lines.filter((line) => line.lot && Number(line.kg) > 0).map((line) => ({ lotId: line.lot!.id, quantity: Number(line.kg) })) });
     }
     setSaving(false);
     if (id) router.push(`/production/batches/${id}/record/${route.stations[0]}`);
@@ -66,7 +85,7 @@ function NewBatch() {
 
   const productField = (
     <Field label="Product">
-      <Select value={productId} onChange={(e) => setProductId(e.target.value)} aria-label="Product">
+      <Select value={productId} onChange={(e) => { setProductId(e.target.value); setParts([{ kg: '' }]); }} aria-label="Product">
         {batchableProducts.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
       </Select>
     </Field>
@@ -97,19 +116,41 @@ function NewBatch() {
         </Panel>
 
         {route?.id === 'pressing' && (
-          <Panel title="Starting material" subtitle="Choose the lot it is taken from, then enter the weight from the scale before the first station.">
-            <div className="grid gap-4 p-5 md:grid-cols-2">
-              <Field label="Taken from" hint={fromLot ? 'The weight is taken off this lot in the store.' : `No lot of ${route.startMaterial.toLowerCase()} is chosen, so nothing is taken off the store.`}>
-                <Select value={fromLot?.id ?? ''} onChange={(e) => setLotId(e.target.value)} aria-label="Taken from">
-                  {stored.map((l) => <option key={l.id} value={l.id}>{l.id} · {kg(l.available)} in store · {lotOrigin(store, l)}</option>)}
-                  <option value="">Not from a lot in store</option>
-                </Select>
-              </Field>
-              <Field label="Starting weight" hint="Whatever the scale shows before pressing.">
-                <UnitInput unit="kg" value={weight} onChange={(e) => setWeight(e.target.value)} aria-label="Starting weight" required autoFocus />
-              </Field>
+          <Panel title="Starting material" subtitle="Choose the lot it is taken from and enter the weight from the scale before the first station. Add a line for each lot it comes from.">
+            <div className="p-5">
+              {lines.map((line, index) => {
+                const nth = index ? ` (${index + 1})` : '';
+                const short = line.lot && Number(line.kg) > line.lot.available + 0.005;
+                return (
+                  <div key={index} className={index ? 'mt-4' : undefined}>
+                    <div className="grid gap-4 md:grid-cols-[1fr_200px_auto] md:items-start">
+                      <Field label={index ? 'And from' : 'Taken from'} hint={line.lot ? 'The weight is taken off this lot in the store.' : `No lot of ${route.startMaterial.toLowerCase()} is chosen, so nothing is taken off the store.`}>
+                        <Select value={line.source} onChange={(e) => setPart(index, { source: e.target.value })} aria-label={`Taken from${nth}`}>
+                          {line.free.map((l) => <option key={l.id} value={l.id}>{l.id} · {kg(l.available)} in store · {lotOrigin(store, l)}</option>)}
+                          <option value="">Not from a lot in store</option>
+                        </Select>
+                      </Field>
+                      <Field label={index ? 'Weight from this lot' : lines.length > 1 ? 'Weight from this lot' : 'Starting weight'} hint={index ? undefined : 'Whatever the scale shows before pressing.'}>
+                        <UnitInput unit="kg" value={line.kg} onChange={(e) => setPart(index, { kg: e.target.value })} aria-label={`Starting weight${nth}`} required={index === 0} autoFocus={index === 0} />
+                      </Field>
+                      {index > 0 && <button type="button" className="btn btn-ghost md:mt-6" style={{ minHeight: 44, padding: '6px 10px' }} onClick={() => setParts(keep().filter((_, j) => j !== index))} aria-label={`Remove ${line.source || 'this line'}`}><X size={15} /></button>}
+                    </div>
+                    {short && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-warn">
+                        <span>{line.lot!.id} has only {kg(line.lot!.available)} on record.</span>
+                        {unused.length > 0
+                          ? <button type="button" className="btn-text font-semibold" onClick={() => takeRest(index)}>Take the other {kg(round2(Number(line.kg) - line.lot!.available))} from {unused[0].id}</button>
+                          : <span>No other lot of {route.startMaterial.toLowerCase()} is in store: the batch is saved at the scale weight and the lot goes to zero.</span>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[13px]">
+                {unused.length > 0 ? <button type="button" className="btn-text font-semibold text-green" onClick={() => setParts([...keep(), { kg: '', source: unused[0].id }])}>+ From another lot too</button> : <span />}
+                {lines.length > 1 && <span className="text-muted">Starting weight: <strong className="text-ink tabular-nums">{kg(startWeight)}</strong></span>}
+              </div>
             </div>
-            {fromLot && Number(weight) > fromLot.available + 0.005 && <div className="px-5 pb-5"><Notice tone="warn">The scale shows {kg(Number(weight))} but lot {fromLot.id} has only {kg(fromLot.available)} on record. The batch is saved at the scale weight and the lot goes to zero.</Notice></div>}
           </Panel>
         )}
 
