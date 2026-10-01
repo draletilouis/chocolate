@@ -137,7 +137,7 @@ The root layout mounts `StoreProvider` and then `Shell`. On start the store asks
 
 **Demo mode.** With `DEMO_MODE=true` (the default when there is no `DATABASE_URL`), the sample factory from `src/lib/seed.ts` is loaded with five staff who all use the PIN `1234` and the password `cocoa123`, every device can use PINs, and **Setup → Business details → Reset demo data** puts the sample factory back and signs everyone out.
 
-**Records kept in a browser by earlier versions.** Before the move to a server, each browser kept its own copy of the records in `localStorage` (`cocoa-production-v1`). When a manager opens **Setup → Business details** in such a browser, a panel offers to upload it. `migrateLegacy()` in `src/server/reduce.ts` upgrades the old data (line layout, output rows, limits, containers). The upload replaces the server's batches, lots and settings, keeps the people already on the server, and adds the browser's other people with their passwords and PINs, except the sample `cocoa123` and `1234`, which are public: those people need a new password or PIN from a manager before they can sign in.
+**Records kept in a browser by earlier versions.** Before the move to a server, each browser kept its own copy of the records in `localStorage` (`cocoa-production-v1`). When a manager opens **Setup → Business details** in such a browser, a panel offers to upload it. `migrateLegacy()` in `src/server/reduce.ts` upgrades the old data (line layout, output rows, chocolate types, limits, containers; see section 12). The upload replaces the server's batches, lots and settings, keeps the people already on the server, and adds the browser's other people with their passwords and PINs, except the sample `cocoa123` and `1234`, which are public: those people need a new password or PIN from a manager before they can sign in.
 
 ## 4. Production line model
 
@@ -204,7 +204,7 @@ Liquor is weighed once, after fine grinding. The Liquor grinding result screen s
 
 For stored-nib products the worker enters a starting weight. **Chocolate from store** needs no starting weight: the batch opens at Mixing, where each run takes its ingredients from lots.
 
-**Chocolate types.** A chocolate type is a recipe (`Recipe` in `src/lib/types.ts`, seeded in `src/lib/seed.ts`), chosen for each run at mixing rather than as a product. The nine types and their recipes come from the factory's "Dark Chocolate types & Changeover Recipes" sheet, as percentages of the batch weight; ingredients at 0% are left out, and none uses lecithin:
+**Chocolate types.** A chocolate type is a recipe (`Recipe` in `src/lib/types.ts`, seeded in `src/lib/seed.ts`), chosen for each run at mixing rather than as a product. The eight types and their recipes come from the factory's "Regular recipes" table, as percentages of the batch weight; ingredients at 0% are left out, and none uses lecithin:
 
 | Type | Liquor | Cocoa butter | Sugar | Milk powder |
 | --- | --- | --- | --- | --- |
@@ -212,7 +212,6 @@ For stored-nib products the worker enters a starting weight. **Chocolate from st
 | 40% Milk | 11 | 30 | 34 | 25 |
 | 50% Milk | 25 | 25 | 25 | 25 |
 | 54% Dark | 44 | 10 | 46 | — |
-| 55% Dark | 45 | 10 | 45 | — |
 | 56% Dark | 50 | 10 | 40 | — |
 | 70% Dark | 60 | 10 | 30 | — |
 | 85% Dark | 75 | 10 | 15 | — |
@@ -326,7 +325,7 @@ Mixing has its own screen (`MixingScreen` in `src/components/MixingScreen.tsx`) 
 
 **A run.** The operator chooses the chocolate type and the kg of fresh ingredients to run (the sheet's "To run"). `changeover()` in `src/lib/mixing.ts` then does the changeover sheet's calculation: the run makes *to run + held* kg of the new type; each ingredient needed for that total, less what the held chocolate already brings, is what to add. For example, 30 kg of 70% Dark on 10 kg of 85% Dark makes 40 kg: liquor 24 − 7.5 = **16.5**, cocoa butter 4 − 1 = **3**, sugar 12 − 1.5 = **10.5**. The screen shows, per ingredient, what the mixer already holds, what to add, the weight actually weighed in (prefilled with what to add) and where it comes from: **this batch** (the liquor and cocoa butter it sent to mixing, up to what is left) or a lot, oldest first. The operator enters the chocolate taken out and what is kept in the mixer; the live bar checks *fresh + held = taken out + kept*.
 
-- An ingredient the held chocolate has more of than the new type cannot be taken out again, so a changeover has a **smallest run** (`minRun`): below it the recipe cannot be reached and the run is refused (for example at least 30 kg of 85% Dark on 15 kg of 55% Dark, as in the sheet).
+- An ingredient the held chocolate has more of than the new type cannot be taken out again, so a changeover has a **smallest run** (`minRun`): below it the recipe cannot be reached and the run is refused (for example at least 25 kg of 85% Dark on 15 kg of 56% Dark: its 6 kg of sugar is 15% of 40 kg).
 - When the new type has none of an ingredient the held chocolate has (sugar into 100% Dark, milk powder into a dark chocolate), the run is refused until the chocolate is **taken out of the mixer** (`emptyMixer`). What is taken out becomes a lot of that chocolate, traced to the batch whose run left it; that run then shows the lot instead of "left in the mixer".
 - The chocolate taken out becomes a lot of the type, numbered by type code: `D70-0001` for 70% Dark, `M40-…` for 40% Milk, `W34-…` for 34% White (`nextLotId()`). Ingredient lots are drawn down by the weight weighed in, and each use records the run.
 - The run is refused when the mixer changed since the screen was opened (`mixerStamp()`), so two devices cannot build on the same leftover.
@@ -516,7 +515,14 @@ The Setup screens send commands to the server like the production screens, so a 
 - Routes keep their station sequence fixed because station IDs are part of production and report logic; only route descriptive fields are editable.
 - Recipe version history, station measurements, holds, corrections, and production-created lots are audit data, not disposable setup rows.
 
-A real factory starts with the line configuration from `configState()`: the bean, stored-nib and Chocolate from store products, the nine chocolate types from the factory's changeover recipes sheet (section 5), an empty mixer, the piece sizes (7 g, 45 g and 80 g bars, 200 g sachet, and 1 kg pack; more can be added), three routes, the containers, output rows and threshold values. It has no batches, lots, suppliers or people until they are entered, and its contact details in Setup → Business details start blank. The demo (`seedState()`) adds three suppliers, five staff, sample lots and sample batches.
+A real factory starts with the line configuration from `configState()`: the bean, stored-nib and Chocolate from store products, the eight chocolate types from the factory's regular recipes table (section 5), an empty mixer, the piece sizes (7 g, 45 g and 80 g bars, 200 g sachet, and 1 kg pack; more can be added), three routes, the containers, output rows and threshold values. It has no batches, lots, suppliers or people until they are entered, and its contact details in Setup → Business details start blank. The demo (`seedState()`) adds three suppliers, five staff, sample lots and sample batches.
+
+**A database started by an older version.** The configuration is stored once, when the database is empty. When a newer version of the app starts on an existing database whose workflow version is lower than the app's (`WORKFLOW_VERSION` in `src/lib/seed.ts`), `upgradeConfiguration()` in `src/server/reduce.ts` brings it up to date and logs an `upgradeConfiguration` entry in `app_commands`. Batches, lots and what the factory added itself are kept:
+
+- From before version 3: the routes and output rows become the current ones (custom rows stay), **Chocolate from store** is added, and a product that stood for one chocolate type stays only where a batch was made of it.
+- The chocolate types become those of the recipes table. A type that was already made keeps its versions and gets the table's recipe as a new version; a type never made is replaced by the table's; a type earlier versions started with that the table does not have (55% Dark) is removed unless it was made or is on the production plan. Types the factory added itself stay.
+
+Raise `WORKFLOW_VERSION` when the seeded configuration changes, so existing databases get it too.
 
 ## 13. Navigation and visual system
 

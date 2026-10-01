@@ -290,7 +290,7 @@ async function expectText(page, text) {
 
   // Chocolate types: the sheet's recipes, versions and expected vs actual.
   await page.goto(`${BASE}/recipes`);
-  for (const t of ['34% White', '50% Milk', '55% Dark', '100% Dark', 'Liquor 44% · Cocoa butter 10% · Sugar 46%']) await expectText(page, t);
+  for (const t of ['34% White', '50% Milk', '56% Dark', '100% Dark','Liquor 44% · Cocoa butter 10% · Sugar 46%']) await expectText(page, t);
   await page.getByRole('link', { name: /70% Dark/ }).click();
   for (const t of ['v1', 'Liquor 60% · Cocoa butter 10% · Sugar 30%', 'Expected vs actual', 'CH-017', 'CB-025', '+0.10 kg']) await expectText(page, t);
   await page.getByRole('button', { name: 'New version' }).click();
