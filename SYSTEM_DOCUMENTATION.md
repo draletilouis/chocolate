@@ -6,7 +6,7 @@ This document explains the current implementation of the Chocolate Factory produ
 
 Chocolate Factory records the movement of material through a chocolate-production line:
 
-1. A worker signs in with their name and PIN and opens a batch from **My work**, a station queue, search or a scanned QR code.
+1. A worker signs in with their name and PIN and opens a batch from **My work**, a station queue or search.
 2. On one screen, the worker checks the input and enters only the weights or counts observed at that station. Each output already shows where it goes: another station, stock, sale, rework or waste.
 3. The app checks the mass balance while the weights are typed and saves everything in one step.
 4. Continued material becomes the next station's input; stored, for-sale and rejected outputs become separate lots or waste records.
@@ -37,7 +37,7 @@ The main runtime layers are:
 | Sign-in | `src/components/LoginScreen.tsx` | First-start setup, quick sign-in with a PIN on set-up devices, and email and password. |
 | Shared UI | `src/components/ui.tsx` | Reusable headers, panels, buttons, fields, tables, badges, notices, stats, and navigation tabs. |
 | Weighing UI | `src/components/weighing.tsx` | Weight field with container tare, destination tags, the live balance bar and the one-line saved verdict. |
-| Labels | `src/components/BatchLabel.tsx` | Printable batch cards and material labels with a QR code that opens the record (`/scan/<id>`). |
+| Labels | `src/components/BatchLabel.tsx` | Printable batch cards and material labels with the batch name and supplier. |
 | Domain configuration | `src/lib/stations.ts` | Defines the seventeen stations, five line parts, station inputs/outputs, output rows with default destinations, and allowed next stations. |
 | Domain types and state | `src/lib/types.ts`, `src/lib/seed.ts` | Defines the data model, the sample factory (`seedState()`) and the configuration a real factory starts with (`configState()`). |
 | Business calculations | `src/lib/balance.ts` | Calculates station balances, percentages, rounding, and packaging quantities. |
@@ -221,7 +221,7 @@ Ingredient names are the material names of the lots weighed in (`chocolateIngred
 
 `/production/new?lot=<id>` and `?chocolate=1` pick the Chocolate from store product; lot pages of liquor, cocoa butter, sugar or milk powder link here with **Mix chocolate from store**, and the Mixing queue with **Mix from store**. The worker also enters the calendar date on which the batch started. It defaults to today, so historical batches can be entered.
 
-The optional batch name is trimmed and stored separately from the generated batch ID. The name is used in queues, alerts, records, labels and reports; the ID remains the key for URLs, lot uses, QR codes and traceability.
+The optional batch name is trimmed and stored separately from the generated batch ID. The name is used in queues, alerts, records, labels and reports; the ID remains the key for URLs, lot uses and traceability.
 
 `createBatch()` then:
 
@@ -400,13 +400,13 @@ Receiving material at `/materials/receive` always creates a kilogram supplier lo
 
 Saving station destinations creates lots only for outputs sent to `stock`, `sale` or `rework`. Outputs sent to `sale` become Finished goods lots. Continued outputs stay attached to the batch path, and waste outputs do not create lots. Packaging's accepted output creates a Finished goods lot measured in units and named with the product and pack size. Other stored/rework outputs create kilogram lots.
 
-Lots made by a batch show a printable label on their lot page, and a bean batch prints a batch card from its receiving screen or batch page. Labels carry the batch name, batch ID, supplier(s), weight, date, lot ID and a QR code for `/scan/<batch or lot ID>`. `scanTarget()` opens a batch at the station where it is waiting (or its batch page when it waits at more than one), and a lot at its lot page. Scanning works with the phone's own camera app.
+Lots made by a batch show a printable label on their lot page, and a bean batch prints a batch card from its receiving screen or batch page. Labels carry the batch name, batch ID, supplier(s), weight, date and lot ID.
 
 Each lot records its source, received quantity, available quantity, and uses. When a source lot is selected for a new chocolate batch, the actual amount used is appended to the lot's use history and subtracted from availability. The lot page links upstream source lots, the creating batch/station, downstream batch uses, and lots made by those downstream batches.
 
 Lot IDs are generated in `nextLotId()` using material-specific prefixes such as `BEAN`, `WRB`, `NIB`, `SILK`, `BUT`, `PWD`, `LIQ`, `REW`, and `FIN`, followed by a four-digit sequence. Chocolate made at mixing is numbered by type code: `D70` for 70% Dark, `M40` for 40% Milk, `W34` for 34% White. Batch IDs are generated in `nextBatchId()` from the product prefix and a three-digit sequence.
 
-**Numbers are never reused.** A lot or batch can be removed: an unused supplier lot or a blank batch can be deleted, and saving a station again removes the lots it made for outputs it no longer stores (the output now continues or goes to waste, or was renamed). Its number stays taken, so a printed label or QR code for it finds nothing instead of opening a different lot or batch, and traceability back to the supplier holds. The state keeps `idCounters`: the highest number issued for each batch prefix and each lot prefix, stored as a setting. After every command, `applyCommand()` raises the counters to cover every batch and lot ID from before and after the command, inside the same transaction. The next number is one above the counter or the highest ID in use, whichever is higher. A new lot made in the same save that drops another cannot take the dropped lot's number either. A database saved before the counters existed needs no migration step: its numbers continue from its highest IDs, and its counters fill in as commands run. Uploading records from an older browser keeps the server's counters, so numbers the server already issued stay taken.
+**Numbers are never reused.** A lot or batch can be removed: an unused supplier lot or a blank batch can be deleted, and saving a station again removes the lots it made for outputs it no longer stores (the output now continues or goes to waste, or was renamed). Its number stays taken, so a printed label for it finds nothing instead of opening a different lot or batch, and traceability back to the supplier holds. The state keeps `idCounters`: the highest number issued for each batch prefix and each lot prefix, stored as a setting. After every command, `applyCommand()` raises the counters to cover every batch and lot ID from before and after the command, inside the same transaction. The next number is one above the counter or the highest ID in use, whichever is higher. A new lot made in the same save that drops another cannot take the dropped lot's number either. A database saved before the counters existed needs no migration step: its numbers continue from its highest IDs, and its counters fill in as commands run. Uploading records from an older browser keeps the server's counters, so numbers the server already issued stay taken.
 
 ## 9. Holds and corrections
 
@@ -450,7 +450,6 @@ Alerts appear in the Overview, in the production navigation counts, on batch pag
 | `/plan` | **Production plan**: pieces planned, made and left per chocolate type and size, the chocolate still to mix, the ingredients it takes against store; managers set and change the plan. |
 | `/work` | My work: batches waiting at the signed-in person's stations (all stations for people without their own), with one button to record each, search, and **Receive a delivery**. |
 | `/search?q=` | Finds batches (name, ID, product, supplier) and lots (ID, material, supplier). |
-| `/scan/[code]` | Target of the QR codes on labels: opens the batch where it is waiting, or the lot. |
 | `/production` | Active batches, where each is waiting, holds, and the five production parts. |
 | `/production/new` | Receive a delivery (bean batches: batch and receiving in one form), or start a stored-nib or Chocolate from store batch; `?lot=` or `?chocolate=1` picks Chocolate from store. |
 | `/production/parts/[part]` | Shows batches waiting in one line part and lists its stations. |

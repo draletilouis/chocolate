@@ -233,18 +233,6 @@ export function searchRecords(state: State, query: string) {
   };
 }
 
-/** Where a scanned code should open: a batch at the station it is waiting at, or a lot */
-export function scanTarget(state: State, code: string): string | null {
-  const id = decodeURIComponent(code).trim().toUpperCase();
-  const batch = state.batches.find((b) => b.id.toUpperCase() === id);
-  if (batch) {
-    const stations = waitingAt(batch);
-    return batch.status === 'active' && stations.length === 1 ? `/production/batches/${batch.id}/record/${stations[0]}` : `/production/batches/${batch.id}`;
-  }
-  const lot = state.lots.find((l) => l.id.toUpperCase() === id);
-  return lot ? `/materials/${lot.id}` : null;
-}
-
 /** Suggested destination for an output: the row's own default, else by kind */
 export function defaultDestination(station: StationId, name: string, kind: OutputKind, index: number): Destination {
   const suggested = stationById[station].rows.find((row) => row.name === name)?.to;

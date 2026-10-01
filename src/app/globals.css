@@ -323,7 +323,6 @@
   .verdict.is-warn { background: #fffbeb; color: #b45309; border-color: #fde68a; }
   .verdict.is-neutral { background: #fff; color: #334155; }
   .verdict-toggle { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 4px; font-size: 13px; font-weight: 700; color: inherit; }
-  .label-qr { width: 104px; flex: 0 0 104px; } .label-qr svg { width: 104px; height: 104px; display: block; }
 
   /* ---------- My work ---------- */
   .work-card { display: grid; gap: 10px; padding: 16px 20px; border-bottom: 1px solid #f1f5f9; }

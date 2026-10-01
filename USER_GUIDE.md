@@ -46,10 +46,7 @@ The sections are:
 
 On a phone, use the bottom bar. On a desktop, use the sidebar.
 
-**Finding a batch or lot:**
-
-- **Search:** type a batch name, batch ID, lot ID, material or supplier into the search box (top bar on a desktop, magnifier on a phone, or the box on **My work**).
-- **Scan:** point the phone camera at the QR code on a batch card or label and open the link. It goes straight to the station where that batch is waiting.
+**Finding a batch or lot:** type a batch name, batch ID, lot ID, material or supplier into the search box (top bar on a desktop, magnifier on a phone, or the box on **My work**).
 
 ## 3. Start a batch
 
@@ -61,7 +58,7 @@ On a phone, use the bottom bar. On a desktop, use the sidebar.
 4. Enter the **Accepted beans** and any **Rejected beans**. The bar at the bottom checks the balance while you type.
 5. Select **Save delivery**.
 
-The batch and its receiving record are saved together. The next screen shows the **Batch card**, which carries the batch name, the supplier and a QR code. Select **Print batch card** and keep it with the beans, then select **Record sorting** when they are sorted.
+The batch and its receiving record are saved together. The next screen shows the **Batch card**, which carries the batch name and the supplier. Select **Print batch card** and keep it with the beans, then select **Record sorting** when they are sorted.
 
 ### Other batches
 
@@ -78,7 +75,7 @@ The system keeps a unique batch ID such as `CH-019` for links and traceability.
 
 ## 4. Record work at a station
 
-Open the batch from **My work**, a station queue, the batch page or a scanned code. Everything for the station is on one screen:
+Open the batch from **My work**, a station queue, the batch page or search. Everything for the station is on one screen:
 
 1. **Input.** The weight sent from the previous station is already filled in. If you reweighed it, select **Reweighed? Change** and enter the new reading.
 2. **Weights.** Enter the kilograms beside each output. Leave a row empty if there was none. Select **Add another output** for anything not listed.
@@ -258,7 +255,7 @@ Select a lot from **Materials** to see:
 
 This is the traceability path from a supplier delivery through production.
 
-Lots made by a batch also show a printable **label** with the batch name, supplier, weight and a QR code; scanning the code opens the lot. Lots of chocolate ingredients (liquor, cocoa butter, sugar or milk powder) have a **Mix chocolate from store** button that starts a Chocolate from store batch.
+Lots made by a batch also show a printable **label** with the batch name, supplier and weight. Lots of chocolate ingredients (liquor, cocoa butter, sugar or milk powder) have a **Mix chocolate from store** button that starts a Chocolate from store batch.
 
 ## 11. Manage chocolate types and recipes
 
