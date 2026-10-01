@@ -149,7 +149,7 @@ Liquor from liquor grinding and cocoa butter from the filter pan go on to **Mixi
 
 Repeat for the next type. Some changeovers are not possible on top of what the mixer holds:
 
-- **Too small a run:** for example 85% Dark on 15 kg of 55% Dark needs at least 30 kg, because the sugar already in the mixer cannot be taken out again. The screen tells you the smallest run.
+- **Too small a run:** for example 85% Dark on 15 kg of 56% Dark needs at least 25 kg, because the sugar already in the mixer cannot be taken out again. The screen tells you the smallest run.
 - **An ingredient the new type has none of:** 100% Dark after a sweetened chocolate, or a dark chocolate after milk chocolate. Select **Take it out of the mixer** first; what you take out becomes a lot of that chocolate.
 
 Made a mistake in the last run? Select **Undo** on it and enter it again. When the last type for the batch is made, select **Finish mixing**. Liquor or cocoa butter the batch did not use is kept in store as a lot, and the batch is ready to complete.
@@ -262,7 +262,7 @@ Lots made by a batch also show a printable **label** with the batch name, suppli
 
 ## 11. Manage chocolate types and recipes
 
-Open **Chocolate types** to see every type with its current recipe and how many mixing runs made it. The factory starts with the types from its changeover recipes sheet:
+Open **Chocolate types** to see every type with its current recipe and how many mixing runs made it. The factory starts with the types from its regular recipes table:
 
 | Type | Liquor | Cocoa butter | Sugar | Milk powder |
 | --- | --- | --- | --- | --- |
@@ -270,7 +270,6 @@ Open **Chocolate types** to see every type with its current recipe and how many 
 | 40% Milk | 11% | 30% | 34% | 25% |
 | 50% Milk | 25% | 25% | 25% | 25% |
 | 54% Dark | 44% | 10% | 46% | — |
-| 55% Dark | 45% | 10% | 45% | — |
 | 56% Dark | 50% | 10% | 40% | — |
 | 70% Dark | 60% | 10% | 30% | — |
 | 85% Dark | 75% | 10% | 15% | — |

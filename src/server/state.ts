@@ -4,7 +4,7 @@ import { applyItems, collections, diffState, settings, stateFromItems, type Item
 import type { Access } from '@/lib/types';
 import { hashSecret, shortId } from './crypto';
 import { factoryNow, getDb, type Db, type Query } from './db';
-import { applyCommand } from './reduce';
+import { applyCommand, upgradeConfiguration } from './reduce';
 
 interface Cache { version: number; state: State }
 const g = globalThis as typeof globalThis & { __cocoaCache?: Cache; __cocoaInit?: Promise<void> };
@@ -49,12 +49,39 @@ async function seedInto(q: Query) {
   }
 }
 
-/** First start of a new database */
+/** Stores changed items under a new data version */
+async function writeItems(q: Query, items: Item[], version: number) {
+  for (const item of items) {
+    await q(
+      `insert into app_items (kind, id, version, deleted, data) values ($1, $2, $3, $4, $5)
+       on conflict (kind, id) do update set version = excluded.version, deleted = excluded.deleted, data = excluded.data`,
+      [item.kind, item.id, version, item.data === null, item.data === null ? null : JSON.stringify(item.data)],
+    );
+  }
+}
+
+/** A database started by an older version: brings its line configuration and chocolate types up to date */
+async function upgradeInto(q: Query) {
+  const { version, state } = await loadAll(q);
+  const upgraded = upgradeConfiguration(state, factoryNow());
+  const items = diffState(state, upgraded);
+  if (items.length === 0) return;
+  await writeItems(q, items, version + 1);
+  // Lists show in stored order: the current configuration first, in its own order.
+  for (const kind of ['routes', 'products', 'outputCategories', 'recipes'] as const) {
+    for (const item of upgraded[kind]) await q("update app_items set pos = nextval(pg_get_serial_sequence('app_items', 'pos')) where kind = $1 and id = $2", [kind, item.id]);
+  }
+  await q('update app_meta set version = $1 where id = 1', [version + 1]);
+  await q('insert into app_commands (version, type, payload) values ($1, $2, $3)', [version + 1, 'upgradeConfiguration', JSON.stringify({ from: state.workflowVersion, to: upgraded.workflowVersion })]);
+}
+
+/** First start of a new database, or of a new version on an existing one */
 async function initialize(db: Db) {
   await db.transaction(async (q) => {
     await q('select pg_advisory_xact_lock(4242)');
     const { rows } = await q('select version from app_meta where id = 1');
     if (!rows.length) await seedInto(q);
+    else await upgradeInto(q);
   });
 }
 
@@ -145,13 +172,7 @@ export async function execute(command: Command, actor: Actor, precondition?: (st
     const secrets = secretsOf(command, result);
     if (items.length === 0 && secrets.length === 0) return { version: cache.version, result };
     const version = cache.version + 1;
-    for (const item of items) {
-      await q(
-        `insert into app_items (kind, id, version, deleted, data) values ($1, $2, $3, $4, $5)
-         on conflict (kind, id) do update set version = excluded.version, deleted = excluded.deleted, data = excluded.data`,
-        [item.kind, item.id, version, item.data === null, item.data === null ? null : JSON.stringify(item.data)],
-      );
-    }
+    await writeItems(q, items, version);
     for (const secret of secrets) await setCredentials(q, secret);
     if (command.type === 'deleteUser') {
       await q('delete from app_credentials where user_id = $1', [command.userId]);

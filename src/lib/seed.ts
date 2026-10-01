@@ -33,8 +33,12 @@ export interface State {
   plan: ProductionPlan | null;
 }
 
-/** 2: sorting, butter & powder and liquor as separate parts of the line. 3: chocolate made in mixing runs. */
-const WORKFLOW_VERSION = 3;
+/**
+ * 2: sorting, butter & powder and liquor as separate parts of the line. 3: chocolate made in mixing runs.
+ * 4: the chocolate types of the regular recipes table. Data from an older version is brought up to
+ * date by upgradeConfiguration().
+ */
+const WORKFLOW_VERSION = 4;
 
 const at = (day: string, time: string) => `${day}T${time}:00`;
 
@@ -62,20 +66,22 @@ export const routes: Route[] = [
 export const chocolateIngredients = ['Liquor', 'Cocoa butter', 'Sugar', 'Milk powder'] as const;
 
 /**
- * The chocolate types and their recipes, as in the factory's "Dark Chocolate types & Changeover
- * Recipes" sheet: percentages of the batch weight in liquor, cocoa butter, sugar and milk powder.
+ * The chocolate types and their recipes, as in the factory's "Regular recipes" table: percentages
+ * of the batch weight in liquor, cocoa butter, sugar and milk powder.
  */
 const chocolateTypes: [id: string, name: string, liquor: number, butter: number, sugar: number, milk: number][] = [
   ['WHITE', '34% White', 0, 35, 35, 30],
   ['MILK', '40% Milk', 11, 30, 34, 25],
   ['MILK50', '50% Milk', 25, 25, 25, 25],
   ['54', '54% Dark', 44, 10, 46, 0],
-  ['55', '55% Dark', 45, 10, 45, 0],
   ['56', '56% Dark', 50, 10, 40, 0],
   ['70', '70% Dark', 60, 10, 30, 0],
   ['85', '85% Dark', 75, 10, 15, 0],
   ['100', '100% Dark', 90, 10, 0, 0],
 ];
+
+/** Types earlier versions started with that the table does not have */
+export const retiredChocolateTypes = ['R-55'];
 
 export const products: Product[] = [
   { id: 'P-BEANS', name: 'Cocoa beans', prefix: 'CB', route: 'beans' },
@@ -86,7 +92,7 @@ export const products: Product[] = [
 export const recipes: Recipe[] = chocolateTypes.map(([id, name, liquor, butter, sugar, milk]) => ({
   id: `R-${id}`, name, currentVersion: 1,
   versions: [{
-    version: 1, createdAt: at('2026-09-01', '08:00'), note: 'From the changeover recipes sheet.',
+    version: 1, createdAt: at('2026-09-01', '08:00'), note: 'From the regular recipes table.',
     // Ingredients at 0% are left out: white chocolate has no liquor, 100% Dark no sugar.
     ingredients: [liquor, butter, sugar, milk].map((percent, i) => ({ name: chocolateIngredients[i], percent })).filter((i) => i.percent > 0),
   }],

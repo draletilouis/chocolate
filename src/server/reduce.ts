@@ -4,7 +4,7 @@ import { batchDisplayName, isReadyAt, issuedNumbers, nextBatchId, nextInput, nex
 import { kg } from '@/lib/format';
 import { piecesKg } from '@/lib/pieces';
 import { batchMaterialAtMixing, changeover, ingredientsOf, mixerStamp, mixingTotals, storedAtMixing, versionOf } from '@/lib/mixing';
-import { demoCredentials, seedState, type State } from '@/lib/seed';
+import { demoCredentials, retiredChocolateTypes, seedState, type State } from '@/lib/seed';
 import { stationById, stationName } from '@/lib/stations';
 import type { Batch, Lot, LotCategory, LotUse, Mixer, MixingRun, OutputCategory, Recipe, RecipeIngredient, RecordedOutput, RunIngredient, StationId, StationRecord, User } from '@/lib/types';
 
@@ -342,6 +342,10 @@ function checkUser(s: State, user: { email: string; stations: StationId[] }, exc
   if (s.users.some((u) => u.id !== exceptId && u.email.toLowerCase() === user.email.toLowerCase())) fail('Another person already uses that email address.');
 }
 
+/** Whether a chocolate type was ever made: in a mixing run, by an older chocolate batch, or it is in the mixer now */
+const wasMade = (s: State, recipeId: string) =>
+  s.batches.some((b) => b.recipeId === recipeId || b.records.some((r) => r.runs?.some((run) => run.recipeId === recipeId))) || s.mixer.holds?.recipeId === recipeId;
+
 /**
  * Applies one command. The ID counters then cover every batch and lot number from before and after
  * it, so a number this command removed (a deleted lot or batch, a lot dropped by a re-save, records
@@ -477,8 +481,7 @@ function runCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
     }
     case 'deleteRecipe': {
       const recipe = s.recipes.find((r) => r.id === cmd.recipeId) ?? fail('That chocolate type was not found.');
-      const mixed = s.batches.some((b) => b.recipeId === recipe.id || b.records.some((r) => r.runs?.some((run) => run.recipeId === recipe.id))) || s.mixer.holds?.recipeId === recipe.id;
-      if (mixed) fail('Chocolate types already made cannot be deleted.');
+      if (wasMade(s, recipe.id)) fail('Chocolate types already made cannot be deleted.');
       // Products from before chocolate was made in runs keep existing without the recipe.
       return { state: { ...s, recipes: s.recipes.filter((r) => r.id !== recipe.id), products: s.products.map((p) => (p.recipeId === recipe.id ? { ...p, recipeId: undefined } : p)) } };
     }
@@ -562,13 +565,55 @@ function runCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
   }
 }
 
+/**
+ * Brings data started by an older version up to the current line configuration. Batches, lots and
+ * what the factory added itself are kept.
+ *
+ * Before version 3 the line had other routes and output rows, and a product for each chocolate type:
+ * those become the current ones, and a type's product stays only where a batch was made of it.
+ *
+ * The chocolate types become those of the factory's recipes table. A type that was already made keeps
+ * its versions and gets the table's recipe as a new one; a type never made is replaced by the table's,
+ * and one the table does not have is removed.
+ */
+export function upgradeConfiguration(s: State, now: string): State {
+  const seed = seedState();
+  if (s.workflowVersion >= seed.workflowVersion) return s;
+  const withStored = <T extends { id: string }>(current: T[], stored: T[]) => [...current, ...stored.filter((x) => !current.some((c) => c.id === x.id))];
+  const line = s.workflowVersion >= 3 ? {} : {
+    routes: withStored(seed.routes, s.routes),
+    products: withStored(seed.products, s.products.filter((p) => !p.recipeId || s.batches.some((b) => b.productId === p.id))),
+    outputCategories: withStored(seed.outputCategories, s.outputCategories.filter((c) => c.custom && c.station in seed.thresholds.variancePct)),
+  };
+
+  const sameRecipe = (a: RecipeIngredient[], b: RecipeIngredient[]) => a.length === b.length && a.every((i) => b.some((j) => j.name === i.name && j.percent === i.percent));
+  const retired = (r: Recipe) => retiredChocolateTypes.includes(r.id) && !wasMade(s, r.id) && !s.plan?.lines.some((l) => l.recipeId === r.id);
+  const own = s.recipes.filter((r) => !seed.recipes.some((type) => type.id === r.id) && !retired(r));
+  const types = seed.recipes.flatMap((type): Recipe[] => {
+    const stored = s.recipes.find((r) => r.id === type.id);
+    const current = stored && versionOf(stored);
+    const upToDate = Boolean(current && sameRecipe(current.ingredients, type.versions[0].ingredients));
+    // Names are unique: one of the factory's own types with the table's name keeps it.
+    const nameTaken = own.some((r) => r.name.trim().toLowerCase() === type.name.toLowerCase());
+    if (stored && wasMade(s, stored.id)) {
+      const name = nameTaken ? stored.name : type.name;
+      if (upToDate) return [name === stored.name ? stored : { ...stored, name }];
+      const version = stored.versions.length + 1;
+      return [{ ...stored, name, currentVersion: version, versions: [...stored.versions, { ...type.versions[0], version, createdAt: now }] }];
+    }
+    if (nameTaken) return [];
+    return [stored && upToDate && stored.name === type.name && stored.versions.length === 1 ? stored : type];
+  });
+  return { ...s, ...line, recipes: [...types, ...own], workflowVersion: seed.workflowVersion };
+}
+
 type LegacyUser = Partial<User> & { password?: string; pin?: string };
 
 /**
  * Brings records a browser kept before the move to the server into the current shape: upgrades the
- * line layout, strips passwords and PINs out of the people (they are returned separately to be hashed).
+ * line configuration, strips passwords and PINs out of the people (they are returned separately to be hashed).
  */
-export function migrateLegacy(stored: Record<string, unknown>): { state: State; secrets: Map<string, { password?: string; pin?: string }> } {
+export function migrateLegacy(stored: Record<string, unknown>, now: string): { state: State; secrets: Map<string, { password?: string; pin?: string }> } {
   const seed = seedState();
   const data = stored as Omit<Partial<State>, 'users' | 'outputCategories'> & { users?: LegacyUser[]; outputCategories?: (Partial<OutputCategory> & { station: StationId; name: string })[] };
   const secrets = new Map<string, { password?: string; pin?: string }>();
@@ -576,23 +621,21 @@ export function migrateLegacy(stored: Record<string, unknown>): { state: State; 
     secrets.set(u.id, { password: u.password, pin: u.pin });
     return { id: u.id, name: u.name, role: u.role ?? 'Staff', initials: u.initials ?? initials(u.name), email: (u.email || `${slug(u.name).replace(/-/g, '.')}@cocoafactory.example`).toLowerCase(), access: u.access ?? 'manager', stations: u.stations ?? [] };
   });
-  const upgradeWorkflow = (data.workflowVersion ?? 1) < seed.workflowVersion;
   const storedCategories = (data.outputCategories ?? []).map((c, i): OutputCategory => ({ ...c, kind: c.kind ?? 'useful', id: c.id ?? `${c.station}:${slug(c.name)}-${i}` }));
-  const outputCategories = upgradeWorkflow ? [...seed.outputCategories, ...storedCategories.filter((c) => c.custom && c.station in seed.thresholds.variancePct)] : storedCategories.length ? storedCategories : seed.outputCategories;
-  const routes = upgradeWorkflow ? [...seed.routes, ...(data.routes ?? []).filter((r) => !seed.routes.some((x) => x.id === r.id))] : data.routes ?? seed.routes;
   const state: State = {
     batches: data.batches ?? [], lots: data.lots ?? [], recipes: data.recipes ?? seed.recipes,
     products: [...seed.products, ...(data.products ?? []).filter((p) => !seed.products.some((x) => x.id === p.id))],
-    routes, packSizes: data.packSizes ?? seed.packSizes, suppliers: data.suppliers ?? [], users, outputCategories,
+    routes: data.routes ?? seed.routes, packSizes: data.packSizes ?? seed.packSizes, suppliers: data.suppliers ?? [], users,
+    outputCategories: storedCategories.length ? storedCategories : seed.outputCategories,
     containers: data.containers ?? seed.containers,
     thresholds: { ...seed.thresholds, ...(data.thresholds ?? {}), variancePct: { ...seed.thresholds.variancePct, ...(data.thresholds?.variancePct ?? {}) } },
-    business: { ...seed.business, ...(data.business ?? {}) }, idleMinutes: data.idleMinutes ?? seed.idleMinutes, workflowVersion: seed.workflowVersion,
+    business: { ...seed.business, ...(data.business ?? {}) }, idleMinutes: data.idleMinutes ?? seed.idleMinutes, workflowVersion: data.workflowVersion ?? 1,
     // Browsers kept no counters: numbers continue from the highest IDs, and applyCommand() keeps the server's.
     idCounters: { batches: {}, lots: {} },
     // Browsers made chocolate the older way, without mixing runs.
     mixer: { holds: null, lastRunId: null }, mixerKeepsKg: seed.mixerKeepsKg, plan: null,
   };
-  return { state, secrets };
+  return { state: upgradeConfiguration(state, now), secrets };
 }
 
 /**
@@ -600,9 +643,9 @@ export function migrateLegacy(stored: Record<string, unknown>): { state: State; 
  * The prototype's sample password and PIN are public, so they are not carried over: anyone still
  * using them gets a new one from a manager before they can sign in.
  */
-function importBrowserData(s: State, data: Record<string, unknown>, _ctx: CommandContext): Outcome {
+function importBrowserData(s: State, data: Record<string, unknown>, ctx: CommandContext): Outcome {
   if (!Array.isArray(data.batches) || !Array.isArray(data.lots)) fail('That does not look like data from this app.');
-  const { state: imported, secrets } = migrateLegacy(data);
+  const { state: imported, secrets } = migrateLegacy(data, ctx.now);
   const newUsers = imported.users.filter((u) => !s.users.some((x) => x.id === u.id || x.email.toLowerCase() === u.email.toLowerCase()));
   const state: State = { ...imported, users: [...s.users, ...newUsers] };
   const people = newUsers.map((u) => {
