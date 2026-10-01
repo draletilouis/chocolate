@@ -1,6 +1,6 @@
 import { percentOf, round2 } from './balance';
 import { batchById, batchDisplayName, lotById, recordBalance } from './derive';
-import { storedAtMixing } from './mixing';
+import { ownUse, storedAtMixing } from './mixing';
 import { routes, type State } from './seed';
 import { stationById, stationName, stations } from './stations';
 import type { Balance, Batch, Destination, RecordedOutput, RouteId, StationId, StationRecord } from './types';
@@ -79,13 +79,13 @@ export function batchOutcomes(batch: Batch): Outcome[] {
     const station = record.station;
     if (mixesOwnMaterial(batch, record)) {
       const runs = record.runs ?? [];
-      const own = runs.flatMap((r) => r.ingredients).filter((i) => !i.lotId);
+      const own = ownUse(runs);
       for (const name of Array.from(new Set(own.map((i) => i.name)))) {
-        add({ group: 'product', label: `${name} made into chocolate`, station, weight: own.filter((i) => i.name === name).reduce((t, i) => t + i.actual, 0), intoChocolate: true });
+        add({ group: 'product', label: `${name} made into chocolate`, station, weight: own.filter((i) => i.name === name).reduce((t, i) => t + i.kg, 0), intoChocolate: true });
       }
       const stored = storedAtMixing(record.outputs, runs);
       for (const o of stored) add({ group: 'product', label: o.name, station, weight: o.weight, destination: o.destination, lotId: o.lotId });
-      const rest = expected(station) - own.reduce((t, i) => t + i.actual, 0) - stored.reduce((t, o) => t + o.weight, 0);
+      const rest = expected(station) - own.reduce((t, i) => t + i.kg, 0) - stored.reduce((t, o) => t + o.weight, 0);
       add(record.destinationsSaved ? { group: 'lost', label: 'Not used at mixing', station, weight: rest } : { group: 'process', label: 'Waiting at mixing', station, weight: rest });
       continue;
     }

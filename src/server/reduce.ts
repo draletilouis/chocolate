@@ -3,7 +3,7 @@ import type { Command } from '@/lib/commands';
 import { batchDisplayName, isReadyAt, issuedNumbers, nextBatchId, nextInput, nextLotId, pendingStations, recordFor, recordStamp, waitingAt } from '@/lib/derive';
 import { kg } from '@/lib/format';
 import { piecesKg } from '@/lib/pieces';
-import { batchMaterialAtMixing, changeover, ingredientsOf, mixerStamp, mixingTotals, storedAtMixing, versionOf } from '@/lib/mixing';
+import { batchMaterialAtMixing, changeover, ingredientsOf, mixerStamp, mixingTotals, runLotIds, sourcesOf, storedAtMixing, versionOf } from '@/lib/mixing';
 import { demoCredentials, retiredChocolateTypes, seedState, type State } from '@/lib/seed';
 import { stationById, stationName } from '@/lib/stations';
 import type { Batch, Lot, LotCategory, LotUse, Mixer, MixingRun, OutputCategory, Recipe, RecipeIngredient, RecordedOutput, RunIngredient, StationId, StationRecord, User } from '@/lib/types';
@@ -160,7 +160,7 @@ function mixingBatch(s: State, batchId: string) {
 function withMixingRecord(s: State, b: Batch, runs: MixingRun[], ctx: CommandContext, previous?: StationRecord): State {
   const record: StationRecord | undefined = runs.length === 0 ? undefined : {
     id: previous?.id ?? `mixing-${ctx.now}`, station: 'mixing', inputMaterial: 'Chocolate ingredients', ...mixingTotals(runs),
-    inputLotIds: Array.from(new Set(runs.flatMap((r) => r.ingredients.flatMap((i) => (i.lotId ? [i.lotId] : []))))),
+    inputLotIds: runLotIds(runs),
     runs, recordedAt: runs.at(-1)!.recordedAt, recordedBy: runs.at(-1)!.recordedBy, rev: ctx.newId(), note: previous?.note, destinationsSaved: false,
   };
   const records = [...b.records.filter((r) => r.station !== 'mixing'), ...(record ? [record] : [])];
@@ -171,7 +171,8 @@ function withMixingRecord(s: State, b: Batch, runs: MixingRun[], ctx: CommandCon
  * One chocolate type made at mixing. The run is made on top of what the mixer holds: the ingredients to
  * add follow the changeover sheet, and a run that cannot reach the recipe on top of it is refused. The
  * chocolate taken out becomes a lot; what is kept in the mixer is held for the next run, whichever batch
- * it belongs to.
+ * it belongs to. An ingredient may be listed once for each place it came from (the batch itself, and
+ * one or more lots), each with the weight taken from there.
  */
 function saveMixingRun(s: State, cmd: SaveMixingRun, ctx: CommandContext): Outcome {
   const { b, name, record } = mixingBatch(s, cmd.batchId);
@@ -188,8 +189,9 @@ function saveMixingRun(s: State, cmd: SaveMixingRun, ctx: CommandContext): Outco
   const seen = new Set<string>();
   for (const given of cmd.ingredients) {
     if (!version.ingredients.some((i) => i.name === given.name)) fail(`${given.name} is not in ${recipe.name}.`);
-    if (seen.has(given.name)) fail(`${given.name} is listed twice.`);
-    seen.add(given.name);
+    const place = `${given.name}|${given.lotId ?? ''}`;
+    if (seen.has(place)) fail(`${given.name} from ${given.lotId ? `lot ${given.lotId}` : name} is listed twice.`);
+    seen.add(place);
     if (given.lotId) {
       const lot = s.lots.find((l) => l.id === given.lotId) ?? fail(`Lot ${given.lotId} was not found.`);
       if (lot.material !== given.name) fail(`Lot ${lot.id} is ${lot.material.toLowerCase()}, not ${given.name.toLowerCase()}.`);
@@ -199,8 +201,9 @@ function saveMixingRun(s: State, cmd: SaveMixingRun, ctx: CommandContext): Outco
   }
   const toAdd = new Map(plan.lines.map((l) => [l.name, Math.max(0, l.add)]));
   const ingredients: RunIngredient[] = version.ingredients.map((i) => {
-    const given = cmd.ingredients.find((g) => g.name === i.name);
-    return { name: i.name, expected: toAdd.get(i.name) ?? 0, actual: round2(given?.actual ?? 0), lotId: given?.lotId || undefined };
+    const from = cmd.ingredients.filter((g) => g.name === i.name && g.actual > 0).map((g) => ({ lotId: g.lotId || undefined, kg: round2(g.actual) }));
+    const weighed = { name: i.name, expected: toAdd.get(i.name) ?? 0, actual: round2(from.reduce((sum, f) => sum + f.kg, 0)) };
+    return from.length > 1 ? { ...weighed, sources: from } : { ...weighed, lotId: from[0]?.lotId };
   });
   if (!(ingredients.reduce((sum, i) => sum + i.actual, 0) > 0)) fail('Enter the ingredients weighed in.');
   if (!(cmd.made > 0)) fail('Enter the chocolate taken out.');
@@ -210,10 +213,10 @@ function saveMixingRun(s: State, cmd: SaveMixingRun, ctx: CommandContext): Outco
   const run: MixingRun = { id: runId, recipeId: recipe.id, type: recipe.name, recipeVersion: version.version, toRun: round2(cmd.toRun), held, ingredients, made: round2(cmd.made), kept: round2(cmd.kept), lotId, recordedAt: ctx.now, recordedBy: ctx.userId };
   // The scale weight is recorded as-is; a lot record can only be drawn down to zero.
   const lots = s.lots.map((lot) => {
-    const drawn = ingredients.filter((i) => i.lotId === lot.id && i.actual > 0);
+    const drawn = ingredients.flatMap(sourcesOf).filter((x) => x.lotId === lot.id && x.kg > 0);
     if (!drawn.length) return lot;
-    const quantity = drawn.reduce((sum, i) => sum + i.actual, 0);
-    return { ...lot, available: Math.max(0, round2(lot.available - quantity)), uses: [...lot.uses, ...drawn.map((i) => ({ batchId: b.id, quantity: i.actual, station: 'mixing' as const, at: ctx.now, runId }))] };
+    const quantity = drawn.reduce((sum, x) => sum + x.kg, 0);
+    return { ...lot, available: Math.max(0, round2(lot.available - quantity)), uses: [...lot.uses, ...drawn.map((x) => ({ batchId: b.id, quantity: x.kg, station: 'mixing' as const, at: ctx.now, runId }))] };
   });
   const chocolate: Lot = { id: lotId, material: recipe.name, category: 'Intermediate', received: run.made, available: run.made, unit: 'kg', source: { type: 'batch', batchId: b.id, station: 'mixing' }, receivedAt: ctx.now, uses: [], chocolate: { type: recipe.name, recipeId: recipe.id, recipeVersion: version.version, runId } };
   const mixer: Mixer = { holds: run.kept > 0 ? { kg: run.kept, type: recipe.name, recipeId: recipe.id, recipeVersion: version.version, batchId: b.id, runId, lotId } : null, lastRunId: runId };

@@ -1,4 +1,5 @@
 import { recordFor } from './derive';
+import { ownUse, sourcesOf } from './mixing';
 import { piecesKg } from './pieces';
 import type { State } from './seed';
 import type { Batch, Lot, MixingRun, StationId } from './types';
@@ -105,12 +106,13 @@ export function madeFrom(state: Data, lot: Lot, held = 0, path = new Set([lot.id
   if (!batch) return [];
   const made = runOf(state, lot);
   if (!made) return startSteps(state, batch, held, path);
-  const ingredients = made.run.ingredients.filter((i) => i.actual > 0).map((i): TraceStep => {
-    const base = { quantity: i.actual, role: i.name };
-    if (!i.lotId) return { key: `${made.run.id}>own:${i.name}`, material: i.name, ...base, origin: { type: 'batch', batchId: batch.id, batch }, at: batch.startedAt, steps: startSteps(state, batch, held, path) };
-    const from = state.lots.find((l) => l.id === i.lotId);
-    return from ? lotStep(state, from, base, back, held, path, made.run.id) : { key: `${made.run.id}>${i.lotId}`, lotId: i.lotId, material: i.name, ...base, steps: [] };
-  });
+  // One step per place an ingredient came from: an ingredient split over two lots shows both.
+  const ingredients = made.run.ingredients.flatMap((i) => sourcesOf(i).filter((s) => s.kg > 0).map((s): TraceStep => {
+    const base = { quantity: s.kg, role: i.name };
+    if (!s.lotId) return { key: `${made.run.id}>own:${i.name}`, material: i.name, ...base, origin: { type: 'batch', batchId: batch.id, batch }, at: batch.startedAt, steps: startSteps(state, batch, held, path) };
+    const from = state.lots.find((l) => l.id === s.lotId);
+    return from ? lotStep(state, from, base, back, held, path, made.run.id) : { key: `${made.run.id}>${s.lotId}`, lotId: s.lotId, material: i.name, ...base, steps: [] };
+  }));
   return [...ingredients, ...heldStep(state, made.run, held, path)];
 }
 
@@ -123,7 +125,7 @@ export function batchMadeFrom(state: Data, batch: Batch): TraceStep[] {
   const runs = recordFor(batch, 'mixing')?.runs ?? [];
   const weighed = new Map<string, { name: string; kg: number }>();
   for (const i of runs.flatMap((r) => r.ingredients)) {
-    if (i.lotId && i.actual > 0) weighed.set(i.lotId, { name: i.name, kg: sum([weighed.get(i.lotId)?.kg ?? 0, i.actual]) });
+    for (const s of sourcesOf(i)) if (s.lotId && s.kg > 0) weighed.set(s.lotId, { name: i.name, kg: sum([weighed.get(s.lotId)?.kg ?? 0, s.kg]) });
   }
   const ingredients = Array.from(weighed, ([id, { name, kg }]): TraceStep => {
     const lot = state.lots.find((l) => l.id === id);
@@ -158,7 +160,7 @@ export function wentInto(state: Data, lot: Lot, held = 0, path = new Set([lot.id
     const batch = batchOf(state, batchId);
     if (!batch) continue;
     // Chocolate counts as made from this lot only where a run used the batch's own liquor or butter.
-    const made = madeBy(state, batch).filter((l) => !l.chocolate || runOf(state, l)?.run.ingredients.some((i) => !i.lotId && i.actual > 0));
+    const made = madeBy(state, batch).filter((l) => { const run = runOf(state, l)?.run; return !l.chocolate || (run && ownUse([run]).some((u) => u.kg > 0)); });
     steps.push({ key: `${lot.id}>${batch.id}`, material: batch.product, quantity, origin: { type: 'batch', batchId, batch }, at: batch.startedAt, steps: made.map((l) => lotStep(state, l, {}, on, held, path, batch.id)) });
   }
   // The run that made this chocolate kept some in the mixer, and the next run was made on top of it.

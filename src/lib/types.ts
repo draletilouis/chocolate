@@ -208,8 +208,15 @@ export interface MixerContents { kg: number; type: string; recipeId: string; rec
 /** The mixer: what it holds now, and the last run, which is the only one that can be undone */
 export interface Mixer { holds: MixerContents | null; lastRunId: string | null }
 
-/** One ingredient weighed into a mixing run: from the batch's own liquor or cocoa butter, or from a lot */
-export interface RunIngredient { name: string; expected: number; actual: number; lotId?: string }
+/** One place an ingredient of a run came from: a lot, or (without a lot) the batch's own liquor or cocoa butter */
+export interface RunSource { lotId?: string; kg: number }
+
+/**
+ * One ingredient weighed into a mixing run: from the batch's own liquor or cocoa butter, or from a lot.
+ * When it came from more than one place (a lot ran out and the rest came from the next), `sources`
+ * lists each with its weight and `lotId` is empty; read it with sourcesOf().
+ */
+export interface RunIngredient { name: string; expected: number; actual: number; lotId?: string; sources?: RunSource[] }
 
 /** One chocolate type made at mixing, on top of whatever the mixer still held */
 export interface MixingRun {

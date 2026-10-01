@@ -1,7 +1,7 @@
 import { round2 } from './balance';
 import { carriedTo, recordFor } from './derive';
 import type { State } from './seed';
-import type { Batch, Mixer, MixingRun, Recipe, RecipeIngredient, RecordedOutput } from './types';
+import type { Batch, Mixer, MixingRun, Recipe, RecipeIngredient, RecordedOutput, RunSource } from './types';
 
 /** Identifies what the mixer holds right now, so a run entered on an outdated screen is refused */
 export const mixerStamp = (mixer: Mixer) => `${mixer.lastRunId ?? '-'}|${mixer.holds?.runId ?? '-'}|${mixer.holds?.kg ?? 0}`;
@@ -13,6 +13,15 @@ export function ingredientsOf(state: Pick<State, 'recipes'>, recipeId: string, v
   const recipe = state.recipes.find((r) => r.id === recipeId);
   return (recipe && versionOf(recipe, version)?.ingredients) ?? [];
 }
+
+/** Where an ingredient of a run came from, one entry per place: a lot, or the batch's own material (no lot) */
+export const sourcesOf = (i: { actual: number; lotId?: string; sources?: RunSource[] }): RunSource[] => i.sources ?? [{ lotId: i.lotId, kg: i.actual }];
+
+/** What runs took of their batch's own liquor or cocoa butter, one entry per ingredient use */
+export const ownUse = (runs: MixingRun[]) => runs.flatMap((r) => r.ingredients.flatMap((i) => sourcesOf(i).filter((s) => !s.lotId).map((s) => ({ name: i.name, kg: s.kg }))));
+
+/** The lots weighed into runs */
+export const runLotIds = (runs: MixingRun[]) => Array.from(new Set(runs.flatMap((r) => r.ingredients.flatMap((i) => sourcesOf(i).flatMap((s) => (s.lotId ? [s.lotId] : []))))));
 
 export interface ChangeoverLine { name: string; percent: number; need: number; inMixer: number; add: number }
 
@@ -50,7 +59,7 @@ export function batchMaterialAtMixing(batch: Batch) {
   const carried = new Map<string, number>();
   for (const o of carriedTo(batch, 'mixing')) carried.set(o.name, round2((carried.get(o.name) ?? 0) + o.weight));
   return Array.from(carried, ([name, kg]) => {
-    const used = round2(runs.flatMap((r) => r.ingredients).filter((i) => !i.lotId && i.name === name).reduce((sum, i) => sum + i.actual, 0));
+    const used = round2(ownUse(runs).filter((u) => u.name === name).reduce((sum, u) => sum + u.kg, 0));
     return { name, carried: kg, used, left: round2(kg - used) };
   });
 }
