@@ -470,7 +470,7 @@ Alerts appear in the Overview, in the production navigation counts, on batch pag
 | `/store` | **Store**: everything in store by batch number (lot), in four parts: ingredients, chocolate, finished pieces and other stored products, with who delivered or made each lot and what used it. |
 | `/trace` | **Batch tracing**: opens a batch or lot by its number, or lists finished pieces, chocolate, deliveries and production batches to pick from. |
 | `/trace/[id]` | A lot or batch from beginning to end: the deliveries behind it, how it was made, and where it went. |
-| `/materials` | Filters and lists all material lots. |
+| `/materials` | Redirects to `/store`, which replaced the lot list. |
 | `/materials/receive` | Records a supplier delivery and creates a lot. |
 | `/materials/[lot]` | Shows lot quantities, a printable label for production lots, and upstream/downstream traceability; edits/deletes unused supplier lots only. |
 | `/recipes` | **Chocolate types**: lists each type's current recipe, versions, and how many runs made it. |
@@ -540,7 +540,7 @@ Raise `WORKFLOW_VERSION` when the seeded configuration changes, so existing data
 
 `Shell.tsx` provides:
 
-- a menu that depends on access: operators get **My work** and **Production line**; managers get Overview, Production line, Production plan, Store, Materials, Batch tracing, Chocolate types, Reports and Setup, plus **My work** when they have their own stations (the plan, Store and Batch tracing stay off the phone bar so it fits; Overview links to the plan and Materials to the other two);
+- a menu that depends on access: operators get **My work** and **Production line**; managers get Overview, Production line, Production plan, Store, Batch tracing, Chocolate types, Reports and Setup, plus **My work** when they have their own stations (the plan and Batch tracing stay off the phone bar so it fits; Overview links to the plan and the Store to Batch tracing; lot records and receiving under `/materials` show the Store as the current page);
 - production part links with waiting counts;
 - a desktop top bar with the current page and a search box;
 - a mobile header with the person's name, search and sign-out; and

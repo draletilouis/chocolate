@@ -30,7 +30,7 @@ You are signed out on your own after a few minutes without use (10 by default; a
 What you see depends on your access:
 
 - **Operators** see **My work** and **Production line**.
-- **Managers** also see **Overview**, **Production plan**, **Store**, **Materials**, **Batch tracing**, **Chocolate types**, **Reports** and **Setup**.
+- **Managers** also see **Overview**, **Production plan**, **Store**, **Batch tracing**, **Chocolate types**, **Reports** and **Setup**.
   - A manager who has their own stations also gets **My work**.
 
 The sections are:
@@ -39,9 +39,8 @@ The sections are:
 - **Overview** — production summary, the production plan's progress and alerts.
 - **Production line** — every active batch, where it is waiting, and the five parts of the line.
 - **Production plan** — the pieces to make of each chocolate type and size, how many are made and what is left. On a phone, open it from **Overview**. People working at Mixing or Pieces find it on **My work**.
-- **Store** — everything in store by batch number: the ingredients (cocoa beans, liquor, cocoa butter, sugar, milk powder), the chocolate, the finished pieces and every other product the line kept, such as butter, powder and nibs. On a phone, open it from **Materials**.
-- **Materials** — raw materials, intermediate products, by-products, rework and finished-goods lots.
-- **Batch tracing** — enter a batch or lot number to see everything that went into it and everything it went into. On a phone, open it from **Materials**.
+- **Store** — everything in store by batch number: the ingredients (cocoa beans, liquor, cocoa butter, sugar, milk powder), the chocolate, the finished pieces and every other product the line kept, such as butter, powder and nibs.
+- **Batch tracing** — enter a batch or lot number to see everything that went into it and everything it went into. On a phone, open it from **Store** (**Trace a batch**).
 - **Chocolate types** — each type's recipe, its versions and ingredient comparisons.
 - **Reports** — losses, missing weight, batch history, corrections and holds.
 - **Setup** — products, piece sizes, containers, output rows, routes, suppliers, users and thresholds.
@@ -235,8 +234,8 @@ Enter an optional closing note and select **Complete batch**. A completed batch 
 
 ### Receive a delivery
 
-1. Open **Materials**.
-2. Select **Receive material**.
+1. Open **Store**.
+2. Select **Receive ingredient**.
 3. Choose the material.
 4. Choose the supplier.
 5. Enter the **Supplier's batch number** printed on the bag or the delivery note, and an invoice or delivery reference, if there are any.
@@ -272,7 +271,7 @@ Chocolate left in the mixer links each run to the one before. It is followed thr
 
 ### Review a lot
 
-Select a lot from **Materials** to see:
+Open a lot's record (**Open lot record** on its trace page, or a lot number on a batch) to see:
 
 - received, used, and available quantity;
 - supplier or producing batch;

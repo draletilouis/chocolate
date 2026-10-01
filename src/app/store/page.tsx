@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Badge, Empty, LinkButton, PageHeader, Panel, RowLink, Stat } from '@/components/ui';
@@ -52,7 +51,7 @@ export default function StorePage() {
   return (
     <>
       <PageHeader eyebrow="Store" title="Store" subtitle="Everything in store by batch number: the ingredients, the chocolate, the finished pieces and every other product the line kept. Each use is taken off its lot automatically."
-        action={<LinkButton href="/materials/receive"><Plus size={16} /> Receive ingredient</LinkButton>} />
+        action={<><LinkButton variant="secondary" href="/trace">Trace a batch</LinkButton><LinkButton href="/materials/receive"><Plus size={16} /> Receive ingredient</LinkButton></>} />
 
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         {items.filter((i) => i.section === 'Ingredients').map((i) => <Stat key={i.name} label={i.name} value={kg(i.total)} hint={i.inStore.length ? `${i.inStore.length} batch${i.inStore.length === 1 ? '' : 'es'} in store` : 'None in store'} tone={low(i) ? 'warn' : undefined} />)}
@@ -106,7 +105,7 @@ export default function StorePage() {
       })}
 
       <div className="flex flex-wrap items-center justify-between gap-3 text-[13px] text-muted">
-        <span>Select a batch number to see where it came from and every product it went into. <Link href="/materials" className="font-semibold text-green">Materials</Link> lists every lot, used up or not.</span>
+        <span>Select a batch number to see where it came from and every product it went into.</span>
         {usedUp > 0 && <button type="button" className="btn btn-ghost" onClick={() => setShowUsedUp((v) => !v)} aria-pressed={showUsedUp}>{showUsedUp ? 'Hide' : 'Show'} used-up batches ({usedUp})</button>}
       </div>
     </>

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { AlertTriangle, BarChart3, ChevronDown, ClipboardCheck, ClipboardList, FlaskConical, LayoutDashboard, LogOut, Package, Search, Settings2, Target, Warehouse, Waypoints, WifiOff, X, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, BarChart3, ChevronDown, ClipboardCheck, ClipboardList, FlaskConical, LayoutDashboard, LogOut, Search, Settings2, Target, Warehouse, Waypoints, WifiOff, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { activeBatches, allAlerts, waitingCount } from '@/lib/derive';
 import { useStore } from '@/lib/store';
@@ -10,7 +10,7 @@ import { groupBySlug, lineStations, stationById, stationGroups } from '@/lib/sta
 import { LoginScreen } from './LoginScreen';
 import { Button, Notice } from './ui';
 
-interface NavItem { href: string; label: string; short?: string; icon: LucideIcon; count?: 'alerts' | 'batches' | 'work'; managers?: boolean; phone?: false }
+interface NavItem { href: string; label: string; short?: string; icon: LucideIcon; count?: 'alerts' | 'batches' | 'work'; managers?: boolean; phone?: false; also?: string }
 
 const navItems: NavItem[] = [
   { href: '/work', label: 'My work', icon: ClipboardCheck, count: 'work' },
@@ -18,9 +18,9 @@ const navItems: NavItem[] = [
   { href: '/production', label: 'Production line', short: 'Production', icon: ClipboardList, count: 'batches' },
   // Kept off the phone bar so it fits; Overview and My work link to the plan.
   { href: '/plan', label: 'Production plan', short: 'Plan', icon: Target, managers: true, phone: false },
-  // Off the phone bar too; Materials links to both.
-  { href: '/store', label: 'Store', icon: Warehouse, managers: true, phone: false },
-  { href: '/materials', label: 'Materials', icon: Package, managers: true },
+  // Lot records and receiving live under /materials and belong to the Store.
+  { href: '/store', label: 'Store', icon: Warehouse, managers: true, also: '/materials' },
+  // Off the phone bar too; the Store links to it.
   { href: '/trace', label: 'Batch tracing', short: 'Trace', icon: Waypoints, managers: true, phone: false },
   { href: '/recipes', label: 'Chocolate types', short: 'Chocolate', icon: FlaskConical, managers: true },
   { href: '/reports', label: 'Reports', icon: BarChart3, managers: true },
@@ -46,7 +46,7 @@ export function Shell({ children }: { children: ReactNode }) {
     batches: activeBatches(store).length,
     work: myStations.filter((s) => !stationById[s]?.retired).reduce((n, s) => n + waitingCount(store, s), 0),
   };
-  const active = items.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
+  const active = items.find((item) => [item.href, item.also].some((p) => p && (pathname === p || pathname.startsWith(`${p}/`))));
   const [productionOpen, setProductionOpen] = useState(() => pathname.startsWith('/production'));
   const [query, setQuery] = useState('');
   useEffect(() => {

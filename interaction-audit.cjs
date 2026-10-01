@@ -322,8 +322,8 @@ async function planFlow(page) {
 }
 
 async function materialsAndRecipes(page) {
-  await page.goto(`${BASE}/materials`);
-  await action(page, 'Filter intermediate lots', page.getByRole('button', { name: 'Intermediate' }), async () => {
+  await page.goto(`${BASE}/store`);
+  await action(page, 'Show the chocolate in store', page.getByRole('button', { name: 'Chocolate', exact: true }), async () => {
     await waitForText(page, 'D70-0001');
   });
   await page.goto(`${BASE}/materials/receive`);
@@ -392,7 +392,8 @@ async function navigationAndFilters(page) {
   for (const [label, url, text] of [
     ['Overview', '/overview', 'How production is doing'],
     ['Production line', '/production', 'Which batch needs attention?'],
-    ['Materials', '/materials', 'Material lots'],
+    ['Store', '/store', 'Other stored products'],
+    ['Batch tracing', '/trace', 'Trace a batch'],
     ['Chocolate types', '/recipes', 'Chocolate types'],
     ['Reports', '/reports', 'Reports'],
     ['Setup', '/setup', 'Setup'],

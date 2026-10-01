@@ -179,7 +179,7 @@ export default function PlanPage() {
         )}
       </Panel>
 
-      <Panel title="Ingredients to mix it" subtitle="From each type's current recipe. In store counts lots in Materials; at mixing counts liquor and cocoa butter from batches not yet completed.">
+      <Panel title="Ingredients to mix it" subtitle="From each type's current recipe. In store counts lots in the Store; at mixing counts liquor and cocoa butter from batches not yet completed.">
         {ingredients.length === 0 ? <Empty>Nothing left to mix.</Empty> : (
           <Table head={['Ingredient', 'Needed', 'In store', 'At mixing', 'Short']}>
             {ingredients.map((i) => (

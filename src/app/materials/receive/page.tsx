@@ -34,8 +34,8 @@ export default function ReceivePage() {
 
   return (
     <>
-      <Back href="/materials" label="Materials" />
-      <PageHeader eyebrow="Materials" title="Receive material" subtitle="Record the delivery you physically weighed. A new lot is created." />
+      <Back href="/store" label="Store" />
+      <PageHeader eyebrow="Store" title="Receive material" subtitle="Record the delivery you physically weighed. A new lot is created." />
       <form onSubmit={submit}>
         <Panel title="Delivery">
           <div className="grid gap-4 p-5 md:grid-cols-2">
@@ -48,7 +48,7 @@ export default function ReceivePage() {
           </div>
         </Panel>
         {error && <Notice tone="danger">{error}</Notice>}
-        <div className="flex justify-end gap-2"><LinkButton variant="secondary" href="/materials">Cancel</LinkButton><Button type="submit"><Check size={15} /> Save receipt</Button></div>
+        <div className="flex justify-end gap-2"><LinkButton variant="secondary" href="/store">Cancel</LinkButton><Button type="submit"><Check size={15} /> Save receipt</Button></div>
       </form>
     </>
   );
