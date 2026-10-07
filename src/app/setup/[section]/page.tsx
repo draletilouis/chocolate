@@ -17,6 +17,7 @@ const sections = [
   { id: 'outputs', label: 'Output categories', href: '/setup/outputs' },
   { id: 'routes', label: 'Routes', href: '/setup/routes' },
   { id: 'suppliers', label: 'Suppliers', href: '/setup/suppliers' },
+  { id: 'customers', label: 'Customers', href: '/setup/customers' },
   { id: 'users', label: 'Users', href: '/setup/users' },
   { id: 'alerts', label: 'Alert thresholds', href: '/setup/alerts' },
 ];
@@ -305,6 +306,26 @@ export default function SetupPage() {
             <Field label="Name"><Input name="name" required /></Field>
             <Field label="Supplies" hint="Materials, separated by commas. Receiving a material offers its suppliers first."><Input name="supplies" placeholder="Sugar, milk powder" required /></Field>
             <Field label="Contact"><Input name="contact" /></Field>
+          </AddForm>
+        </Panel>
+      )}
+
+      {current.id === 'customers' && (
+        <Panel title="Customers" subtitle="Who the factory sells or sends goods to. Each dispatch note names one, and its address is printed on the delivery note.">
+          <Table head={['Customer', 'Address', 'Contact', '']}>
+            {store.customers.map((c) => {
+              const canDelete = !store.dispatches.some((d) => d.customerId === c.id);
+              return <Fragment key={c.id}>
+                <tr key={c.id}><td className={td}>{c.name}</td><td className={td}>{c.address}</td><td className={td}>{c.contact}</td><td className={td}><RowActions onEdit={() => setEditingId(c.id)} onDelete={() => { if (canDelete && window.confirm(`Delete ${c.name}?`)) store.deleteCustomer(c.id); }} deleteDisabled={!canDelete} deleteHint="Customers with dispatches cannot be deleted." /></td></tr>
+                {editingId === c.id && <tr key={`${c.id}-edit`}><td className={td} colSpan={4}><EditForm onCancel={() => setEditingId(null)} onSubmit={(d) => { store.updateCustomer(c.id, { name: String(d.get('name')).trim(), address: String(d.get('address')).trim(), contact: String(d.get('contact')).trim() }); setEditingId(null); }}><Field label="Name"><Input name="name" defaultValue={c.name} required /></Field><Field label="Address"><Input name="address" defaultValue={c.address} /></Field><Field label="Contact"><Input name="contact" defaultValue={c.contact} /></Field></EditForm></td></tr>}
+              </Fragment>;
+            })}
+          </Table>
+          {store.customers.length === 0 && <Empty>No customers yet.</Empty>}
+          <AddForm title="Add customer" onSubmit={(d) => store.addCustomer({ name: String(d.get('name')).trim(), address: String(d.get('address')).trim(), contact: String(d.get('contact')).trim() })}>
+            <Field label="Name"><Input name="name" required /></Field>
+            <Field label="Address" hint="Printed on the delivery note."><Input name="address" /></Field>
+            <Field label="Contact"><Input name="contact" placeholder="Phone or email" /></Field>
           </AddForm>
         </Panel>
       )}

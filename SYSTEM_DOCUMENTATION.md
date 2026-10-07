@@ -39,7 +39,7 @@ The main runtime layers are:
 | Weighing UI | `src/components/weighing.tsx` | Weight field with container tare, destination tags, the live balance bar and the one-line saved verdict. |
 | Labels | `src/components/BatchLabel.tsx` | Printable batch cards and material labels with the batch name and supplier. |
 | Domain configuration | `src/lib/stations.ts` | Defines the seventeen stations, five line parts, station inputs/outputs, output rows with default destinations, and allowed next stations. |
-| Domain types and state | `src/lib/types.ts`, `src/lib/seed.ts` | Defines the data model, the sample factory (`seedState()`) and the configuration a real factory starts with (`configState()`). |
+| Domain types and state | `src/lib/types.ts`, `src/lib/seed.ts`, `src/server/demo.ts` | Defines the data model, the line configuration with the demo's staff and suppliers (`seedState()`), the configuration a real factory starts with (`configState()`), and the demo factory's weeks of production (`demoState()`). |
 | Business calculations | `src/lib/balance.ts` | Calculates station balances, percentages, rounding, and packaging quantities. |
 | Derived workflow logic | `src/lib/derive.ts` | Builds queues, finds next inputs, creates alerts, resolves names, follows traceability, and generates IDs. |
 | Commands | `src/lib/commands.ts` | Every change anyone can make, as a named command with its validation schema, and which commands operators may run. |
@@ -135,7 +135,7 @@ The root layout mounts `StoreProvider` and then `Shell`. On start the store asks
 - A manager may choose **Use <name>** under Setup → Users to record on someone's behalf. New records carry that person's name, the audit log keeps the manager's, and the menus stay the manager's.
 - The last manager cannot be deleted or demoted, nobody can delete themselves, and deleting a person signs them out everywhere.
 
-**Demo mode.** With `DEMO_MODE=true` (the default when there is no `DATABASE_URL`), the sample factory from `src/lib/seed.ts` is loaded with five staff who all use the PIN `1234` and the password `cocoa123`, every device can use PINs, and **Setup → Business details → Reset demo data** puts the sample factory back and signs everyone out.
+**Demo mode.** With `DEMO_MODE=true` (the default when there is no `DATABASE_URL`), the sample factory is loaded with eight staff who all use the PIN `1234` and the password `cocoa123`, every device can use PINs, and **Setup → Business details → Reset demo data** makes the sample factory again, ending that day, and signs everyone out.
 
 **Records kept in a browser by earlier versions.** Before the move to a server, each browser kept its own copy of the records in `localStorage` (`cocoa-production-v1`). When a manager opens **Setup → Business details** in such a browser, a panel offers to upload it. `migrateLegacy()` in `src/server/reduce.ts` upgrades the old data (line layout, output rows, chocolate types, limits, containers; see section 12). The upload replaces the server's batches, lots and settings, keeps the people already on the server, and adds the browser's other people with their passwords and PINs, except the sample `cocoa123` and `1234`, which are public: those people need a new password or PIN from a manager before they can sign in.
 
@@ -413,11 +413,17 @@ Each lot records its source, received quantity, available quantity, and uses. Wh
 
 Chocolate left in the mixer chains every run to the one before, so it is followed `HELD_RUNS` (3) runs and then marked as cut; a lot already on the path is not followed again. `/trace/[id]` shows the result for a lot or a batch, and `/store` lists every lot in four parts: ingredients (cocoa beans, the recipe ingredients in `chocolateIngredients` and any other supplier-delivered material, with the bean batches received straight onto the line), chocolate, finished pieces, and every other stored product.
 
-**Stock is drawn down by the commands themselves.** `createBatch()` takes the starting weight off the lot a batch starts from, `saveMixingRun()` each ingredient off its lot, and `recordPieces()` the chocolate off its lot; each appends a `LotUse`, which is what the trace follows. Undoing a run or a lot of pieces puts the weight back.
+**Stock is drawn down by the commands themselves.** `createBatch()` takes the starting weight off the lot a batch starts from, `saveMixingRun()` each ingredient off its lot, `recordPieces()` the chocolate off its lot, and `dispatchGoods()` each line of a dispatch off its lot; each appends a `LotUse`, which is what the trace follows. Undoing a run or a lot of pieces, or cancelling a dispatch, puts the weight back.
 
 Lot IDs are generated in `nextLotId()` using material-specific prefixes such as `BEAN`, `WRB`, `NIB`, `SILK`, `BUT`, `PWD`, `LIQ`, `REW`, and `FIN`, followed by a four-digit sequence. Chocolate made at mixing is numbered by type code: `D70` for 70% Dark, `M40` for 40% Milk, `W34` for 34% White. Batch IDs are generated in `nextBatchId()` from the product prefix and a three-digit sequence.
 
 **Numbers are never reused.** A lot or batch can be removed: an unused supplier lot or a blank batch can be deleted, and saving a station again removes the lots it made for outputs it no longer stores (the output now continues or goes to waste, or was renamed). Its number stays taken, so a printed label for it finds nothing instead of opening a different lot or batch, and traceability back to the supplier holds. The state keeps `idCounters`: the highest number issued for each batch prefix and each lot prefix, stored as a setting. After every command, `applyCommand()` raises the counters to cover every batch and lot ID from before and after the command, inside the same transaction. The next number is one above the counter or the highest ID in use, whichever is higher. A new lot made in the same save that drops another cannot take the dropped lot's number either. A database saved before the counters existed needs no migration step: its numbers continue from its highest IDs, and its counters fill in as commands run. Uploading records from an older browser keeps the server's counters, so numbers the server already issued stay taken.
+
+### Dispatch
+
+Goods leave the factory on a dispatch note (`Dispatch` in `src/lib/types.ts`): a customer (`Customer`: name, address, contact), the time, an optional order or invoice number and note, and lines of `{ lotId, material, quantity, unit }`, one per lot. `dispatchGoods` (managers only, like receiving) checks that every lot has the quantity on record, that pieces go out whole and that no lot is listed twice, then numbers the note `DSP-0001` and up and takes each line off its lot as a `LotUse` carrying `dispatchId` instead of `batchId` and `station`. The dispatch form (`src/lib/dispatch.ts`) takes each product from its oldest lots first unless a lot is chosen, and sends one line per lot. Bought raw materials are not offered; everything the factory made is.
+
+`cancelDispatch` puts the goods back on their lots, removes the uses, and keeps the note with `cancelled: { at, by, reason }`. Dispatches are never deleted, so a number is never given twice; a customer with dispatches cannot be deleted. `wentInto()` turns a dispatch use into a step whose origin is the dispatch, and `shipmentsAhead()` lists every dispatch a forward trace reaches, which the trace page shows as **Customers it reached**: from a delivery, every customer who received something made from it.
 
 ## 9. Holds and corrections
 
@@ -440,9 +446,9 @@ Completion is a review screen. It summarizes every station, the starting weight,
 
 1. Variance: absolute station variance percentage is greater than that station's configured limit.
 2. Waste: recorded waste percentage is greater than the global waste limit. By-products do not count as waste for this check.
-3. Stock: a raw-material kilogram lot is below the low-stock kilogram threshold.
+3. Stock: a raw material's kilograms in store, all its lots added up as the Store shows them, are below the low-stock kilogram threshold. One alert per material, linking to the Store; a lot used up while others of the same material are in store raises none.
 
-Active holds are also emitted as batch alerts. Completed batches do not contribute batch-level alerts, but low-stock alerts still come from all raw-material lots.
+Active holds are also emitted as batch alerts. Completed batches do not contribute batch-level alerts, but low-stock alerts still cover every raw material.
 
 Thresholds are editable under `/setup/alerts`:
 
@@ -469,8 +475,11 @@ Alerts appear in the Overview, in the production navigation counts, on batch pag
 | `/production/pieces/[lot]` | Pieces: counts the good pieces of each size made from one chocolate lot, and lists (and undoes) the pieces made from it. |
 | `/production/batches/[id]/record/[station]` | One-screen station entry (input, weights with containers, destinations, live check), the saved view, mixing runs, and completion. |
 | `/store` | **Store**: everything in store by batch number (lot), in four parts: ingredients, chocolate, finished pieces and other stored products, with who delivered or made each lot and what used it. |
+| `/dispatch` | **Dispatch** (managers): every dispatch note, newest first, with this month's dispatches, pieces, kg and customers, filtered by customer. |
+| `/dispatch/new` | Dispatches goods to a customer: products and quantities, taken from the oldest lots first or from a chosen lot (`?lot=` fills one in). |
+| `/dispatch/[id]` | One dispatch note: each line with its lot, made date and batch; prints the delivery note; cancels it with a reason. |
 | `/trace` | **Batch tracing**: opens a batch or lot by its number, or lists finished pieces, chocolate, deliveries and production batches to pick from. |
-| `/trace/[id]` | A lot or batch from beginning to end: the deliveries behind it, how it was made, and where it went. |
+| `/trace/[id]` | A lot or batch from beginning to end: the deliveries behind it, how it was made, where it went, and the customers it reached. |
 | `/materials` | Redirects to `/store`, which replaced the lot list. |
 | `/materials/receive` | Records a supplier delivery and creates a lot. |
 | `/materials/[lot]` | Shows lot quantities, a printable label for production lots, and upstream/downstream traceability; edits/deletes unused supplier lots only. |
@@ -478,6 +487,7 @@ Alerts appear in the Overview, in the production navigation counts, on batch pag
 | `/recipes/new` | Adds a chocolate type and the first version of its recipe. |
 | `/recipes/[id]` | Renames a type, adds immutable versions, deletes types never made, and compares expected versus actual ingredients by mixing run. |
 | `/reports/pieces` | **Pieces made**: pieces by chocolate type and size in the period, and every lot of pieces with the chocolate lot and batch it came from. |
+| `/reports/dispatched` | **Dispatched**: what left the factory in the period by product and by customer, and every dispatch note; cancelled ones are left out. |
 | `/reports/losses` | Shows weight loss by batch/stage, follows one batch, and aggregates loss by process. |
 | `/reports/variance` | Filters station records and compares waste, by-products, variance, and limits. |
 | `/reports/batches` | Lists all batches and their routes/statuses/summary quantities. |
@@ -490,6 +500,7 @@ Alerts appear in the Overview, in the production navigation counts, on batch pag
 | `/setup/outputs` | Lists, adds, edits, and deletes station output rows for future station forms. |
 | `/setup/routes` | Edits route names, starting material and notes; station order stays structural and route deletion is guarded. |
 | `/setup/suppliers` | Lists, adds, edits, and guarded-deletes suppliers. |
+| `/setup/customers` | Lists, adds, edits, and guarded-deletes customers (one with dispatches cannot be deleted). |
 | `/setup/users` | Lists, adds, edits and guarded-deletes staff accounts with PIN, password, access and stations; sets the idle sign-out time; changes the user used for recording; lists, sets up and removes devices for quick sign-in. The last manager cannot be removed or demoted. |
 | `/setup/alerts` | Edits thresholds. |
 
@@ -528,7 +539,7 @@ The Setup screens send commands to the server like the production screens, so a 
 - Routes keep their station sequence fixed because station IDs are part of production and report logic; only route descriptive fields are editable.
 - Recipe version history, station measurements, holds, corrections, and production-created lots are audit data, not disposable setup rows.
 
-A real factory starts with the line configuration from `configState()`: the bean, stored-nib and Chocolate from store products, the eight chocolate types from the factory's regular recipes table (section 5), an empty mixer, the piece sizes (7 g, 45 g and 80 g bars, 200 g sachet, and 1 kg pack; more can be added), three routes, the containers, output rows and threshold values. It has no batches, lots, suppliers or people until they are entered, and its contact details in Setup → Business details start blank. The demo (`seedState()`) adds nine suppliers (two or three for each material bought: cocoa beans, sugar, cocoa butter, milk powder, lecithin and liquor), five staff, supplier lots carrying the supplier's batch number, and sample batches from bean delivery to counted pieces (CB-023 to CB-025, CL-007, and CH-016 to CH-018, which made 40% Milk, 70% Dark and 85% Dark).
+A real factory starts with the line configuration from `configState()`: the bean, stored-nib and Chocolate from store products, the eight chocolate types from the factory's regular recipes table (section 5), an empty mixer, the piece sizes (7 g, 45 g and 80 g bars, 200 g sachet, and 1 kg pack; more can be added), three routes, the containers, output rows and threshold values. It has no batches, lots, suppliers or people until they are entered, and its contact details in Setup → Business details start blank. The demo adds eight staff (a manager, quality, and two people for each part of the line), six customers, nine suppliers (two or three for each material bought: cocoa beans, sugar, cocoa butter, milk powder, lecithin and liquor) and business contact details (`seedState()`), then about six weeks of production ending the day it is set up (`demoState()` in `src/server/demo.ts`). The weeks are made by running the same commands people run, in order, through `applyCommand()`, so every lot, use, balance and trace adds up exactly as if the factory had recorded them; only the clock is set for each one. They contain deliveries of every material with the supplier's batch number and delivery note, some beans received straight onto the line; bean batches through every station, some making their own chocolate at mixing and some storing their liquor, butter or nibs; stored nibs pressed later; chocolate of all eight types made from store, one run on top of the other, with the mixer emptied before a type that cannot be made on top of what it holds; pieces in every size; orders dispatched to six customers (a supermarket chain, a hotel, a distributor, a bakery, a duty-free shop and the factory shop), taken from the oldest lots, one of them entered for the wrong customer and cancelled; a released hold and two corrections; and a production plan set two and a half weeks earlier. It ends with a batch waiting at every station, one on hold at roasting, chocolate waiting to be made into pieces, the mixer holding 10 kg of 85% Dark, and milk powder low. Working days are Monday to Saturday; the weights vary from batch to batch, the same way each time the demo is made.
 
 **A database started by an older version.** The configuration is stored once, when the database is empty. When a newer version of the app starts on an existing database whose workflow version is lower than the app's (`WORKFLOW_VERSION` in `src/lib/seed.ts`), `upgradeConfiguration()` in `src/server/reduce.ts` brings it up to date and logs an `upgradeConfiguration` entry in `app_commands`. Batches, lots and what the factory added itself are kept:
 
@@ -577,7 +588,7 @@ node browser-check.cjs
 node interaction-audit.cjs
 ```
 
-Both browser scripts expect a demo instance to be running on port 3100: they sign in as the sample manager and reset the demo data first. They use Playwright with Microsoft Edge. The browser check covers PIN and email sign-in, the queues of all 13 stations of the line, one-screen recording with the live check, the nib split, labels, mixing runs with the changeover sheet's example, a blocked changeover and taking the leftover out, Chocolate from store, counting pieces from a chocolate lot and the Pieces made report, the production plan (progress, a duplicate line refused, changing it, reading it as an operator), receiving a delivery in one form, the batch steps with inline corrections, holds, completion, the chocolate types and adding a new one, reports, setup, the phone layout and operator menus. `interaction-audit.cjs` clicks through the same flows, saving before/after screenshots and a report under its configured output directory.
+Both browser scripts expect a demo instance to be running on port 3100 (set `BASE_URL` for another address): they sign in as the sample manager and reset the demo data first, then look up the batches they work with in it (the bean batch waiting at winnowing, the Chocolate from store batch waiting at mixing) and read the lot numbers they make from the screen, since the demo's numbers depend on its weeks of production. They use Playwright with Microsoft Edge. The browser check covers PIN and email sign-in, the queues of all 13 stations of the line, one-screen recording with the live check, the nib split, labels, mixing runs with the changeover sheet's example, a blocked changeover and taking the leftover out, Chocolate from store, counting pieces from a chocolate lot and the Pieces made report, the production plan (progress, a duplicate line refused, changing it, reading it as an operator), receiving a delivery in one form, the batch steps with inline corrections, holds, completion, the chocolate types and adding a new one, reports, setup, the phone layout and operator menus. `interaction-audit.cjs` clicks through the same flows, saving before/after screenshots and a report under its configured output directory.
 
 ## 15. Current scope and limitations
 

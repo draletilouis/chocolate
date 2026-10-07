@@ -1,5 +1,5 @@
 import { percentOf, round2 } from './balance';
-import { batchById, batchDisplayName, lotById, recordBalance } from './derive';
+import { batchById, batchDisplayName, customerName, lotById, recordBalance } from './derive';
 import { ownUse, storedAtMixing } from './mixing';
 import { routes, type State } from './seed';
 import { stationById, stationName, stations } from './stations';
@@ -125,7 +125,11 @@ export function lotFate(state: State, lotId: string | undefined) {
   if (!lot || lot.uses.length === 0) return [];
   const batchHref = (id: string) => `/production/batches/${id}`;
   const rows = lot.uses.flatMap((use) => {
-    const batch = batchById(state, use.batchId);
+    if (use.dispatchId) {
+      const dispatch = state.dispatches.find((d) => d.id === use.dispatchId);
+      return [{ label: 'Dispatched', where: `${use.dispatchId}${dispatch ? ` to ${customerName(state, dispatch.customerId)}` : ''}`, href: `/dispatch/${use.dispatchId}`, weight: round2(use.quantity) }];
+    }
+    const batch = use.batchId ? batchById(state, use.batchId) : undefined;
     if (!batch) return [];
     if (!batch.startInput.lotIds.includes(lot.id) || !(batch.startInput.weight > 0)) {
       if (use.madeLot) return [{ label: 'Made into pieces', where: `${use.madeLot} · ${lotById(state, use.madeLot)?.material ?? batchDisplayName(batch)}`, href: `/materials/${use.madeLot}`, weight: round2(use.quantity) }];

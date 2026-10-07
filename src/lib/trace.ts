@@ -2,14 +2,18 @@ import { recordFor } from './derive';
 import { ownUse, sourcesOf } from './mixing';
 import { piecesKg } from './pieces';
 import type { State } from './seed';
-import type { Batch, Lot, MixingRun, StationId } from './types';
+import type { Batch, Dispatch, Lot, MixingRun, StationId } from './types';
 
-type Data = Pick<State, 'batches' | 'lots'>;
+type Data = Pick<State, 'batches' | 'lots' | 'dispatches'>;
 
-/** How a traced material came to be: a supplier's delivery, or a batch (at a station, or in one mixing run) */
+/**
+ * How a traced material came to be: a supplier's delivery, or a batch (at a station, or in one mixing run).
+ * Forwards, a step can also be goods leaving the factory in a dispatch to a customer.
+ */
 export type TraceOrigin =
   | { type: 'supplier'; supplierId: string; reference?: string; supplierBatch?: string }
-  | { type: 'batch'; batchId: string; batch?: Batch; station?: StationId; run?: MixingRun; runIndex?: number };
+  | { type: 'batch'; batchId: string; batch?: Batch; station?: StationId; run?: MixingRun; runIndex?: number }
+  | { type: 'dispatch'; dispatchId: string; dispatch?: Dispatch };
 
 /**
  * One material in a trace. Read backwards its steps are what went into it; read forwards they are what
@@ -23,6 +27,8 @@ export interface TraceStep {
   material: string;
   /** kg of this that went into the step before it (backwards), or of the step before that went into this (forwards) */
   quantity?: number;
+  /** Pieces rather than kg: what a dispatch took from a lot of pieces */
+  unit?: Lot['unit'];
   /** What it was in a mixing run: the recipe's ingredient, or the chocolate the mixer still held */
   role?: string;
   /** Absent when the lot is no longer on record */
@@ -139,20 +145,24 @@ export function batchMadeFrom(state: Data, batch: Batch): TraceStep[] {
 const madeBy = (state: Data, batch: Batch) => state.lots.filter((l) => l.source.type === 'batch' && l.source.batchId === batch.id && !l.pieces);
 
 /**
- * What a lot went into, on to the finished pieces: the pieces counted from it, the chocolate of the
- * runs it was weighed into (or that were made on top of it), and what the batches it started made.
+ * What a lot went into, on to the finished pieces and the customers: the pieces counted from it, the
+ * chocolate of the runs it was weighed into (or that were made on top of it), what the batches it started
+ * made, and the dispatches it left the factory in.
  */
 export function wentInto(state: Data, lot: Lot, held = 0, path = new Set([lot.id])): TraceStep[] {
   const on: Follow = (l, h, p) => wentInto(state, l, h, p);
   const steps: TraceStep[] = [];
   const starts = new Map<string, number>();
   for (const use of lot.uses) {
-    if (use.madeLot) {
+    if (use.dispatchId) {
+      const dispatch = state.dispatches.find((d) => d.id === use.dispatchId);
+      steps.push({ key: `${lot.id}>${use.dispatchId}`, material: lot.material, quantity: use.quantity, unit: lot.unit, origin: { type: 'dispatch', dispatchId: use.dispatchId, dispatch }, at: use.at, steps: [] });
+    } else if (use.madeLot) {
       const pieces = state.lots.find((l) => l.id === use.madeLot);
       if (pieces) steps.push(lotStep(state, pieces, { quantity: use.quantity }, on, held, path, lot.id));
     } else if (use.runId) {
       for (const chocolate of state.lots.filter((l) => l.chocolate?.runId === use.runId)) steps.push(lotStep(state, chocolate, { quantity: use.quantity }, on, held, path, lot.id));
-    } else {
+    } else if (use.batchId) {
       starts.set(use.batchId, sum([starts.get(use.batchId) ?? 0, use.quantity]));
     }
   }
@@ -210,6 +220,24 @@ export function deliveriesBehind(steps: TraceStep[]): Delivery[] {
     }
   }
   return Array.from(found.values()).sort((a, b) => a.at.localeCompare(b.at));
+}
+
+/** A dispatch a trace reaches: which lot went out, how much, to whom */
+export interface Shipment { key: string; lotId: string; material: string; quantity: number; unit: Lot['unit']; dispatchId: string; dispatch?: Dispatch; at: string }
+
+/** The customers a trace forwards reaches, newest first: every dispatch that took goods from a lot on the way (`from` is the lot traced) */
+export function shipmentsAhead(steps: TraceStep[], from?: Lot): Shipment[] {
+  const found: Shipment[] = [];
+  const walk = (list: TraceStep[], parent?: Lot) => {
+    for (const step of list) {
+      if (step.origin?.type === 'dispatch' && parent && !found.some((f) => f.key === step.key)) {
+        found.push({ key: step.key, lotId: parent.id, material: step.material, quantity: step.quantity ?? 0, unit: step.unit ?? 'kg', dispatchId: step.origin.dispatchId, dispatch: step.origin.dispatch, at: step.at ?? '' });
+      }
+      walk(step.steps, step.lot ?? parent);
+    }
+  };
+  walk(steps, from);
+  return found.sort((a, b) => b.at.localeCompare(a.at));
 }
 
 /** The delivery a batch itself is, when its beans came straight from a supplier */

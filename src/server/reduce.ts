@@ -6,7 +6,7 @@ import { piecesKg } from '@/lib/pieces';
 import { batchMaterialAtMixing, changeover, ingredientsOf, mixerStamp, mixingTotals, runLotIds, sourcesOf, storedAtMixing, versionOf } from '@/lib/mixing';
 import { demoCredentials, retiredChocolateTypes, seedState, type State } from '@/lib/seed';
 import { stationById, stationName } from '@/lib/stations';
-import type { Batch, Lot, LotCategory, LotUse, Mixer, MixingRun, OutputCategory, Recipe, RecipeIngredient, RecordedOutput, RunIngredient, StationId, StationRecord, User } from '@/lib/types';
+import type { Batch, Dispatch, DispatchLine, Lot, LotCategory, LotUse, Mixer, MixingRun, OutputCategory, Recipe, RecipeIngredient, RecordedOutput, RunIngredient, StationId, StationRecord, User } from '@/lib/types';
 
 /** A command that cannot be applied; the message is shown to the person who tried */
 export class CommandError extends Error {}
@@ -326,6 +326,57 @@ function removePieces(s: State, lotId: string): State {
   return { ...s, lots };
 }
 
+const round3 = (n: number) => Math.round(n * 1000) / 1000;
+
+/** The next dispatch note number. Dispatches are never removed (a cancelled one stays), so a number is never given twice. */
+function nextDispatchId(s: State) {
+  const max = s.dispatches.reduce((m, d) => Math.max(m, parseInt(d.id.slice(4), 10) || 0), 0);
+  return `DSP-${String(max + 1).padStart(4, '0')}`;
+}
+
+type DispatchGoods = Extract<Command, { type: 'dispatchGoods' }>;
+
+/**
+ * Goods leaving the factory for a customer. Each line comes off its lot as a use carrying the dispatch,
+ * so the store goes down and a trace forward from any delivery reaches the customers. A lot cannot
+ * send out more than it has on record, and pieces go out whole.
+ */
+function dispatchGoods(s: State, cmd: DispatchGoods, ctx: CommandContext): Outcome {
+  const customer = s.customers.find((c) => c.id === cmd.customerId) ?? fail('Choose the customer.');
+  const given = cmd.lines.filter((l) => l.quantity > 0);
+  if (given.length === 0) fail('Enter what is going out.');
+  const seen = new Set<string>();
+  const lines: DispatchLine[] = given.map((line) => {
+    if (seen.has(line.lotId)) fail(`Lot ${line.lotId} is listed twice. Give it one line.`);
+    seen.add(line.lotId);
+    const lot = s.lots.find((l) => l.id === line.lotId) ?? fail(`Lot ${line.lotId} was not found.`);
+    const pieces = lot.unit === 'units';
+    if (pieces && !Number.isInteger(line.quantity)) fail(`Pieces from lot ${lot.id} go out whole: enter a number of pieces.`);
+    if (line.quantity > lot.available + 0.005) fail(`Lot ${lot.id} has only ${pieces ? `${lot.available} pieces` : kg(lot.available)} of ${lot.material} on record.`);
+    return { lotId: lot.id, material: lot.material, quantity: pieces ? line.quantity : round2(line.quantity), unit: lot.unit };
+  });
+  const id = nextDispatchId(s);
+  const lots = s.lots.map((lot) => {
+    const line = lines.find((l) => l.lotId === lot.id);
+    if (!line) return lot;
+    return { ...lot, available: Math.max(0, round3(lot.available - line.quantity)), uses: [...lot.uses, { dispatchId: id, quantity: line.quantity, at: ctx.now }] };
+  });
+  const dispatch: Dispatch = { id, customerId: customer.id, at: ctx.now, reference: cmd.reference?.trim() || undefined, note: cmd.note?.trim() || undefined, lines, recordedBy: ctx.userId };
+  return { state: { ...s, lots, dispatches: [...s.dispatches, dispatch] }, result: id };
+}
+
+/** A dispatch entered by mistake: its goods go back to their lots, and the note stays on record as cancelled */
+function cancelDispatch(s: State, dispatchId: string, reason: string, ctx: CommandContext): State {
+  const dispatch = s.dispatches.find((d) => d.id === dispatchId) ?? fail('That dispatch was not found.');
+  if (dispatch.cancelled) fail(`Dispatch ${dispatch.id} is already cancelled.`);
+  const lots = s.lots.map((lot) => {
+    const returned = lot.uses.filter((u) => u.dispatchId === dispatch.id).reduce((sum, u) => sum + u.quantity, 0);
+    return returned ? { ...lot, available: Math.min(lot.received, round3(lot.available + returned)), uses: lot.uses.filter((u) => u.dispatchId !== dispatch.id) } : lot;
+  });
+  const cancelled = { ...dispatch, cancelled: { at: ctx.now, by: ctx.userId, reason: reason.trim() } };
+  return { ...s, lots, dispatches: s.dispatches.map((d) => (d.id === dispatch.id ? cancelled : d)) };
+}
+
 /** A recipe's ingredients must have different names and add up to 100% */
 function checkIngredients(ingredients: RecipeIngredient[]) {
   const names = new Set<string>();
@@ -514,6 +565,18 @@ function runCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
     case 'deleteSupplier':
       if (s.lots.some((l) => l.source.type === 'supplier' && l.source.supplierId === cmd.supplierId) || s.batches.some((b) => b.supplierId === cmd.supplierId)) fail('Suppliers referenced by lots or batches cannot be deleted.');
       return { state: { ...s, suppliers: s.suppliers.filter((x) => x.id !== cmd.supplierId) } };
+    case 'dispatchGoods': return dispatchGoods(s, cmd, ctx);
+    case 'cancelDispatch': return { state: cancelDispatch(s, cmd.dispatchId, cmd.reason, ctx) };
+    case 'addCustomer': {
+      const id = uniqueId(s.customers, `C-${slug(cmd.customer.name).toUpperCase()}`);
+      return { state: { ...s, customers: [...s.customers, { ...cmd.customer, id }] }, result: id };
+    }
+    case 'updateCustomer':
+      if (!s.customers.some((c) => c.id === cmd.customerId)) fail('That customer was not found.');
+      return { state: { ...s, customers: s.customers.map((c) => (c.id === cmd.customerId ? { ...cmd.customer, id: c.id } : c)) } };
+    case 'deleteCustomer':
+      if (s.dispatches.some((d) => d.customerId === cmd.customerId)) fail('Customers with dispatches cannot be deleted.');
+      return { state: { ...s, customers: s.customers.filter((c) => c.id !== cmd.customerId) } };
     case 'addUser': {
       const { password: _password, pin: _pin, ...fields } = cmd.user;
       checkUser(s, fields);
@@ -628,7 +691,7 @@ export function migrateLegacy(stored: Record<string, unknown>, now: string): { s
   const state: State = {
     batches: data.batches ?? [], lots: data.lots ?? [], recipes: data.recipes ?? seed.recipes,
     products: [...seed.products, ...(data.products ?? []).filter((p) => !seed.products.some((x) => x.id === p.id))],
-    routes: data.routes ?? seed.routes, packSizes: data.packSizes ?? seed.packSizes, suppliers: data.suppliers ?? [], users,
+    routes: data.routes ?? seed.routes, packSizes: data.packSizes ?? seed.packSizes, suppliers: data.suppliers ?? [], customers: [], dispatches: [], users,
     outputCategories: storedCategories.length ? storedCategories : seed.outputCategories,
     containers: data.containers ?? seed.containers,
     thresholds: { ...seed.thresholds, ...(data.thresholds ?? {}), variancePct: { ...seed.thresholds.variancePct, ...(data.thresholds?.variancePct ?? {}) } },

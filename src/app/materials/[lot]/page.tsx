@@ -3,10 +3,10 @@
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { ArrowDown, Pencil, Trash2, Waypoints } from 'lucide-react';
+import { ArrowDown, Pencil, Trash2, Truck, Waypoints } from 'lucide-react';
 import { Back, Badge, Button, Empty, Field, Input, LinkButton, Notice, PageHeader, Panel, Select, Stat } from '@/components/ui';
 import { BatchLabel } from '@/components/BatchLabel';
-import { batchById, lotOrigin, recordBalance, userName } from '@/lib/derive';
+import { amountOf, batchById, customerName, lotOrigin, recordBalance, userName } from '@/lib/derive';
 import { piecesFrom, piecesKg } from '@/lib/pieces';
 import { dateTime, kg } from '@/lib/format';
 import { useStore } from '@/lib/store';
@@ -25,8 +25,10 @@ export default function LotPage() {
   const sourceRecord = sourceBatch?.records.find((r) => r.outputs.some((o) => o.lotId === lot.id));
   const supplier = lot.source.type === 'supplier' ? store.suppliers.find((s) => s.id === (lot.source as { supplierId: string }).supplierId) : undefined;
   const upstreamLots = sourceBatch ? Array.from(new Set([...sourceBatch.startInput.lotIds, ...sourceBatch.records.flatMap((r) => r.inputLotIds)])) : [];
-  const downstream = lot.uses.map((use) => ({ use, batch: batchById(store, use.batchId) }));
-  const madeLots = downstream.flatMap((d) => store.lots.filter((l) => l.source.type === 'batch' && l.source.batchId === d.use.batchId));
+  const downstream = lot.uses.map((use) => ({ use, batch: use.batchId ? batchById(store, use.batchId) : undefined, dispatch: use.dispatchId ? store.dispatches.find((d) => d.id === use.dispatchId) : undefined }));
+  // A batch can use a lot more than once (two mixing runs, pieces of several sizes); each lot it made is listed once.
+  const usedBy = new Set(lot.uses.flatMap((use) => (use.batchId ? [use.batchId] : [])));
+  const madeLots = store.lots.filter((l) => l.source.type === 'batch' && usedBy.has(l.source.batchId));
   const referencedByBatch = store.batches.some((batch) => batch.startInput.lotIds.includes(lot.id) || batch.records.some((record) => record.inputLotIds.includes(lot.id) || record.outputs.some((output) => output.lotId === lot.id)));
   const canDelete = lot.source.type === 'supplier' && lot.uses.length === 0 && lot.available === lot.received && !referencedByBatch;
   // Liquor, cocoa butter, sugar or milk powder in store can be mixed into chocolate from a "Chocolate from store" batch.
@@ -35,11 +37,13 @@ export default function LotPage() {
   const usedInRecipes = lot.unit === 'kg' && lot.available > 0 && store.recipes.some((r) => r.versions.find((v) => v.version === r.currentVersion)?.ingredients.some((i) => i.name === lot.material));
   // Beans or nibs in store start the batch that takes them; the weight used comes off this lot.
   const startsBatch = lot.unit === 'kg' && lot.available > 0 && store.products.some((p) => (lot.material === 'Cocoa beans' ? p.route === 'beans' : store.routes.find((r) => r.id === p.route)?.startMaterial === lot.material));
+  // What the factory made can be sold or sent out; bought raw materials are not.
+  const dispatchable = lot.category !== 'Raw material' && lot.available > 0.004;
 
   return (
     <>
       <Back href="/store" label="Store" />
-      <PageHeader eyebrow={lot.category} title={`${lot.id} · ${lot.material}`} subtitle={`${lotOrigin(store, lot)} · received ${dateTime(lot.receivedAt)}`} action={<div className="flex flex-wrap gap-2">{usedInRecipes && <LinkButton href={`/production/new?lot=${lot.id}`}>Mix chocolate from store</LinkButton>}{startsBatch && <LinkButton href={`/production/new?lot=${lot.id}`}>Start a batch from this lot</LinkButton>}{lot.chocolate && lot.available > 0.004 && <LinkButton href={`/production/pieces/${lot.id}`}>Record pieces</LinkButton>}<LinkButton variant="secondary" href={`/trace/${lot.id}`}><Waypoints size={14} /> Trace</LinkButton><Button variant="secondary" onClick={() => setEditing((value) => !value)}><Pencil size={14} /> Edit</Button><Button variant="danger" disabled={!canDelete} title={canDelete ? 'Delete lot' : 'Only unused supplier lots can be deleted.'} onClick={async () => { if (canDelete && window.confirm(`Delete lot ${lot.id}?`) && await store.deleteLot(lot.id)) router.push('/store'); }}><Trash2 size={14} /> Delete</Button></div>} />
+      <PageHeader eyebrow={lot.category} title={`${lot.id} · ${lot.material}`} subtitle={`${lotOrigin(store, lot)} · received ${dateTime(lot.receivedAt)}`} action={<div className="flex flex-wrap gap-2">{usedInRecipes && <LinkButton href={`/production/new?lot=${lot.id}`}>Mix chocolate from store</LinkButton>}{startsBatch && <LinkButton href={`/production/new?lot=${lot.id}`}>Start a batch from this lot</LinkButton>}{lot.chocolate && lot.available > 0.004 && <LinkButton href={`/production/pieces/${lot.id}`}>Record pieces</LinkButton>}{dispatchable && <LinkButton variant={lot.pieces || lot.category === 'Finished goods' ? 'primary' : 'secondary'} href={`/dispatch/new?lot=${lot.id}`}><Truck size={14} /> Dispatch</LinkButton>}<LinkButton variant="secondary" href={`/trace/${lot.id}`}><Waypoints size={14} /> Trace</LinkButton><Button variant="secondary" onClick={() => setEditing((value) => !value)}><Pencil size={14} /> Edit</Button><Button variant="danger" disabled={!canDelete} title={canDelete ? 'Delete lot' : 'Only unused supplier lots can be deleted.'} onClick={async () => { if (canDelete && window.confirm(`Delete lot ${lot.id}?`) && await store.deleteLot(lot.id)) router.push('/store'); }}><Trash2 size={14} /> Delete</Button></div>} />
       <div className="mb-5 grid grid-cols-3 gap-3">
         <Stat label={lot.pieces ? 'Made' : 'Received'} value={`${lot.received} ${unit}`} />
         <Stat label="Used" value={`${Math.round((lot.received - lot.available) * 1000) / 1000} ${unit}`} />
@@ -95,8 +99,14 @@ export default function LotPage() {
           <li className="py-2">
             <span className="text-[11px] font-bold tracking-wide text-faint uppercase">Used by</span>
             {downstream.length === 0 && <div className="text-muted">Not used yet.</div>}
-            {downstream.map(({ use, batch }) => (
-              <div key={`${use.batchId}-${use.at}`} className="flex flex-wrap items-center gap-2 py-1">
+            {downstream.map(({ use, batch, dispatch }, i) => use.dispatchId ? (
+              <div key={`${use.dispatchId}-${i}`} className="flex flex-wrap items-center gap-2 py-1">
+                <Link href={`/dispatch/${use.dispatchId}`} className="font-semibold text-green">{use.dispatchId}</Link>
+                <span>Dispatched to {dispatch ? customerName(store, dispatch.customerId) : 'a customer'}</span>
+                <span className="text-muted">{amountOf(use.quantity, lot.unit)} · {dateTime(use.at)}{dispatch?.reference ? ` · ${dispatch.reference}` : ''}</span>
+              </div>
+            ) : (
+              <div key={`${use.batchId}-${use.at}-${i}`} className="flex flex-wrap items-center gap-2 py-1">
                 <Link href={`/production/batches/${use.batchId}`} className="font-semibold text-green">{use.batchId}</Link>
                 <span>{batch?.product}</span>
                 <span className="text-muted">{use.quantity} {lot.unit} at {stationName(use.station).toLowerCase()} · {dateTime(use.at)}</span>
