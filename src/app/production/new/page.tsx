@@ -3,10 +3,10 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ArrowRight, Check, X } from 'lucide-react';
-import { Back, Button, Field, Input, LinkButton, Notice, PageHeader, Panel, Select, Textarea, UnitInput } from '@/components/ui';
+import { Back, Button, Field, Input, LinkButton, Notice, PageHeader, Panel, Select, SupplierOptions, Textarea, UnitInput } from '@/components/ui';
 import { DestinationSelect, LiveBalance, WeightField, emptyWeight, netWeight, type WeightValue } from '@/components/weighing';
 import { calculateBalance, round2 } from '@/lib/balance';
-import { defaultDestination, lotOrigin, suggestBatchName } from '@/lib/derive';
+import { defaultDestination, lotOrigin, suggestBatchName, suppliersFor } from '@/lib/derive';
 import { kg } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { stationById, stationName } from '@/lib/stations';
@@ -181,7 +181,8 @@ function ReceiveDelivery({ productId, productField, batchDate, setBatchDate, sta
   const store = useStore();
   const router = useRouter();
   const station = stationById.receiving;
-  const [newSupplierId, setSupplierId] = useState(() => store.suppliers.find((s) => /bean/i.test(s.supplies))?.id ?? '');
+  const offered = suppliersFor(store, beans);
+  const [newSupplierId, setSupplierId] = useState(() => offered.usual[0]?.id ?? '');
   // Beans already received into the store are taken from their lot; a new delivery starts from the supplier.
   const stored = inStore(store.lots, beans);
   const [lotId, setLotId] = useState(() => (stored.some((l) => l.id === startLotId) ? startLotId! : ''));
@@ -235,7 +236,7 @@ function ReceiveDelivery({ productId, productField, batchDate, setBatchDate, sta
           {!fromLot && <Field label="Supplier" hint="Printed on the batch card and liquor label.">
             <Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} aria-label="Supplier">
               <option value="">Not recorded</option>
-              {store.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              <SupplierOptions material={beans} {...offered} />
             </Select>
           </Field>}
           <Field label="Delivery date">

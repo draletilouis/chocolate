@@ -255,9 +255,9 @@ async function expectText(page, text) {
   await expectText(page, '0.30 kg stays in the lot');
   await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-pieces.png`, fullPage: true });
   await page.getByRole('button', { name: 'Save pieces' }).click();
-  await expectText(page, 'Pieces saved. 500 × 45 g bar (FIN-0004) · 90 × 80 g bar (FIN-0005).');
+  await expectText(page, 'Pieces saved. 500 × 45 g bar (FIN-0006) · 90 × 80 g bar (FIN-0007).');
   await expectText(page, '0.30 kg');
-  ok('pieces: good pieces per size from a chocolate lot (590 = 29.70 kg), too much refused, lots FIN-0004/5');
+  ok('pieces: good pieces per size from a chocolate lot (590 = 29.70 kg), too much refused, lots FIN-0006/7');
 
   // A bean delivery is one form: the batch and its receiving record are saved together.
   await page.goto(`${BASE}/production/new`);
@@ -339,7 +339,7 @@ async function expectText(page, text) {
   // Production plan: pieces planned per type and size, counted from the pieces recorded since its start date.
   await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Production plan' }).click();
   await page.waitForURL('**/plan');
-  for (const t of ['2210 pieces left to make', 'Counting pieces made from 2026-09-14', '4700', '2490', 'Chocolate still to mix', 'Ingredients to mix it', 'Milk powder']) await expectText(page, t);
+  for (const t of ['1610 pieces left to make', 'Counting pieces made from 2026-09-14', '4700', '3090', 'Chocolate still to mix', 'Ingredients to mix it', 'Milk powder']) await expectText(page, t);
   const planRow = page.getByRole('row').filter({ hasText: '70% Dark' }).filter({ hasText: '45 g bar' });
   for (const t of ['2000', '1700', '300']) if (!(await planRow.innerText()).includes(t)) throw new Error(`Plan row for 70% Dark 45 g bar is missing ${t}`);
   await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-plan.png`, fullPage: true });
@@ -356,10 +356,10 @@ async function expectText(page, text) {
   await page.getByLabel('Line 6 pieces').fill('10');
   await page.getByLabel('Plan note').fill('Week 40 orders');
   await page.getByRole('button', { name: 'Save plan' }).click();
-  for (const t of ['2720 pieces left to make', 'Week 40 orders', '5210', '60% Dark']) await expectText(page, t);
+  for (const t of ['2120 pieces left to make', 'Week 40 orders', '5210', '60% Dark']) await expectText(page, t);
   await page.goto(`${BASE}/overview`);
-  for (const t of ['Production plan', '2490 of 5210 pieces made']) await expectText(page, t);
-  ok('production plan: pieces left per type and size from the pieces made (2210), a duplicate line refused, plan changed (2720), shown on Overview');
+  for (const t of ['Production plan', '3090 of 5210 pieces made']) await expectText(page, t);
+  ok('production plan: pieces left per type and size from the pieces made (1610), a duplicate line refused, plan changed (2120), shown on Overview');
 
   // Setup.
   for (const [section, text] of [['products', 'Batch prefix'], ['pack-sizes', '45 g bar'], ['outputs', 'Nibs for liquor'], ['containers', 'Husk bin'], ['routes', 'Beans to chocolate'], ['suppliers', 'Kuapa Kokoo'], ['users', 'Current user'], ['alerts', 'Variance limit per station']]) {

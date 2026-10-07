@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { ArrowLeft, ChevronRight, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
+import type { Supplier } from '@/lib/types';
 
 export function PageHeader({ eyebrow, title, subtitle, action }: { eyebrow?: string; title: string; subtitle?: ReactNode; action?: ReactNode }) {
   return (
@@ -84,6 +85,18 @@ export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
 
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return <select {...props} className={`${inputClass} ${props.className ?? ''}`} />;
+}
+
+/** A supplier select's options: those who supply the material first, grouped when there are others too (see suppliersFor()) */
+export function SupplierOptions({ material, usual, others }: { material: string; usual: Supplier[]; others: Supplier[] }) {
+  const option = (s: Supplier) => <option key={s.id} value={s.id}>{s.name}</option>;
+  if (!usual.length || !others.length) return <>{[...usual, ...others].map(option)}</>;
+  return (
+    <>
+      <optgroup label={`Supplies ${material.toLowerCase()}`}>{usual.map(option)}</optgroup>
+      <optgroup label="Other suppliers">{others.map(option)}</optgroup>
+    </>
+  );
 }
 
 export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {

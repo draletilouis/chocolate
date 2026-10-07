@@ -98,10 +98,17 @@ export const recipes: Recipe[] = chocolateTypes.map(([id, name, liquor, butter, 
   }],
 }));
 
+/** At least two for every material bought: cocoa beans, sugar, cocoa butter, milk powder, lecithin and liquor */
 export const suppliers: Supplier[] = [
   { id: 'S-KUAPA', name: 'Kuapa Kokoo', supplies: 'Cocoa beans', contact: 'orders@kuapa.example' },
+  { id: 'S-BUNDIBUGYO', name: 'Bundibugyo Cocoa Growers', supplies: 'Cocoa beans', contact: 'sales@bundibugyo-cocoa.example' },
+  { id: 'S-SEMULIKI', name: 'Semuliki Cocoa Cooperative', supplies: 'Cocoa beans, liquor', contact: 'office@semuliki-coop.example' },
   { id: 'S-MZANSI', name: 'Mzansi Sugar', supplies: 'Sugar', contact: '+27 11 555 0142' },
+  { id: 'S-LAKESIDE', name: 'Lakeside Sugar Works', supplies: 'Sugar', contact: 'depot@lakeside-sugar.example' },
   { id: 'S-GOLDEN', name: 'Golden Butter Co', supplies: 'Cocoa butter, lecithin, milk powder', contact: 'sales@goldenbutter.example' },
+  { id: 'S-EQUATOR', name: 'Equator Cocoa Processors', supplies: 'Cocoa butter, liquor', contact: 'trade@equatorcocoa.example' },
+  { id: 'S-RWENZORI', name: 'Rwenzori Highland Dairies', supplies: 'Milk powder', contact: 'orders@rwenzori-dairies.example' },
+  { id: 'S-NILE', name: 'Nile Food Ingredients', supplies: 'Lecithin', contact: 'info@nile-ingredients.example' },
 ];
 
 /** Demo accounts, only created in demo mode. Every one signs in with the password "cocoa123" or the PIN "1234". */
@@ -146,6 +153,13 @@ export const thresholds: Thresholds = {
 const slugOf = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 export const outputCategories: OutputCategory[] = stations.flatMap((s) => s.rows.map((row) => ({ ...row, id: `${s.id}:${slugOf(row.name)}`, station: s.id })));
+
+/** CH-016 made 40% Milk from an empty mixer and took it all out, keeping nothing for the next run */
+const ch016Run: MixingRun = {
+  id: 'run-ch016-1', recipeId: 'R-MILK', type: '40% Milk', recipeVersion: 1, toRun: 88,
+  ingredients: [{ name: 'Liquor', expected: 9.68, actual: 9.7, lotId: 'LIQ-023' }, { name: 'Cocoa butter', expected: 26.4, actual: 26.4, lotId: 'BUT-020' }, { name: 'Sugar', expected: 29.92, actual: 29.9, lotId: 'SUG-032' }, { name: 'Milk powder', expected: 22, actual: 22, lotId: 'MLK-002' }],
+  made: 87.4, kept: 0, lotId: 'M40-0001', recordedAt: at('2026-09-14', '14:20'), recordedBy: 'U-KM',
+};
 
 /**
  * CH-017 made two types on the mixer: 70% Dark from empty, then 85% Dark on top of the 10 kg of 70% it
@@ -218,6 +232,12 @@ const batches: Batch[] = [
     records: [], holds: [], corrections: [],
   },
   {
+    id: 'CH-016', productId: 'P-CHOC', product: 'Chocolate from store', route: 'chocolate', startedAt: at('2026-09-14', '13:30'), status: 'completed', nextStation: null,
+    startInput: { material: 'Stored liquor and cocoa butter', weight: 0, lotIds: [] }, completedAt: at('2026-09-14', '16:00'),
+    records: [mixingRecord([ch016Run], at('2026-09-14', '14:20'))],
+    holds: [], corrections: [],
+  },
+  {
     id: 'CH-017', productId: 'P-CHOC', product: 'Chocolate from store', route: 'chocolate', startedAt: at('2026-09-15', '08:00'), status: 'completed', nextStation: null,
     startInput: { material: 'Stored liquor and cocoa butter', weight: 0, lotIds: [] }, completedAt: at('2026-09-15', '15:30'),
     records: [mixingRecord([ch017Run70, ch017Run85], at('2026-09-15', '12:40'))],
@@ -230,13 +250,20 @@ const batches: Batch[] = [
   },
 ];
 
+// Deliveries carry the supplier's own batch number from the bag or delivery note.
 const lots: Lot[] = [
-  { id: 'BEAN-0905', material: 'Cocoa beans', category: 'Raw material', received: 420, available: 70, unit: 'kg', source: { type: 'supplier', supplierId: 'S-KUAPA', reference: 'DN-2211' }, receivedAt: at('2026-09-05', '10:00'), uses: [{ batchId: 'CB-023', quantity: 200, station: 'receiving', at: at('2026-09-10', '07:30') }, { batchId: 'CB-024', quantity: 150, station: 'receiving', at: at('2026-09-13', '07:20') }] },
-  { id: 'BEAN-0912', material: 'Cocoa beans', category: 'Raw material', received: 300, available: 200, unit: 'kg', source: { type: 'supplier', supplierId: 'S-KUAPA', reference: 'DN-2238' }, receivedAt: at('2026-09-12', '09:15'), uses: [{ batchId: 'CB-025', quantity: 100, station: 'receiving', at: at('2026-09-14', '07:15') }] },
-  { id: 'SUG-031', material: 'Sugar', category: 'Raw material', received: 500, available: 467, unit: 'kg', source: { type: 'supplier', supplierId: 'S-MZANSI', reference: 'INV-88120' }, receivedAt: at('2026-09-01', '13:00'), uses: [{ batchId: 'CH-017', quantity: 30, station: 'mixing', at: at('2026-09-15', '09:10'), runId: 'run-ch017-1' }, { batchId: 'CH-017', quantity: 3, station: 'mixing', at: at('2026-09-15', '12:40'), runId: 'run-ch017-2' }] },
-  { id: 'BUT-019', material: 'Cocoa butter', category: 'Raw material', received: 80, available: 67.1, unit: 'kg', source: { type: 'supplier', supplierId: 'S-GOLDEN', reference: 'GB-4471' }, receivedAt: at('2026-08-28', '11:20'), uses: [{ batchId: 'CH-017', quantity: 9.9, station: 'mixing', at: at('2026-09-15', '09:10'), runId: 'run-ch017-1' }, { batchId: 'CH-017', quantity: 3, station: 'mixing', at: at('2026-09-15', '12:40'), runId: 'run-ch017-2' }] },
-    { id: 'MLK-002', material: 'Milk powder', category: 'Raw material', received: 60, available: 38, unit: 'kg', source: { type: 'supplier', supplierId: 'S-GOLDEN', reference: 'GB-4390' }, receivedAt: at('2026-08-14', '10:00'), uses: [] },
-  { id: 'LIQ-023', material: 'Liquor', category: 'Intermediate', received: 99.4, available: 75.4, unit: 'kg', source: { type: 'batch', batchId: 'CB-023', station: 'grinding' }, receivedAt: at('2026-09-10', '16:00'), uses: [{ batchId: 'CH-017', quantity: 24, station: 'mixing', at: at('2026-09-15', '12:40'), runId: 'run-ch017-2' }] },
+  { id: 'BEAN-0905', material: 'Cocoa beans', category: 'Raw material', received: 420, available: 70, unit: 'kg', source: { type: 'supplier', supplierId: 'S-KUAPA', reference: 'DN-2211', supplierBatch: 'KK-2608-114' }, receivedAt: at('2026-09-05', '10:00'), uses: [{ batchId: 'CB-023', quantity: 200, station: 'receiving', at: at('2026-09-10', '07:30') }, { batchId: 'CB-024', quantity: 150, station: 'receiving', at: at('2026-09-13', '07:20') }] },
+  { id: 'BEAN-0912', material: 'Cocoa beans', category: 'Raw material', received: 300, available: 200, unit: 'kg', source: { type: 'supplier', supplierId: 'S-KUAPA', reference: 'DN-2238', supplierBatch: 'KK-2609-031' }, receivedAt: at('2026-09-12', '09:15'), uses: [{ batchId: 'CB-025', quantity: 100, station: 'receiving', at: at('2026-09-14', '07:15') }] },
+  { id: 'BEAN-0915', material: 'Cocoa beans', category: 'Raw material', received: 180, available: 180, unit: 'kg', source: { type: 'supplier', supplierId: 'S-BUNDIBUGYO', reference: 'DN-0457', supplierBatch: 'BCG-0915-A' }, receivedAt: at('2026-09-15', '10:30'), uses: [] },
+  { id: 'BEAN-0916', material: 'Cocoa beans', category: 'Raw material', received: 240, available: 240, unit: 'kg', source: { type: 'supplier', supplierId: 'S-SEMULIKI', reference: 'DN-1180', supplierBatch: 'SCC-2609-12' }, receivedAt: at('2026-09-16', '09:00'), uses: [] },
+  { id: 'SUG-031', material: 'Sugar', category: 'Raw material', received: 500, available: 467, unit: 'kg', source: { type: 'supplier', supplierId: 'S-MZANSI', reference: 'INV-88120', supplierBatch: 'MZ-260815' }, receivedAt: at('2026-09-01', '13:00'), uses: [{ batchId: 'CH-017', quantity: 30, station: 'mixing', at: at('2026-09-15', '09:10'), runId: 'run-ch017-1' }, { batchId: 'CH-017', quantity: 3, station: 'mixing', at: at('2026-09-15', '12:40'), runId: 'run-ch017-2' }] },
+  { id: 'SUG-032', material: 'Sugar', category: 'Raw material', received: 250, available: 220.1, unit: 'kg', source: { type: 'supplier', supplierId: 'S-LAKESIDE', reference: 'INV-3317', supplierBatch: 'LSW-2609-044' }, receivedAt: at('2026-09-11', '14:00'), uses: [{ batchId: 'CH-016', quantity: 29.9, station: 'mixing', at: at('2026-09-14', '14:20'), runId: 'run-ch016-1' }] },
+  { id: 'BUT-019', material: 'Cocoa butter', category: 'Raw material', received: 80, available: 67.1, unit: 'kg', source: { type: 'supplier', supplierId: 'S-GOLDEN', reference: 'GB-4471', supplierBatch: 'GB-CB-0821' }, receivedAt: at('2026-08-28', '11:20'), uses: [{ batchId: 'CH-017', quantity: 9.9, station: 'mixing', at: at('2026-09-15', '09:10'), runId: 'run-ch017-1' }, { batchId: 'CH-017', quantity: 3, station: 'mixing', at: at('2026-09-15', '12:40'), runId: 'run-ch017-2' }] },
+  { id: 'BUT-020', material: 'Cocoa butter', category: 'Raw material', received: 100, available: 73.6, unit: 'kg', source: { type: 'supplier', supplierId: 'S-EQUATOR', reference: 'INV-2091', supplierBatch: 'ECP-B-2609-07' }, receivedAt: at('2026-09-11', '11:45'), uses: [{ batchId: 'CH-016', quantity: 26.4, station: 'mixing', at: at('2026-09-14', '14:20'), runId: 'run-ch016-1' }] },
+  { id: 'MLK-002', material: 'Milk powder', category: 'Raw material', received: 60, available: 38, unit: 'kg', source: { type: 'supplier', supplierId: 'S-GOLDEN', reference: 'GB-4390', supplierBatch: 'GB-MP-0807' }, receivedAt: at('2026-08-14', '10:00'), uses: [{ batchId: 'CH-016', quantity: 22, station: 'mixing', at: at('2026-09-14', '14:20'), runId: 'run-ch016-1' }] },
+  { id: 'MLK-003', material: 'Milk powder', category: 'Raw material', received: 100, available: 100, unit: 'kg', source: { type: 'supplier', supplierId: 'S-RWENZORI', reference: 'DN-7712', supplierBatch: 'RHD-2609-18' }, receivedAt: at('2026-09-12', '15:30'), uses: [] },
+  { id: 'LEC-001', material: 'Lecithin', category: 'Raw material', received: 50, available: 50, unit: 'kg', source: { type: 'supplier', supplierId: 'S-GOLDEN', reference: 'GB-4402', supplierBatch: 'GB-LC-0815' }, receivedAt: at('2026-09-01', '13:00'), uses: [] },
+  { id: 'LIQ-023', material: 'Liquor', category: 'Intermediate', received: 99.4, available: 65.7, unit: 'kg', source: { type: 'batch', batchId: 'CB-023', station: 'grinding' }, receivedAt: at('2026-09-10', '16:00'), uses: [{ batchId: 'CH-016', quantity: 9.7, station: 'mixing', at: at('2026-09-14', '14:20'), runId: 'run-ch016-1' }, { batchId: 'CH-017', quantity: 24, station: 'mixing', at: at('2026-09-15', '12:40'), runId: 'run-ch017-2' }] },
   { id: 'LIQ-024', material: 'Liquor', category: 'Intermediate', received: 79.6, available: 19.5, unit: 'kg', source: { type: 'batch', batchId: 'CB-024', station: 'grinding' }, receivedAt: at('2026-09-13', '16:45'), uses: [{ batchId: 'CH-017', quantity: 60.1, station: 'mixing', at: at('2026-09-15', '09:10'), runId: 'run-ch017-1' }] },
   { id: 'WRB-023', material: 'Whole roasted beans', category: 'Finished goods', received: 3, available: 3, unit: 'kg', source: { type: 'batch', batchId: 'CB-023', station: 'roasting' }, receivedAt: at('2026-09-10', '10:10'), uses: [] },
   { id: 'WRB-024', material: 'Whole roasted beans', category: 'Finished goods', received: 2, available: 2, unit: 'kg', source: { type: 'batch', batchId: 'CB-024', station: 'roasting' }, receivedAt: at('2026-09-13', '09:50'), uses: [] },
@@ -247,12 +274,16 @@ const lots: Lot[] = [
   { id: 'BUT-024', material: 'Butter for sale', category: 'Finished goods', received: 2.5, available: 2.5, unit: 'kg', source: { type: 'batch', batchId: 'CB-024', station: 'filtering' }, receivedAt: at('2026-09-13', '14:30'), uses: [] },
   { id: 'BUT-024B', material: 'Cocoa butter', category: 'Intermediate', received: 5.7, available: 5.7, unit: 'kg', source: { type: 'batch', batchId: 'CB-024', station: 'filtering' }, receivedAt: at('2026-09-13', '14:30'), uses: [] },
   { id: 'PWD-024', material: 'Fine cocoa powder', category: 'Finished goods', received: 13.2, available: 13.2, unit: 'kg', source: { type: 'batch', batchId: 'CB-024', station: 'powder-crushing' }, receivedAt: at('2026-09-13', '15:20'), uses: [] },
+  // CH-016's milk chocolate, part of it made into bars two days later
+  { id: 'M40-0001', material: '40% Milk', category: 'Intermediate', received: 87.4, available: 49.9, unit: 'kg', source: { type: 'batch', batchId: 'CH-016', station: 'mixing' }, receivedAt: at('2026-09-14', '14:20'), uses: [{ batchId: 'CH-016', quantity: 27, station: 'packaging', at: at('2026-09-16', '14:00'), madeLot: 'FIN-0004' }, { batchId: 'CH-016', quantity: 10.5, station: 'packaging', at: at('2026-09-16', '14:00'), madeLot: 'FIN-0005' }], chocolate: { type: '40% Milk', recipeId: 'R-MILK', recipeVersion: 1, runId: 'run-ch016-1' } },
   // CH-017's chocolate, part of it made into bars the next morning
   { id: 'D70-0001', material: '70% Dark', category: 'Intermediate', received: 90, available: 12, unit: 'kg', source: { type: 'batch', batchId: 'CH-017', station: 'mixing' }, receivedAt: at('2026-09-15', '09:10'), uses: [{ batchId: 'CH-017', quantity: 54, station: 'packaging', at: at('2026-09-16', '10:00'), madeLot: 'FIN-0001' }, { batchId: 'CH-017', quantity: 24, station: 'packaging', at: at('2026-09-16', '10:00'), madeLot: 'FIN-0002' }], chocolate: { type: '70% Dark', recipeId: 'R-70', recipeVersion: 1, runId: 'run-ch017-1' } },
   { id: 'D85-0001', material: '85% Dark', category: 'Intermediate', received: 29.8, available: 11.8, unit: 'kg', source: { type: 'batch', batchId: 'CH-017', station: 'mixing' }, receivedAt: at('2026-09-15', '12:40'), uses: [{ batchId: 'CH-017', quantity: 18, station: 'packaging', at: at('2026-09-16', '11:30'), madeLot: 'FIN-0003' }], chocolate: { type: '85% Dark', recipeId: 'R-85', recipeVersion: 1, runId: 'run-ch017-2' } },
   { id: 'FIN-0001', material: '70% Dark · 45 g bar', category: 'Finished goods', received: 1200, available: 1200, unit: 'units', source: { type: 'batch', batchId: 'CH-017', station: 'packaging' }, receivedAt: at('2026-09-16', '10:00'), uses: [], pieces: { type: '70% Dark', recipeId: 'R-70', packSizeId: 'PK-45', size: '45 g bar', grams: 45, fromLotId: 'D70-0001', recordedBy: 'U-LF' } },
   { id: 'FIN-0002', material: '70% Dark · 80 g bar', category: 'Finished goods', received: 300, available: 300, unit: 'units', source: { type: 'batch', batchId: 'CH-017', station: 'packaging' }, receivedAt: at('2026-09-16', '10:00'), uses: [], pieces: { type: '70% Dark', recipeId: 'R-70', packSizeId: 'PK-80', size: '80 g bar', grams: 80, fromLotId: 'D70-0001', recordedBy: 'U-LF' } },
   { id: 'FIN-0003', material: '85% Dark · 45 g bar', category: 'Finished goods', received: 400, available: 400, unit: 'units', source: { type: 'batch', batchId: 'CH-017', station: 'packaging' }, receivedAt: at('2026-09-16', '11:30'), uses: [], pieces: { type: '85% Dark', recipeId: 'R-85', packSizeId: 'PK-45', size: '45 g bar', grams: 45, fromLotId: 'D85-0001', recordedBy: 'U-LF' } },
+  { id: 'FIN-0004', material: '40% Milk · 45 g bar', category: 'Finished goods', received: 600, available: 600, unit: 'units', source: { type: 'batch', batchId: 'CH-016', station: 'packaging' }, receivedAt: at('2026-09-16', '14:00'), uses: [], pieces: { type: '40% Milk', recipeId: 'R-MILK', packSizeId: 'PK-45', size: '45 g bar', grams: 45, fromLotId: 'M40-0001', recordedBy: 'U-LF' } },
+  { id: 'FIN-0005', material: '40% Milk · 7 g bar', category: 'Finished goods', received: 1500, available: 1500, unit: 'units', source: { type: 'batch', batchId: 'CH-016', station: 'packaging' }, receivedAt: at('2026-09-16', '14:00'), uses: [], pieces: { type: '40% Milk', recipeId: 'R-MILK', packSizeId: 'PK-7', size: '7 g bar', grams: 7, fromLotId: 'M40-0001', recordedBy: 'U-LF' } },
 ];
 
 const business: BusinessDetails = {
