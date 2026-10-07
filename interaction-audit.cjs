@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const { chromium } = require('@playwright/test');
 
-const BASE = 'http://127.0.0.1:3100';
+const BASE = process.env.BASE_URL || 'http://127.0.0.1:3100';
 const phase = process.env.AUDIT_PHASE || 'run';
 const OUT = path.resolve('C:/Users/hp/Documents/Codex/2026-09-14/we/outputs/interaction-audit', phase);
 fs.mkdirSync(OUT, { recursive: true });
@@ -56,6 +56,17 @@ async function waitForUrl(page, pattern) {
   await page.waitForURL(pattern, { timeout: 10000 });
 }
 
+// The demo is weeks of production made when it is reset, so the batches this audit works with are looked up in it.
+let demo;
+let WIN;
+let CHM;
+let D70;
+
+// Station forms pick the container last used for each output; the weights this audit types are net, so it weighs without one.
+async function noContainers(page) {
+  for (const select of await page.locator('main select[aria-label$=" container"]').all()) await select.selectOption('');
+}
+
 async function signIn(page) {
   // Start from the sample factory: the data lives on the server now, so reset the demo there (this signs everyone out).
   await page.goto(`${BASE}/production`);
@@ -94,6 +105,9 @@ async function signIn(page) {
   await action(page, 'Sign in — valid credentials', page.getByRole('button', { name: 'Sign in', exact: true }), async () => {
     await page.getByRole('heading', { name: 'Which batch needs attention?' }).waitFor();
   });
+  demo = await page.evaluate(async () => (await (await fetch('/api/sync')).json()).full);
+  WIN = demo.batches.find((b) => b.status === 'active' && b.nextStation === 'winnowing').id;
+  CHM = demo.batches.find((b) => b.status === 'active' && b.route === 'chocolate' && b.records.length === 0).id;
 }
 
 async function productionLine(page) {
@@ -122,13 +136,14 @@ async function productionLine(page) {
 
 async function beanAndPressingFlow(page) {
   await page.goto(`${BASE}/production/stations/winnowing`);
-  await action(page, 'Choose CB-025 for winnowing', page.getByRole('link', { name: /CB-025/ }), async () => {
-    await waitForUrl(page, '**/production/batches/CB-025/record/winnowing');
+  await action(page, `Choose ${WIN} for winnowing`, page.getByRole('link', { name: new RegExp(WIN) }), async () => {
+    await waitForUrl(page, `**/production/batches/${WIN}/record/winnowing`);
     await page.getByRole('spinbutton', { name: 'Nibs for liquor', exact: true }).waitFor();
   });
   await action(page, 'Change the input weight', page.getByRole('button', { name: 'Reweighed? Change' }), async () => {
     await page.getByRole('spinbutton', { name: 'Input weight', exact: true }).waitFor();
   });
+  await noContainers(page);
   for (const [name, value] of [['Nibs for liquor', '50'], ['Nibs for butter', '20'], ['Nibs for sale', '4'], ['Husks', '15.9']]) {
     await page.getByRole('spinbutton', { name, exact: true }).fill(value);
   }
@@ -146,6 +161,7 @@ async function beanAndPressingFlow(page) {
     await waitForUrl(page, '**/record/pressing');
     await page.getByRole('spinbutton', { name: 'Brown butter', exact: true }).waitFor();
   });
+  await noContainers(page);
   await page.getByRole('spinbutton', { name: 'Brown butter', exact: true }).fill('9');
   await page.getByRole('spinbutton', { name: 'Cocoa cake (powder)', exact: true }).fill('10.8');
   await action(page, 'Add a custom pressing output', page.getByRole('button', { name: 'Add another output' }), async () => {
@@ -170,6 +186,7 @@ async function beanAndPressingFlow(page) {
     await waitForUrl(page, '**/record/grinding');
     await page.getByRole('spinbutton', { name: 'Liquor', exact: true }).waitFor();
   });
+  await noContainers(page);
   await page.getByRole('spinbutton', { name: 'Liquor', exact: true }).fill('49.8');
   await action(page, 'Save liquor grinding', page.getByRole('button', { name: 'Save liquor grinding' }), async () => {
     await waitForText(page, 'Sent on: 49.80 kg liquor to mixing.');
@@ -183,7 +200,8 @@ async function beanAndPressingFlow(page) {
   await page.getByLabel('Kg to run').fill('30');
   await waitForText(page, 'Add 16.50 kg');
   await action(page, 'Save a 70% Dark run on the 85% in the mixer', page.getByRole('button', { name: 'Save 70% Dark' }), async () => {
-    await waitForText(page, 'made as lot D70-0002');
+    await waitForText(page, '70% Dark saved: 30.00 kg made as lot');
+    D70 = (await page.locator('main').innerText()).match(/made as lot (D70-\d+)/)[1];
   });
   await action(page, 'Open finish mixing', page.getByRole('button', { name: 'Finish mixing' }), async () => {
     await page.getByLabel('Mixing note').waitFor();
@@ -194,7 +212,7 @@ async function beanAndPressingFlow(page) {
 }
 
 async function batchControls(page) {
-  await page.goto(`${BASE}/production/batches/CB-025`);
+  await page.goto(`${BASE}/production/batches/${WIN}`);
   await action(page, 'Open the winnowing step', page.getByRole('button', { name: 'Details', exact: true }).nth(3), async () => {
     await page.getByRole('button', { name: 'Correct Husks' }).waitFor();
   });
@@ -223,16 +241,16 @@ async function batchControls(page) {
   await action(page, 'Review completion', page.getByRole('link', { name: /Review & complete/ }).first(), async () => {
     await waitForUrl(page, '**/record/completion');
   });
-  await action(page, 'Complete CB-025', page.getByRole('button', { name: 'Complete batch' }), async () => {
-    await waitForUrl(page, '**/production/batches/CB-025');
+  await action(page, `Complete ${WIN}`, page.getByRole('button', { name: 'Complete batch' }), async () => {
+    await waitForUrl(page, `**/production/batches/${WIN}`);
     await waitForText(page, 'Completed');
   });
 }
 
 async function chocolateFromStoreFlow(page) {
   await page.goto(`${BASE}/production/stations/mixing`);
-  await action(page, 'Choose CH-018 for mixing', page.getByRole('link', { name: /CH-018/ }), async () => {
-    await waitForUrl(page, '**/production/batches/CH-018/record/mixing');
+  await action(page, `Choose ${CHM} for mixing`, page.getByRole('link', { name: new RegExp(CHM) }), async () => {
+    await waitForUrl(page, `**/production/batches/${CHM}/record/mixing`);
     await page.getByLabel('Kg to run').waitFor();
   });
   await page.getByLabel('Chocolate type', { exact: true }).selectOption({ label: '100% Dark' });
@@ -246,7 +264,7 @@ async function chocolateFromStoreFlow(page) {
   await page.getByLabel('Kg to run').fill('20');
   await page.getByLabel('Kept in the mixer').fill('0');
   await action(page, 'Save a 100% Dark run from an empty mixer', page.getByRole('button', { name: 'Save 100% Dark' }), async () => {
-    await waitForText(page, 'made as lot D100-0001');
+    await waitForText(page, '100% Dark saved: 20.00 kg made as lot D100-');
   });
   page.once('dialog', (d) => d.accept());
   await action(page, 'Undo the 100% Dark run', page.getByRole('button', { name: 'Undo the 100% Dark run' }), async () => {
@@ -256,27 +274,27 @@ async function chocolateFromStoreFlow(page) {
   await page.getByLabel('Kg to run').fill('20');
   await page.getByLabel('Kept in the mixer').fill('0');
   await action(page, 'Save the 100% Dark run again', page.getByRole('button', { name: 'Save 100% Dark' }), async () => {
-    await waitForText(page, 'made as lot D100-0002');
+    await waitForText(page, '100% Dark saved: 20.00 kg made as lot D100-');
   });
-  await action(page, 'Open finish mixing for CH-018', page.getByRole('button', { name: 'Finish mixing' }), async () => {
+  await action(page, `Open finish mixing for ${CHM}`, page.getByRole('button', { name: 'Finish mixing' }), async () => {
     await page.getByLabel('Mixing note').waitFor();
   });
-  await action(page, 'Finish mixing for CH-018', page.getByRole('button', { name: 'Finish mixing' }).last(), async () => {
+  await action(page, `Finish mixing for ${CHM}`, page.getByRole('button', { name: 'Finish mixing' }).last(), async () => {
     await waitForText(page, 'Mixing finished.');
   });
-  await action(page, 'Review CH-018 completion', page.getByRole('link', { name: /Review & complete batch/ }), async () => {
+  await action(page, `Review ${CHM} completion`, page.getByRole('link', { name: /Review & complete batch/ }), async () => {
     await waitForUrl(page, '**/record/completion');
   });
-  await action(page, 'Complete CH-018', page.getByRole('button', { name: 'Complete batch' }), async () => {
-    await waitForUrl(page, '**/production/batches/CH-018');
+  await action(page, `Complete ${CHM}`, page.getByRole('button', { name: 'Complete batch' }), async () => {
+    await waitForUrl(page, `**/production/batches/${CHM}`);
     await waitForText(page, 'Completed');
   });
 }
 
 async function piecesFlow(page) {
   await page.goto(`${BASE}/production/stations/packaging`);
-  await action(page, 'Choose chocolate lot D70-0002 for pieces', page.getByRole('link', { name: /D70-0002/ }), async () => {
-    await waitForUrl(page, '**/production/pieces/D70-0002');
+  await action(page, `Choose chocolate lot ${D70} for pieces`, page.getByRole('link', { name: new RegExp(D70) }), async () => {
+    await waitForUrl(page, `**/production/pieces/${D70}`);
   });
   await page.getByLabel('45 g bar pieces').fill('400');
   await action(page, 'Save 400 × 45 g bars', page.getByRole('button', { name: 'Save pieces' }), async () => {
@@ -304,27 +322,28 @@ async function planFlow(page) {
   await action(page, 'Change the plan', page.getByRole('button', { name: 'Change the plan' }), async () => {
     await page.getByLabel('Line 1 pieces').waitFor();
   });
+  const lines = demo.plan.lines.length;
   await action(page, 'Add a line to the plan', page.getByRole('button', { name: 'Add a line' }), async () => {
-    await page.getByLabel('Line 6 pieces').waitFor();
+    await page.getByLabel(`Line ${lines + 1} pieces`).waitFor();
   });
-  await action(page, 'Remove the added line', page.getByRole('button', { name: 'Remove line 6' }), async () => {
-    await page.getByLabel('Line 6 pieces').waitFor({ state: 'detached' });
+  await action(page, 'Remove the added line', page.getByRole('button', { name: `Remove line ${lines + 1}` }), async () => {
+    await page.getByLabel(`Line ${lines + 1} pieces`).waitFor({ state: 'detached' });
   });
   await action(page, 'Cancel changing the plan', page.getByRole('button', { name: 'Cancel' }), async () => {
     await page.getByRole('button', { name: 'Change the plan' }).waitFor();
   });
   await page.getByRole('button', { name: 'Change the plan' }).click();
-  await page.getByLabel('Line 5 pieces').fill('450');
+  await page.getByLabel(`Line ${lines} pieces`).fill('450');
   await action(page, 'Save the plan', page.getByRole('button', { name: 'Save plan' }), async () => {
     await page.getByRole('button', { name: 'Change the plan' }).waitFor();
-    await waitForText(page, '450');
+    await waitForText(page, 'pieces left to make');
   });
 }
 
 async function materialsAndRecipes(page) {
   await page.goto(`${BASE}/store`);
   await action(page, 'Show the chocolate in store', page.getByRole('button', { name: 'Chocolate', exact: true }), async () => {
-    await waitForText(page, 'D70-0001');
+    await waitForText(page, D70);
   });
   await page.goto(`${BASE}/materials/receive`);
   await page.getByLabel('Measured weight').fill('120');
@@ -361,7 +380,7 @@ async function setupControls(page) {
     ['products', 'Add product', [['Name', 'Audit product'], ['Batch prefix', 'AU']], 'Add product'],
     ['pack-sizes', 'Add piece size', [['Name', '60 g bar'], ['Grams per piece', '60']], 'Add piece size'],
     ['outputs', 'Add output row', [['Output name', 'Audit residue']], 'Add output row'],
-    ['suppliers', 'Add supplier', [['Name', 'Audit supplier'], ['Supplies', 'Cocoa beans'], ['Contact', 'audit@example.com']], 'Add supplier'],
+    ['suppliers', 'Add supplier', [['Name', 'Audit supplier'], [/^Supplies/, 'Cocoa beans'], ['Contact', 'audit@example.com']], 'Add supplier'],
     ['users', 'Add user', [['Name', 'Audit User'], ['Role', 'Operator'], ['Email', 'audit.user@cocoafactory.example'], ['Password', 'cocoa123']], 'Add user'],
   ];
   for (const [section, openLabel, fields, title] of forms) {
@@ -369,7 +388,8 @@ async function setupControls(page) {
     await action(page, `Open ${title} form`, page.getByRole('button', { name: openLabel }), async () => {
       await page.getByRole('button', { name: 'Cancel' }).waitFor();
     });
-    for (const [label, value] of fields) await page.getByLabel(label, { exact: true }).fill(value);
+    // A field with a hint has it in its label, so it is found by how its label starts.
+    for (const [label, value] of fields) await page.getByLabel(label, typeof label === 'string' ? { exact: true } : undefined).fill(value);
     if (section === 'products') {
       await page.getByLabel('Route').selectOption('beans');
     }
@@ -405,8 +425,8 @@ async function navigationAndFilters(page) {
   await page.getByLabel('Station filter').selectOption('winnowing');
   await page.locator('td').filter({ hasText: 'Winnowing' }).first().waitFor({ timeout: 10000 });
   await page.goto(`${BASE}/reports/losses`);
-  await page.getByLabel('Batch to follow').selectOption('CB-025');
-  if ((await page.getByLabel('Batch to follow').inputValue()) !== 'CB-025') throw new Error('Batch to follow did not change');
+  await page.getByLabel('Batch to follow').selectOption(WIN);
+  if ((await page.getByLabel('Batch to follow').inputValue()) !== WIN) throw new Error('Batch to follow did not change');
 }
 
 (async () => {

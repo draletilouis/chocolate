@@ -5,7 +5,7 @@ import type { Command } from './commands';
 import type { State } from './seed';
 import { applyItems, emptyState, type SyncPayload } from './sync';
 import type {
-  Access, BusinessDetails, Container, ContainerUse, Destination, Ingredient, LotCategory, OutputKind, PackSize, PlanLine, Product,
+  Access, BusinessDetails, Container, ContainerUse, Customer, Destination, Ingredient, LotCategory, OutputKind, PackSize, PlanLine, Product,
   RecipeIngredient, Route, StationId, Supplier, User,
 } from './types';
 
@@ -87,6 +87,13 @@ interface Actions {
   addSupplier: (supplier: Omit<Supplier, 'id'>) => Promise<boolean>;
   updateSupplier: (supplierId: string, patch: Omit<Supplier, 'id'>) => Promise<boolean>;
   deleteSupplier: (supplierId: string) => Promise<boolean>;
+  /** Goods sent to a customer, each line from one lot; answers the dispatch note's number */
+  dispatchGoods: (dispatch: { customerId: string; reference?: string; note?: string; lines: { lotId: string; quantity: number }[] }) => Promise<string | undefined>;
+  /** Puts the goods of a dispatch entered by mistake back in store; the note stays on record as cancelled */
+  cancelDispatch: (dispatchId: string, reason: string) => Promise<boolean>;
+  addCustomer: (customer: Omit<Customer, 'id'>) => Promise<boolean>;
+  updateCustomer: (customerId: string, patch: Omit<Customer, 'id'>) => Promise<boolean>;
+  deleteCustomer: (customerId: string) => Promise<boolean>;
   addUser: (user: UserInput & { password: string; pin: string }) => Promise<boolean>;
   updateUser: (userId: string, patch: UserInput & { password?: string; pin?: string }) => Promise<boolean>;
   deleteUser: (userId: string) => Promise<boolean>;
@@ -319,6 +326,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addSupplier: (supplier) => done({ type: 'addSupplier', supplier }),
       updateSupplier: (supplierId, supplier) => done({ type: 'updateSupplier', supplierId, supplier }),
       deleteSupplier: (supplierId) => done({ type: 'deleteSupplier', supplierId }),
+      dispatchGoods: (dispatch) => value<string>({ type: 'dispatchGoods', ...dispatch }),
+      cancelDispatch: (dispatchId, reason) => done({ type: 'cancelDispatch', dispatchId, reason }),
+      addCustomer: (customer) => done({ type: 'addCustomer', customer }),
+      updateCustomer: (customerId, customer) => done({ type: 'updateCustomer', customerId, customer }),
+      deleteCustomer: (customerId) => done({ type: 'deleteCustomer', customerId }),
       addUser: (user) => done({ type: 'addUser', user }),
       updateUser: (userId, user) => done({ type: 'updateUser', userId, user }),
       deleteUser: (userId) => done({ type: 'deleteUser', userId }),

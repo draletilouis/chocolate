@@ -7,7 +7,8 @@ import { OutcomeBar, StageTable, WhereItWent } from '@/components/BatchFlow';
 import { Badge, Empty, Input, PageHeader, Panel, Select, Stat, SubNav, Table, UnitInput, td, tdNum } from '@/components/ui';
 import { getReportRange, ReportExport, type ProductionReportType, type ReportPeriod, type ReportRange } from '@/components/ReportExport';
 import { percentOf, round2 } from '@/lib/balance';
-import { batchById, batchDisplayName, recordBalance, userName } from '@/lib/derive';
+import { amountOf, batchById, batchDisplayName, customerName, recordBalance, userName } from '@/lib/derive';
+import { dispatchedByProduct, dispatchSummary } from '@/lib/dispatch';
 import { dateTime, kg, num, pct } from '@/lib/format';
 import { batchOutcomes, outcomeTotals, startName, startWeight } from '@/lib/outcomes';
 import type { ReportExportSnapshot } from '@/lib/report-export';
@@ -19,6 +20,7 @@ import type { Batch, Lot, RouteId } from '@/lib/types';
 
 const sections = [
   { id: 'pieces', label: 'Pieces made', href: '/reports/pieces' },
+  { id: 'dispatched', label: 'Dispatched', href: '/reports/dispatched' },
   { id: 'losses', label: 'Yield by stage', href: '/reports/losses' },
   { id: 'variance', label: 'Waste & variance', href: '/reports/variance' },
   { id: 'batches', label: 'Batch history', href: '/reports/batches' },
@@ -123,9 +125,28 @@ export default function ReportsPage() {
   // Pieces made in the period: the factory's end result, by chocolate type and size
   const piecesInPeriod = piecesLots(store).filter((l) => duration === 'all' || inReportRange(l.receivedAt, durationRange));
   const piecesTotals = piecesByTypeAndSize(piecesInPeriod);
+  // Goods that left the factory in the period, by product and by customer. Cancelled dispatches went back to store and are left out.
+  const dispatchedIn = (range: ReportRange, all = false) => store.dispatches.filter((d) => !d.cancelled && (all || inReportRange(d.at, range))).sort((a, b) => b.at.localeCompare(a.at));
+  const dispatches = dispatchedIn(durationRange, duration === 'all');
+  const byCustomer = (list: typeof dispatches) => Array.from(new Set(list.map((d) => d.customerId))).map((customerId) => {
+    const lines = list.filter((d) => d.customerId === customerId).flatMap((d) => d.lines);
+    return { customerId, name: customerName(store, customerId), dispatches: list.filter((d) => d.customerId === customerId).length, pieces: lines.filter((l) => l.unit === 'units').reduce((n, l) => n + l.quantity, 0), kg: round2(lines.filter((l) => l.unit === 'kg').reduce((n, l) => n + l.quantity, 0)) };
+  }).sort((a, b) => b.pieces - a.pieces || b.kg - a.kg);
   const pieceRow = (l: Lot) => [dateTime(l.receivedAt), l.id, l.pieces!.type, l.pieces!.size, l.received, num(piecesKg(l.received, l.pieces!.grams)), l.pieces!.fromLotId, l.source.type === 'batch' ? l.source.batchId : '', userName(store, l.pieces!.recordedBy)];
 
   const buildExportSnapshot = (type: ProductionReportType, range: ReportRange): ReportExportSnapshot => {
+    if (type === 'dispatched') {
+      const list = dispatchedIn(range);
+      return {
+        title: 'Dispatched',
+        periodLabel: range.label,
+        sections: [
+          { title: 'By product', headers: ['Product', 'Quantity', 'Unit', 'Dispatches', 'Customers'], rows: dispatchedByProduct(list).map((p) => [p.material, p.unit === 'units' ? p.quantity : num(p.quantity), p.unit === 'units' ? 'pieces' : 'kg', p.dispatches.size, p.customers.size]) },
+          { title: 'By customer', headers: ['Customer', 'Dispatches', 'Pieces', 'Sold by weight (kg)'], rows: byCustomer(list).map((c) => [c.name, c.dispatches, c.pieces, num(c.kg)]) },
+          { title: 'Dispatch notes', headers: ['When', 'Dispatch', 'Customer', 'Order or invoice', 'Product', 'Lot', 'Quantity', 'By'], rows: list.flatMap((d) => d.lines.map((l) => [dateTime(d.at), d.id, customerName(store, d.customerId), d.reference ?? '', l.material, l.lotId, amountOf(l.quantity, l.unit), userName(store, d.recordedBy)])) },
+        ],
+      };
+    }
     if (type === 'pieces') {
       const lots = piecesLots(store).filter((l) => inReportRange(l.receivedAt, range));
       const totals = piecesByTypeAndSize(lots);
@@ -433,6 +454,38 @@ export default function ReportsPage() {
                 {piecesInPeriod.map((l) => <tr key={l.id}><td className={td}>{dateTime(l.receivedAt)}</td><td className={td}><Link href={`/materials/${l.id}`} className="font-semibold text-green">{l.id}</Link></td><td className={td}>{l.pieces!.type}</td><td className={td}>{l.pieces!.size}</td><td className={tdNum}>{l.received}</td><td className={td}><Link href={`/materials/${l.pieces!.fromLotId}`} className="font-semibold text-green">{l.pieces!.fromLotId}</Link></td><td className={td}>{l.source.type === 'batch' && <Link href={`/production/batches/${l.source.batchId}`} className="font-semibold text-green">{l.source.batchId}</Link>}</td><td className={td}>{userName(store, l.pieces!.recordedBy)}</td></tr>)}
               </Table>
             </Panel>
+          )}
+        </>
+      )}
+
+      {current.id === 'dispatched' && (
+        <>
+          <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <Stat label="Dispatch notes" value={dispatches.length} />
+            <Stat label="Pieces sent out" value={dispatches.flatMap((d) => d.lines).filter((l) => l.unit === 'units').reduce((n, l) => n + l.quantity, 0)} />
+            <Stat label="Sold by weight" value={kg(round2(dispatches.flatMap((d) => d.lines).filter((l) => l.unit === 'kg').reduce((n, l) => n + l.quantity, 0)))} />
+            <Stat label="Customers" value={new Set(dispatches.map((d) => d.customerId)).size} />
+          </div>
+          <Panel title="By product" subtitle="What left the factory in this period. Cancelled dispatches went back to store and are not counted.">
+            {dispatches.length === 0 ? <Empty>Nothing was dispatched in this period.</Empty> : (
+              <Table head={['Product', 'Quantity', 'Dispatches', 'Customers']}>
+                {dispatchedByProduct(dispatches).map((p) => <tr key={p.material}><td className={td}>{p.material}</td><td className={`${tdNum} font-semibold`}>{amountOf(p.quantity, p.unit)}</td><td className={tdNum}>{p.dispatches.size}</td><td className={tdNum}>{p.customers.size}</td></tr>)}
+              </Table>
+            )}
+          </Panel>
+          {dispatches.length > 0 && (
+            <>
+              <Panel title="By customer">
+                <Table head={['Customer', 'Dispatches', 'Pieces', 'Sold by weight']}>
+                  {byCustomer(dispatches).map((c) => <tr key={c.customerId}><td className={td}>{c.name}</td><td className={tdNum}>{c.dispatches}</td><td className={tdNum}>{c.pieces}</td><td className={tdNum}>{kg(c.kg)}</td></tr>)}
+                </Table>
+              </Panel>
+              <Panel title="Dispatch notes" subtitle="Each one with what it took. Open it for the lots.">
+                <Table head={['When', 'Dispatch', 'Customer', 'Goods', 'By']}>
+                  {dispatches.map((d) => <tr key={d.id}><td className={td}>{dateTime(d.at)}</td><td className={td}><Link href={`/dispatch/${d.id}`} className="font-semibold text-green">{d.id}</Link>{d.reference && <span className="block text-[11px] text-faint">{d.reference}</span>}</td><td className={td}>{customerName(store, d.customerId)}</td><td className={td}>{dispatchSummary(d)}</td><td className={td}>{userName(store, d.recordedBy)}</td></tr>)}
+                </Table>
+              </Panel>
+            </>
           )}
         </>
       )}

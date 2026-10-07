@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { AlertTriangle, BarChart3, ChevronDown, ClipboardCheck, ClipboardList, FlaskConical, LayoutDashboard, LogOut, Search, Settings2, Target, Warehouse, Waypoints, WifiOff, X, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, BarChart3, ChevronDown, ClipboardCheck, ClipboardList, FlaskConical, LayoutDashboard, LogOut, Search, Settings2, Target, Truck, Warehouse, Waypoints, WifiOff, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { activeBatches, allAlerts, waitingCount } from '@/lib/derive';
 import { useStore } from '@/lib/store';
@@ -20,6 +20,8 @@ const navItems: NavItem[] = [
   { href: '/plan', label: 'Production plan', short: 'Plan', icon: Target, managers: true, phone: false },
   // Lot records and receiving live under /materials and belong to the Store.
   { href: '/store', label: 'Store', icon: Warehouse, managers: true, also: '/materials' },
+  // Goods out to customers; off the phone bar, the Store links to it.
+  { href: '/dispatch', label: 'Dispatch', icon: Truck, managers: true, phone: false },
   // Off the phone bar too; the Store links to it.
   { href: '/trace', label: 'Batch tracing', short: 'Trace', icon: Waypoints, managers: true, phone: false },
   { href: '/recipes', label: 'Chocolate types', short: 'Chocolate', icon: FlaskConical, managers: true },
@@ -28,7 +30,7 @@ const navItems: NavItem[] = [
 ];
 
 /** Pages operators do not need; they stay one tap away for managers */
-const managerOnly = ['/overview', '/recipes', '/reports', '/setup'];
+const managerOnly = ['/overview', '/recipes', '/reports', '/setup', '/dispatch'];
 
 export function Shell({ children }: { children: ReactNode }) {
   const store = useStore();
@@ -169,7 +171,7 @@ export function Shell({ children }: { children: ReactNode }) {
         <div className="app-topbar-page-title">{pageTitle}</div>
         <div className="app-topbar-spacer" />
         <form onSubmit={search} role="search">
-          <input className="topbar-search" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search batch, lot or supplier" aria-label="Search batches and lots" />
+          <input className="topbar-search" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search batch, lot, supplier or customer" aria-label="Search batches and lots" />
         </form>
       </header>
 

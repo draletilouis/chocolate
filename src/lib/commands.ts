@@ -81,6 +81,12 @@ export const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('addSupplier'), supplier: z.object({ name: text(120).min(1), supplies: text(200).min(1), contact: text(200) }) }),
   z.object({ type: z.literal('updateSupplier'), supplierId: id, supplier: z.object({ name: text(120).min(1), supplies: text(200).min(1), contact: text(200) }) }),
   z.object({ type: z.literal('deleteSupplier'), supplierId: id }),
+  // Goods out: each line is taken from one lot in store and recorded on it; managers only, like receiving.
+  z.object({ type: z.literal('dispatchGoods'), customerId: id, reference: text(80).optional(), note: text(1000).optional(), lines: z.array(z.object({ lotId: id, quantity: qty })).min(1).max(100) }),
+  z.object({ type: z.literal('cancelDispatch'), dispatchId: id, reason: text(500).min(1) }),
+  z.object({ type: z.literal('addCustomer'), customer: z.object({ name: text(120).min(1), address: text(200), contact: text(200) }) }),
+  z.object({ type: z.literal('updateCustomer'), customerId: id, customer: z.object({ name: text(120).min(1), address: text(200), contact: text(200) }) }),
+  z.object({ type: z.literal('deleteCustomer'), customerId: id }),
   z.object({ type: z.literal('addUser'), user: z.object({ ...userFields, password, pin }) }),
   z.object({ type: z.literal('updateUser'), userId: id, user: z.object({ ...userFields, password: password.optional(), pin: pin.optional() }) }),
   z.object({ type: z.literal('deleteUser'), userId: id }),

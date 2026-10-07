@@ -1,7 +1,7 @@
 import { calculateBalance } from './balance';
 import { stationById, stationName, stations } from './stations';
 import { routes, type State } from './seed';
-import type { Alert, Batch, Destination, IdCounters, Lot, OutputKind, StationId, StationRecord, Supplier } from './types';
+import type { Alert, Batch, Destination, Dispatch, IdCounters, Lot, OutputKind, StationId, StationRecord, Supplier } from './types';
 
 export const recordBalance = (r: StationRecord) => calculateBalance(r.inputWeight, r.outputs);
 
@@ -101,9 +101,13 @@ export function batchAlerts(state: State, batch: Batch): Alert[] {
 
 export function allAlerts(state: State): Alert[] {
   const batchLevel = state.batches.filter((b) => b.status !== 'completed').flatMap((b) => batchAlerts(state, b));
-  const stock = state.lots
-    .filter((l) => l.category === 'Raw material' && l.unit === 'kg' && l.available < state.thresholds.lowStockKg)
-    .map((l): Alert => ({ id: `${l.id}-stock`, kind: 'stock', message: `${l.material} lot ${l.id} is low: ${l.available.toFixed(2)} kg left`, href: `/materials/${l.id}` }));
+  // One alert per raw material whose kg in store (all its lots, as the Store adds them up) is below the limit;
+  // a lot used up while others of the same material are in store is not low.
+  const materials = Array.from(new Set(state.lots.filter((l) => l.category === 'Raw material' && l.unit === 'kg').map((l) => l.material)));
+  const stock = materials.flatMap((material): Alert[] => {
+    const total = state.lots.filter((l) => l.material === material && l.unit === 'kg').reduce((sum, l) => sum + l.available, 0);
+    return total < state.thresholds.lowStockKg ? [{ id: `${material}-stock`, kind: 'stock', message: `${material} is low: ${total.toFixed(2)} kg in store`, href: '/store' }] : [];
+  });
   return [...batchLevel, ...stock];
 }
 
@@ -111,6 +115,10 @@ export const lotById = (state: State, id: string): Lot | undefined => state.lots
 export const batchById = (state: State, id: string): Batch | undefined => state.batches.find((b) => b.id === id);
 export const userName = (state: State, id: string) => state.users.find((u) => u.id === id)?.name ?? id;
 export const supplierName = (state: State, id: string) => state.suppliers.find((s) => s.id === id)?.name ?? id;
+export const customerName = (state: Pick<State, 'customers'>, id: string) => state.customers.find((c) => c.id === id)?.name ?? id;
+
+/** A quantity with its unit: pieces counted, or kg weighed */
+export const amountOf = (quantity: number, unit: Lot['unit']) => (unit === 'units' ? `${quantity} pieces` : `${quantity.toFixed(2)} kg`);
 
 /** Suppliers split into those whose "Supplies" names the material (offered first) and the others */
 export function suppliersFor(state: Pick<State, 'suppliers'>, material: string): { usual: Supplier[]; others: Supplier[] } {
@@ -229,14 +237,15 @@ export function lastContainerId(state: State, station: StationId, output: string
   return '';
 }
 
-/** Batches and lots matching a search: name, ID, product, material or supplier */
+/** Batches, lots and dispatches matching a search: name, ID, product, material, supplier, customer or order number */
 export function searchRecords(state: State, query: string) {
   const q = query.trim().toLowerCase();
-  if (!q) return { batches: [] as Batch[], lots: [] as Lot[] };
+  if (!q) return { batches: [] as Batch[], lots: [] as Lot[], dispatches: [] as Dispatch[] };
   const hit = (...values: (string | undefined)[]) => values.some((v) => v?.toLowerCase().includes(q));
   return {
     batches: state.batches.filter((b) => hit(b.id, b.name, b.product, ...batchSuppliers(state, b))).sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
     lots: state.lots.filter((l) => hit(l.id, l.material, ...(l.source.type === 'supplier' ? [supplierName(state, l.source.supplierId), l.source.supplierBatch] : [l.source.batchId]))).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt)),
+    dispatches: state.dispatches.filter((d) => hit(d.id, d.reference, customerName(state, d.customerId))).sort((a, b) => b.at.localeCompare(a.at)),
   };
 }
 

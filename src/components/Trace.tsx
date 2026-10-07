@@ -2,11 +2,11 @@
 
 import Link from 'next/link';
 import { Empty, Table, td } from '@/components/ui';
-import { batchDisplayName, supplierName, waitingAt } from '@/lib/derive';
+import { amountOf, batchDisplayName, customerName, supplierName, waitingAt } from '@/lib/derive';
 import { date, kg } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { stationName } from '@/lib/stations';
-import { heldRole, startLotIds, type Delivery, type TraceStep } from '@/lib/trace';
+import { heldRole, startLotIds, type Delivery, type Shipment, type TraceStep } from '@/lib/trace';
 import type { Batch } from '@/lib/types';
 
 const link = 'font-semibold text-green';
@@ -22,6 +22,10 @@ function Origin({ step, forward }: { step: TraceStep; forward: boolean }) {
   const { lot, origin } = step;
   if (!origin) return <>No longer on record.</>;
   if (origin.type === 'supplier') return <>Delivered by <strong className="text-ink">{supplierName(store, origin.supplierId)}</strong>{origin.supplierBatch && ` · supplier's batch ${origin.supplierBatch}`}{origin.reference && ` · ${origin.reference}`}{lot && ` · ${kg(lot.received)} received ${date(lot.receivedAt)}`}</>;
+  if (origin.type === 'dispatch') {
+    const dispatch = origin.dispatch;
+    return dispatch ? <>Dispatched to <strong className="text-ink">{customerName(store, dispatch.customerId)}</strong>{dispatch.reference && ` · ${dispatch.reference}`} · {date(dispatch.at)}</> : <>No longer on record.</>;
+  }
   const batch = origin.batch;
   // Beans received straight onto the line: the batch is the delivery.
   const delivered = batch?.supplierId && startLotIds(batch).length === 0 ? ` · delivered by ${supplierName(store, batch.supplierId)}` : '';
@@ -39,6 +43,7 @@ function Origin({ step, forward }: { step: TraceStep; forward: boolean }) {
 }
 
 function Step({ step, forward }: { step: TraceStep; forward: boolean }) {
+  const dispatchId = step.origin?.type === 'dispatch' ? step.origin.dispatchId : undefined;
   const id = step.lotId ?? (forward && step.origin?.type === 'batch' ? step.origin.batchId : undefined);
   const known = Boolean(step.lot) || (forward && step.origin?.type === 'batch' && Boolean(step.origin.batch));
   // "Sugar: Sugar" says nothing; "Left in the mixer: 85% Dark" does.
@@ -46,10 +51,10 @@ function Step({ step, forward }: { step: TraceStep; forward: boolean }) {
   return (
     <li className="trace-step">
       <div className="flex flex-wrap items-baseline gap-x-2">
-        {step.quantity !== undefined && <strong className="tabular-nums">{kg(step.quantity)}</strong>}
-        {forward && step.quantity !== undefined && <span className="text-muted">{step.role === heldRole ? 'stayed in the mixer for' : 'into'}</span>}
-        {id && (known ? <Link href={`/trace/${id}`} className={link}>{id}</Link> : <span className="font-semibold">{id}</span>)}
-        <span>{forward && step.role === heldRole ? step.material : name}</span>
+        {step.quantity !== undefined && <strong className="tabular-nums">{amountOf(step.quantity, step.unit ?? 'kg')}</strong>}
+        {forward && step.quantity !== undefined && <span className="text-muted">{dispatchId ? 'went out in' : step.role === heldRole ? 'stayed in the mixer for' : 'into'}</span>}
+        {dispatchId ? <Link href={`/dispatch/${dispatchId}`} className={link}>{dispatchId}</Link> : id && (known ? <Link href={`/trace/${id}`} className={link}>{id}</Link> : <span className="font-semibold">{id}</span>)}
+        {!dispatchId && <span>{forward && step.role === heldRole ? step.material : name}</span>}
       </div>
       <div className="text-[12px] text-muted"><Origin step={step} forward={forward} /></div>
       {step.cut && <div className="text-[12px] text-faint">{forward ? 'Later runs on top of it are not followed further.' : 'What the mixer held before that is not followed further.'} Open {step.lotId} to continue.</div>}
@@ -62,6 +67,26 @@ function Step({ step, forward }: { step: TraceStep; forward: boolean }) {
 export function TraceTree({ steps, forward = false, empty }: { steps: TraceStep[]; forward?: boolean; empty: string }) {
   if (steps.length === 0) return <Empty>{empty}</Empty>;
   return <ol className="trace-tree is-root">{steps.map((step) => <Step key={step.key} step={step} forward={forward} />)}</ol>;
+}
+
+/** The customers a product reached, one row per dispatch of one lot: who to call in a recall */
+export function Shipments({ shipments, empty }: { shipments: Shipment[]; empty: string }) {
+  const store = useStore();
+  if (shipments.length === 0) return <Empty>{empty}</Empty>;
+  return (
+    <Table head={['Customer', 'Dispatch', 'Date', 'Product', 'Lot', 'Quantity']}>
+      {shipments.map((s) => (
+        <tr key={s.key}>
+          <td className={td}>{s.dispatch ? customerName(store, s.dispatch.customerId) : '—'}</td>
+          <td className={td}><Link href={`/dispatch/${s.dispatchId}`} className={link}>{s.dispatchId}</Link>{s.dispatch?.reference && <span className="text-muted"> · {s.dispatch.reference}</span>}</td>
+          <td className={td}>{date(s.at)}</td>
+          <td className={td}>{s.material}</td>
+          <td className={td}><Link href={`/trace/${s.lotId}`} className={link}>{s.lotId}</Link></td>
+          <td className={td}>{amountOf(s.quantity, s.unit)}</td>
+        </tr>
+      ))}
+    </Table>
+  );
 }
 
 /** The purchases behind a product, one row per delivery */

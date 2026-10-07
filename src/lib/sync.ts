@@ -1,7 +1,7 @@
 import type { State } from './seed';
 
 /** Lists stored item by item, each with its own ID */
-export const collections = ['batches', 'lots', 'recipes', 'products', 'routes', 'packSizes', 'suppliers', 'users', 'outputCategories', 'containers'] as const;
+export const collections = ['batches', 'lots', 'recipes', 'products', 'routes', 'packSizes', 'suppliers', 'customers', 'dispatches', 'users', 'outputCategories', 'containers'] as const;
 /** Single values stored under the "settings" kind */
 export const settings = ['thresholds', 'business', 'idleMinutes', 'workflowVersion', 'idCounters', 'mixer', 'mixerKeepsKg', 'plan'] as const;
 
@@ -18,7 +18,7 @@ type WithId = { id: string };
 
 export function emptyState(): State {
   return {
-    batches: [], lots: [], recipes: [], products: [], routes: [], packSizes: [], suppliers: [], users: [], outputCategories: [], containers: [],
+    batches: [], lots: [], recipes: [], products: [], routes: [], packSizes: [], suppliers: [], customers: [], dispatches: [], users: [], outputCategories: [], containers: [],
     thresholds: { variancePct: {} as State['thresholds']['variancePct'], wastePct: 5, lowStockKg: 50 },
     business: { name: '', address: '', phone: '', email: '' }, idleMinutes: 10, workflowVersion: 0, idCounters: { batches: {}, lots: {} },
     mixer: { holds: null, lastRunId: null }, mixerKeepsKg: 10, plan: null,

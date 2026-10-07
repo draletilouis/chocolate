@@ -3,7 +3,8 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import { Badge, Button, Empty, Input, PageHeader, Panel, RowLink } from '@/components/ui';
-import { batchDisplayName, batchSuppliers, lotOrigin, searchRecords, waitingAt } from '@/lib/derive';
+import { batchDisplayName, batchSuppliers, customerName, lotOrigin, searchRecords, waitingAt } from '@/lib/derive';
+import { dispatchSummary } from '@/lib/dispatch';
 import { date } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { stationName } from '@/lib/stations';
@@ -19,7 +20,7 @@ function SearchResults() {
   const q = params.get('q') ?? '';
   const [text, setText] = useState(q);
   useEffect(() => { setText(q); }, [q]);
-  const { batches, lots } = searchRecords(store, q);
+  const { batches, lots, dispatches } = searchRecords(store, q);
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -28,7 +29,7 @@ function SearchResults() {
 
   return (
     <>
-      <PageHeader eyebrow="Search" title={q ? `Results for “${q}”` : 'Find a batch or lot'} subtitle="Search by batch name, batch ID, product, lot ID, material or supplier." />
+      <PageHeader eyebrow="Search" title={q ? `Results for “${q}”` : 'Find a batch or lot'} subtitle="Search by batch name, batch ID, product, lot ID, material, supplier, customer or dispatch note." />
       <form className="search-form mb-5" onSubmit={submit} role="search">
         <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. Kuapa, CB-025, LIQ-024" aria-label="Search text" autoFocus={!q} />
         <Button type="submit">Search</Button>
@@ -60,6 +61,18 @@ function SearchResults() {
               </RowLink>
             ))}
           </Panel>
+          {dispatches.length > 0 && (
+            <Panel title="Dispatches" subtitle={`${dispatches.length} found`}>
+              {dispatches.map((d) => (
+                <RowLink key={d.id} href={`/dispatch/${d.id}`}>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-2"><strong>{d.id}</strong><span>{customerName(store, d.customerId)}</span>{d.reference && <span className="text-muted">{d.reference}</span>}{d.cancelled && <Badge tone="danger">Cancelled</Badge>}</span>
+                    <span className="block text-[12px] text-muted">{date(d.at)} · {dispatchSummary(d)}</span>
+                  </span>
+                </RowLink>
+              ))}
+            </Panel>
+          )}
         </>
       )}
     </>

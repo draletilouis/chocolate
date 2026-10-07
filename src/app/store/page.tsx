@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Truck } from 'lucide-react';
 import { Badge, Empty, LinkButton, PageHeader, Panel, RowLink, Stat } from '@/components/ui';
 import { batchDisplayName, lotOrigin, supplierName, waitingAt } from '@/lib/derive';
 import { date, kg } from '@/lib/format';
@@ -22,6 +22,13 @@ const sections = [
 type Section = (typeof sections)[number]['name'];
 
 const amount = (n: number, unit: Lot['unit']) => (unit === 'kg' ? kg(n) : `${n} pieces`);
+
+/** The batches that used a lot and the dispatches that took it out, in one line */
+function usedBy(lot: Lot) {
+  const batches = Array.from(new Set(lot.uses.flatMap((u) => (u.batchId ? [u.batchId] : []))));
+  const dispatches = Array.from(new Set(lot.uses.flatMap((u) => (u.dispatchId ? [u.dispatchId] : []))));
+  return `${batches.length ? ` · used by ${batches.join(', ')}` : ''}${dispatches.length ? ` · dispatched in ${dispatches.join(', ')}` : ''}`;
+}
 
 export default function StorePage() {
   const store = useStore();
@@ -51,7 +58,7 @@ export default function StorePage() {
   return (
     <>
       <PageHeader eyebrow="Store" title="Store" subtitle="Everything in store by batch number: the ingredients, the chocolate, the finished pieces and every other product the line kept. Each use is taken off its lot automatically."
-        action={<><LinkButton variant="secondary" href="/trace">Trace a batch</LinkButton><LinkButton href="/materials/receive"><Plus size={16} /> Receive ingredient</LinkButton></>} />
+        action={<><LinkButton variant="secondary" href="/trace">Trace a batch</LinkButton><LinkButton variant="secondary" href="/dispatch/new"><Truck size={16} /> Dispatch goods</LinkButton><LinkButton href="/materials/receive"><Plus size={16} /> Receive ingredient</LinkButton></>} />
 
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         {items.filter((i) => i.section === 'Ingredients').map((i) => <Stat key={i.name} label={i.name} value={kg(i.total)} hint={i.inStore.length ? `${i.inStore.length} batch${i.inStore.length === 1 ? '' : 'es'} in store` : 'None in store'} tone={low(i) ? 'warn' : undefined} />)}
@@ -77,7 +84,7 @@ export default function StorePage() {
                     <RowLink key={lot.id} href={`/trace/${lot.id}`}>
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-center gap-2"><strong>{lot.id}</strong><Badge tone={lot.available <= 0 ? 'neutral' : 'green'}>{lot.available <= 0 ? 'Used up' : `${amount(lot.available, lot.unit)} left`}</Badge></span>
-                        <span className="block text-[12px] text-muted">{lotOrigin(store, lot)} · {date(lot.receivedAt)} · {amount(lot.received, lot.unit)} {lot.source.type === 'supplier' ? 'received' : 'made'}{lot.uses.length > 0 && ` · used by ${Array.from(new Set(lot.uses.map((u) => u.batchId))).join(', ')}`}</span>
+                        <span className="block text-[12px] text-muted">{lotOrigin(store, lot)} · {date(lot.receivedAt)} · {amount(lot.received, lot.unit)} {lot.source.type === 'supplier' ? 'received' : 'made'}{usedBy(lot)}</span>
                       </span>
                     </RowLink>
                   ))}

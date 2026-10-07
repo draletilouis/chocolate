@@ -162,15 +162,42 @@ export type LotSource =
   | { type: 'supplier'; supplierId: string; reference?: string; supplierBatch?: string }
   | { type: 'batch'; batchId: string; station: StationId };
 
+/** Some of a lot taken out of store: by a batch at one of its stations, or sent to a customer in a dispatch */
 export interface LotUse {
-  batchId: string;
+  /** The batch that used it; absent when it left the factory in a dispatch */
+  batchId?: string;
   quantity: number;
-  station: StationId;
+  /** Where the batch used it; absent for a dispatch */
+  station?: StationId;
   at: string;
   /** The mixing run that weighed it in, so the run can be undone */
   runId?: string;
   /** The lot of pieces made from it */
   madeLot?: string;
+  /** The dispatch it left the factory in */
+  dispatchId?: string;
+}
+
+/** Someone the factory sells or sends goods to */
+export interface Customer { id: string; name: string; address: string; contact: string }
+
+/** One product on a dispatch, taken from one lot */
+export interface DispatchLine { lotId: string; material: string; quantity: number; unit: 'kg' | 'units' }
+
+/**
+ * Goods that left the factory for a customer: the dispatch note, numbered DSP-0001 and up. A cancelled
+ * dispatch stays on record with its reason; its goods went back to their lots.
+ */
+export interface Dispatch {
+  id: string;
+  customerId: string;
+  at: string;
+  /** The customer's order number or the invoice */
+  reference?: string;
+  note?: string;
+  lines: DispatchLine[];
+  recordedBy: string;
+  cancelled?: { at: string; by: string; reason: string };
 }
 
 export type LotCategory = 'Raw material' | 'Intermediate' | 'By-product' | 'Rework' | 'Finished goods';

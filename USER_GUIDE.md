@@ -23,14 +23,14 @@ You are signed out on your own after a few minutes without use (10 by default; a
 
 **Setting up a shared tablet or PC (managers).** On the device, sign in with your email and password and tick **Set up this device for quick sign-in**, then name it after where it is used, for example *Roasting tablet*. You can also do it in **Setup → Users → Devices set up for quick sign-in**. If a tablet is lost, remove it there: PINs stop working on it and anyone signed in on it is signed out.
 
-**Demo.** In the demo every account uses the PIN `1234`, or the email `alex.morgan@cocoafactory.example` with the password `cocoa123`, and every device shows the names.
+**Demo.** The demo is a factory about six weeks into production, ending the day it was set up: deliveries, batches at every station, chocolate, pieces and a production plan. Every account uses the PIN `1234`, or the email `alex.morgan@cocoafactory.example` with the password `cocoa123`, and every device shows the names. **Setup → Business details → Reset demo data** makes it again, ending that day.
 
 ## 2. Find your way around
 
 What you see depends on your access:
 
 - **Operators** see **My work** and **Production line**.
-- **Managers** also see **Overview**, **Production plan**, **Store**, **Batch tracing**, **Chocolate types**, **Reports** and **Setup**.
+- **Managers** also see **Overview**, **Production plan**, **Store**, **Dispatch**, **Batch tracing**, **Chocolate types**, **Reports** and **Setup**.
   - A manager who has their own stations also gets **My work**.
 
 The sections are:
@@ -40,14 +40,15 @@ The sections are:
 - **Production line** — every active batch, where it is waiting, and the five parts of the line.
 - **Production plan** — the pieces to make of each chocolate type and size, how many are made and what is left. On a phone, open it from **Overview**. People working at Mixing or Pieces find it on **My work**.
 - **Store** — everything in store by batch number: the ingredients (cocoa beans, liquor, cocoa butter, sugar, milk powder), the chocolate, the finished pieces and every other product the line kept, such as butter, powder and nibs.
+- **Dispatch** — goods that left the factory: every dispatch note, the customer, and the lots the goods came from. On a phone, open it from **Store** (**Dispatch goods**).
 - **Batch tracing** — enter a batch or lot number to see everything that went into it and everything it went into. On a phone, open it from **Store** (**Trace a batch**).
 - **Chocolate types** — each type's recipe, its versions and ingredient comparisons.
-- **Reports** — losses, missing weight, batch history, corrections and holds.
-- **Setup** — products, piece sizes, containers, output rows, routes, suppliers, users and thresholds.
+- **Reports** — pieces made, goods dispatched, losses, missing weight, batch history, corrections and holds.
+- **Setup** — products, piece sizes, containers, output rows, routes, suppliers, customers, users and thresholds.
 
 On a phone, use the bottom bar. On a desktop, use the sidebar.
 
-**Finding a batch or lot:** type a batch name, batch ID, lot ID, material or supplier into the search box (top bar on a desktop, magnifier on a phone, or the box on **My work**).
+**Finding a batch or lot:** type a batch name, batch ID, lot ID, material, supplier, customer or dispatch note number (such as `DSP-0012`) into the search box (top bar on a desktop, magnifier on a phone, or the box on **My work**).
 
 ## 3. Start a batch
 
@@ -254,11 +255,27 @@ Open **Store** to see everything in store, in four parts:
 - **Finished pieces** — the counted pieces of each type and size; and
 - **Other stored products** — everything else the line kept: silk butter, butter and nibs for sale, nibs for butter, cocoa powder, whole roasted beans, by-products and rework.
 
-Under each one is every batch number with stock: who delivered it or which batch made it, the date, the amount received or made and what is left, and the batches that used it. Under **Cocoa beans** are also the beans received straight onto the production line, where the production batch is the batch number.
+Under each one is every batch number with stock: who delivered it or which batch made it, the date, the amount received or made and what is left, the batches that used it and the dispatches that took it out. Under **Cocoa beans** are also the beans received straight onto the production line, where the production batch is the batch number.
 
-**Stock goes down by itself.** Whenever material is taken from the store, the weight comes off its lot: an ingredient weighed into a mixing run, beans or nibs a new batch starts from, chocolate made into pieces. Nobody adjusts the store by hand.
+**Stock goes down by itself.** Whenever material is taken from the store, the weight comes off its lot: an ingredient weighed into a mixing run, beans or nibs a new batch starts from, chocolate made into pieces, goods dispatched to a customer. Nobody adjusts the store by hand.
 
 Select **Show used-up batches** to list the ones with nothing left. Select a batch number to trace it.
+
+### Dispatch goods to a customer
+
+Everything the factory sends out — pieces, butter, powder, nibs or beans for sale — leaves on a dispatch note, so the store goes down and every product can be traced to the customers who received it.
+
+1. Open **Store** and select **Dispatch goods** (or **Dispatch** on a lot's record, which fills in that lot).
+2. Choose the **Customer** and, if there is one, the customer's **Order or invoice number**.
+3. For each product, choose it and enter the quantity: pieces for finished pieces, kg for everything else. The goods are taken from the oldest lots first; the line underneath shows which lots, for example `Taken from FIN-0012 (400 pieces), FIN-0019 (100 pieces)`. If the boxes carry a particular lot number, choose it under **From**.
+4. Select **Add a product** for the next one, and add a note if you like (vehicle, driver).
+5. Select **Save dispatch**.
+
+The dispatch gets a number such as `DSP-0023` that is never given to another one. Its page lists every line with its lot; select **Print delivery note** for the driver and the customer to sign. A line that asks for more than the lots have is refused before anything is saved.
+
+**A dispatch entered by mistake:** open it, select **Cancel dispatch** and give the reason. The goods go back to their lots, and the note stays on record as cancelled.
+
+Customers are set up under **Setup → Customers**: name, address (printed on the delivery note) and contact.
 
 ### Trace a batch from beginning to end
 
@@ -266,7 +283,8 @@ Open **Batch tracing** and enter the number of a finished product, a chocolate l
 
 - **Deliveries behind it** — one row for every purchased batch that went into it: ingredient, batch number, supplier, the supplier's batch number, delivery note and date.
 - **How it was made** — each line is what went into the line above it, with the weight used. Pieces come from a chocolate lot; the chocolate from the ingredients of its mixing run and from what the mixer still held; liquor from the batch that ground it, back to the beans.
-- **Where it went** — the other direction: the chocolate an ingredient was mixed into and the pieces counted from it. Use it to find every product that contains one delivery.
+- **Customers it reached** — every dispatch that took it, or anything made from it, out of the factory: customer, dispatch note, date, product, lot and quantity. In a recall, open the delivery in question and this is the list of customers to call.
+- **Where it went** — the other direction: the chocolate an ingredient was mixed into, the pieces counted from it, and the dispatches that took them. Use it to find every product that contains one delivery.
 
 Chocolate left in the mixer links each run to the one before. It is followed three runs back (or forward); open the last lot shown to go further.
 
@@ -277,10 +295,10 @@ Open a lot's record (**Open lot record** on its trace page, or a lot number on a
 - received, used, and available quantity;
 - supplier or producing batch;
 - the station that produced it;
-- batches that used it; and
+- batches that used it, and dispatches that took it out; and
 - lots made by those downstream batches.
 
-This is the traceability path from a supplier delivery through production.
+This is the traceability path from a supplier delivery through production to the customer.
 
 Lots made by a batch also show a printable **label** with the batch name, supplier and weight. Lots of chocolate ingredients (liquor, cocoa butter, sugar or milk powder) have a **Mix chocolate from store** button that starts a Chocolate from store batch.
 
@@ -325,6 +343,7 @@ Older versions stay available. Each mixing run keeps the recipe version it used 
 Open **Reports** and choose a section:
 
 - **Pieces made** (the first section) — the number of pieces of each size for each chocolate type, and every lot of pieces with the chocolate and batch it came from.
+- **Dispatched** — what left the factory: each product's quantity with how many dispatches and customers took it, each customer's dispatches, pieces and kg, and every dispatch note. Cancelled dispatches are left out.
 - **Yield by stage** — every batch as a share of its starting weight (the bag weight for a sack): the weight that went into each stage, and what became products, waste and loss. Follow one batch to see every output at every stage as a percentage of the stage input and of the starting weight, and **Where the batch went**, which adds up to 100%. Material sent on counts once, where it finally left the line; liquor and butter sent to mixing count as made into chocolate, because the chocolate also holds sugar and milk powder from store. **What a batch usually turns into** averages the completed batches of one kind; enter a weight, such as a 45 kg sack, to see what to expect from it. Loss at each process compares the processes.
 - **Waste & variance** — filter station records and compare waste, by-products, unaccounted variance, and configured limits.
 - **Batch history** — see all batches, statuses, stations, starting input, and the products, by-products, waste and unweighed loss of each, in kg and as a share of the starting weight.
@@ -342,7 +361,7 @@ Alerts can mean:
 - station variance is above its limit;
 - recorded waste is above the global waste limit;
 - a batch is on hold; or
-- a raw-material lot is below the low-stock threshold.
+- a raw material in store (all its lots together) is below the low-stock threshold.
 
 Select an alert to open the related batch or material lot. Investigate the scale reading, tare, destination, or inventory quantity, then add a correction or note when appropriate.
 
@@ -357,6 +376,7 @@ Users with access to Setup can configure:
 - **Output categories** — the standard rows workers see at each station.
 - **Routes** — the default station order for each batch type.
 - **Suppliers** — delivery sources and contact details.
+- **Customers** — who the factory sells or sends goods to: name, address for the delivery note, and contact. A customer with dispatches cannot be deleted.
 - **Users** — staff accounts with email, password, 4-digit PIN, **Operator** or **Manager** access, and the stations on each person's **My work** page. To reset a forgotten password or PIN, edit the person and type a new one. The idle sign-out time and the devices set up for quick sign-in are here too. At least one person must keep manager access.
 - **Alert thresholds** — station variance limits, waste limit, and low-stock warning.
 

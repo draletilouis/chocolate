@@ -18,7 +18,7 @@ The UI follows the StockMaster (Lefori) design system: Montserrat, navy primary 
 
 Manage people, PINs, access, stations and set-up devices under **Setup → Users**. The signed-in person is recorded on every measurement.
 
-**Demo:** without a database (or with `DEMO_MODE=true`) the app runs the sample factory. Every demo user's PIN is `1234` and password `cocoa123`, for example `alex.morgan@cocoafactory.example`. **Setup → Business details → Reset demo data** puts the samples back.
+**Demo:** without a database (or with `DEMO_MODE=true`) the app runs the sample factory: about six weeks of production ending the day it is set up, with deliveries from nine suppliers, bean batches through every station, chocolate of all eight types, pieces of every size, orders dispatched to six customers, a production plan, and work waiting at every station. Every demo user's PIN is `1234` and password `cocoa123`, for example `alex.morgan@cocoafactory.example`. **Setup → Business details → Reset demo data** makes the sample factory again, ending that day.
 
 ## Run locally
 
@@ -51,7 +51,7 @@ Without a database the app refuses to record on Railway, because a deploy wipes 
 
 ```bash
 npm run typecheck
-node browser-check.cjs       # needs a demo instance running on port 3100; uses Playwright with Microsoft Edge
+node browser-check.cjs       # needs a demo instance running on port 3100 (or set BASE_URL); uses Playwright with Microsoft Edge
 node interaction-audit.cjs   # clicks through every flow and saves screenshots (also resets the demo)
 ```
 
@@ -65,6 +65,7 @@ node interaction-audit.cjs   # clicks through every flow and saves screenshots (
 - `src/lib/commands.ts` – every change as a named, validated command, and which ones operators may run
 - `src/server/reduce.ts` – the business rules: applies a command to the factory's data or refuses it with a reason
 - `src/server/state.ts`, `src/server/db.ts` – PostgreSQL or embedded database, versioned items, audit log, sync
+- `src/server/demo.ts` – the demo factory's weeks of production, made by running the same commands people run
 - `src/server/auth.ts` – sessions, PIN and password checks, lockouts, devices set up for quick sign-in
 - `src/app/api/**` – session, setup, sync, commands, devices and demo-reset endpoints
 - `src/lib/store.tsx` – the browser side: loads the data from the server, sends changes, checks for other devices' changes every 5 seconds
@@ -74,6 +75,7 @@ node interaction-audit.cjs   # clicks through every flow and saves screenshots (
 - `src/components/BatchLabel.tsx` – printable batch cards and labels with the batch name and supplier
 - `src/app/work` – My work (each person's waiting batches); `src/app/search` – search
 - `src/app/production/**` – production line, station queues, batch steps, one-screen station recording, receive a delivery, mixing, pieces
+- `src/app/dispatch/**`, `src/lib/dispatch.ts` – goods dispatched to customers, each line taken off its lot; delivery notes
 - `src/app/plan` – the production plan
 - `src/app/materials`, `recipes`, `reports`, `setup` – supporting screens
 
