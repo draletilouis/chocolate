@@ -18,7 +18,7 @@ The UI follows the StockMaster (Lefori) design system: Montserrat, navy primary 
 
 Manage people, PINs, access, stations and set-up devices under **Setup → Users**. The signed-in person is recorded on every measurement.
 
-**Demo:** without a database (or with `DEMO_MODE=true`) the app runs the sample factory: about six weeks of production ending the day it is set up, with deliveries from nine suppliers, bean batches through every station, chocolate of all eight types, pieces of every size, orders dispatched to six customers, a production plan, and work waiting at every station. Every demo user's PIN is `1234` and password `cocoa123`, for example `alex.morgan@cocoafactory.example`. **Setup → Business details → Reset demo data** makes the sample factory again, ending that day.
+**Demo:** without a database (or with `DEMO_MODE=true`) the app runs the sample factory: about six weeks of production ending the day it is set up, with deliveries from nine suppliers, bean batches through every station, chocolate of all eight types, pieces of every size, orders dispatched to six customers, a production plan, and work waiting at every station. Every demo user's PIN is `1234` and password `cocoa123`, for example `alex.morgan@cocoafactory.example`. **Setup → Business details → Reset demo data** makes the sample factory again, ending that day. When a deploy brings a newer demo, a demo database is rebuilt with it on start, so nobody has to reset by hand; a real factory's database is never touched.
 
 ## Run locally
 
