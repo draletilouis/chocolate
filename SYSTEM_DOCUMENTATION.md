@@ -97,7 +97,7 @@ The server keeps an in-memory copy of the state and compares it with the databas
 | Variable | Meaning |
 | --- | --- |
 | `DATABASE_URL` | PostgreSQL connection string. Required for production. On Railway, reference the PostgreSQL service's `DATABASE_URL`. Add `?sslmode=require` if your provider needs SSL. |
-| `DEMO_MODE` | `true` seeds the sample factory and allows **Reset demo data**; `false` starts a real factory. Default: on without `DATABASE_URL`, off with it. |
+| `DEMO_MODE` | Ignored for now: every installation runs as the demo, so an existing database is rebuilt with the sample factory on its first start (`isDemo()` in `src/server/state.ts` holds the rule to bring back for real factories: `true` seeds the sample factory, `false` starts a real factory, on by default only without `DATABASE_URL`). |
 | `DATA_DIR` | Folder for the embedded database when there is no `DATABASE_URL` (default `.data`). |
 | `FACTORY_TIMEZONE` | IANA time zone used for record times (default `Africa/Kampala`). |
 | `DATABASE_POOL_SIZE` | PostgreSQL connections per server instance (default 5). |
@@ -135,7 +135,7 @@ The root layout mounts `StoreProvider` and then `Shell`. On start the store asks
 - A manager may choose **Use <name>** under Setup → Users to record on someone's behalf. New records carry that person's name, the audit log keeps the manager's, and the menus stay the manager's.
 - The last manager cannot be deleted or demoted, nobody can delete themselves, and deleting a person signs them out everywhere.
 
-**Demo mode.** With `DEMO_MODE=true` (the default when there is no `DATABASE_URL`), the sample factory is loaded with eight staff who all use the PIN `1234` and the password `cocoa123`, every device can use PINs, and **Setup → Business details → Reset demo data** makes the sample factory again, ending that day, and signs everyone out.
+**Demo mode.** For now every installation is in demo mode, whatever `DEMO_MODE` says: the sample factory is loaded with eight staff who all use the PIN `1234` and the password `cocoa123`, every device can use PINs, and **Setup → Business details → Reset demo data** makes the sample factory again, ending that day, and signs everyone out.
 
 **Records kept in a browser by earlier versions.** Before the move to a server, each browser kept its own copy of the records in `localStorage` (`cocoa-production-v1`). When a manager opens **Setup → Business details** in such a browser, a panel offers to upload it. `migrateLegacy()` in `src/server/reduce.ts` upgrades the old data (line layout, output rows, chocolate types, limits, containers; see section 12). The upload replaces the server's batches, lots and settings, keeps the people already on the server, and adds the browser's other people with their passwords and PINs, except the sample `cocoa123` and `1234`, which are public: those people need a new password or PIN from a manager before they can sign in.
 
@@ -547,6 +547,8 @@ A real factory starts with the line configuration from `configState()`: the bean
 - The chocolate types become those of the recipes table. A type that was already made keeps its versions and gets the table's recipe as a new version; a type never made is replaced by the table's; a type earlier versions started with that the table does not have (55% Dark) is removed unless it was made or is on the production plan. Types the factory added itself stay.
 
 Raise `WORKFLOW_VERSION` when the seeded configuration changes, so existing databases get it too.
+
+**A demo database made by an older demo.** `app_meta.demo_version` records which demo made a demo database's records (`DEMO_VERSION` in `src/server/demo.ts`; empty for a real factory, and taken as 1, the old hand-written samples, when missing). When the app starts in demo mode on a database made by an older demo, `initialize()` rebuilds it with the current one, as **Reset demo data** does (everyone is signed out), and logs a `rebuildDemo` entry with the versions in `app_commands`. It happens once per new demo, under the same advisory lock as seeding. A real factory's records are never rebuilt. Raise `DEMO_VERSION` whenever the demo changes, so a deploy brings it to every demo database.
 
 ## 13. Navigation and visual system
 

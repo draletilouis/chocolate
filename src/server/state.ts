@@ -4,14 +4,18 @@ import { applyItems, collections, diffState, settings, stateFromItems, type Item
 import type { Access } from '@/lib/types';
 import { hashSecret, shortId } from './crypto';
 import { factoryNow, getDb, type Db, type Query } from './db';
-import { demoState } from './demo';
+import { DEMO_VERSION, demoState } from './demo';
 import { applyCommand, upgradeConfiguration } from './reduce';
 
 interface Cache { version: number; state: State }
 const g = globalThis as typeof globalThis & { __cocoaCache?: Cache; __cocoaInit?: Promise<void> };
 
-/** Demo mode seeds sample batches and staff. On by default only for the local embedded database. */
-export const isDemo = () => (process.env.DEMO_MODE ? process.env.DEMO_MODE === 'true' : !process.env.DATABASE_URL);
+/**
+ * Every installation runs as the demo for now, whatever DEMO_MODE says (the owner's decision, 2026-10-07):
+ * the sample factory, rebuilt when a newer demo is deployed. When real factories go live, bring back
+ * `process.env.DEMO_MODE ? process.env.DEMO_MODE === 'true' : !process.env.DATABASE_URL`.
+ */
+export const isDemo = () => true;
 
 export interface Actor { userId: string; access: Access; recordingAs?: string | null }
 
@@ -52,7 +56,7 @@ async function seedInto(q: Query) {
   for (const item of allItems(state)) {
     await q('insert into app_items (kind, id, version, deleted, data) values ($1, $2, 1, false, $3)', [item.kind, item.id, JSON.stringify(item.data)]);
   }
-  await q('insert into app_meta (id, version) values (1, 1)');
+  await q('insert into app_meta (id, version, demo_version) values (1, 1, $1)', [demo ? DEMO_VERSION : null]);
   if (demo) {
     for (const user of state.users) {
       await q('insert into app_credentials (user_id, password_hash, pin_hash) values ($1, $2, $3)', [user.id, await hashSecret(demoCredentials.password), await hashSecret(demoCredentials.pin)]);
@@ -86,13 +90,29 @@ async function upgradeInto(q: Query) {
   await q('insert into app_commands (version, type, payload) values ($1, $2, $3)', [version + 1, 'upgradeConfiguration', JSON.stringify({ from: state.workflowVersion, to: upgraded.workflowVersion })]);
 }
 
-/** First start of a new database, or of a new version on an existing one */
+/** Empties the database and stores the demo factory again; everyone is signed out */
+async function rebuildDemo(q: Query) {
+  for (const table of ['app_items', 'app_credentials', 'app_sessions', 'app_commands', 'app_meta']) await q(`delete from ${table}`);
+  await q("select setval(pg_get_serial_sequence('app_items', 'pos'), 1, false)");
+  await seedInto(q);
+}
+
+/**
+ * First start of a new database, or of a new version on an existing one. A demo database made by an older
+ * demo is rebuilt with the current one, so deploying a new demo needs no reset by hand; a real factory's
+ * records are never touched.
+ */
 async function initialize(db: Db) {
   await db.transaction(async (q) => {
     await q('select pg_advisory_xact_lock(4242)');
-    const { rows } = await q('select version from app_meta where id = 1');
+    const { rows } = await q<{ demo_version: number | null }>('select demo_version from app_meta where id = 1');
     if (!rows.length) await seedInto(q);
-    else await upgradeInto(q);
+    else if (isDemo() && (rows[0].demo_version ?? 1) < DEMO_VERSION) {
+      const from = rows[0].demo_version ?? 1;
+      await rebuildDemo(q);
+      await q('insert into app_commands (version, type, payload) values (1, $1, $2)', ['rebuildDemo', JSON.stringify({ from, to: DEMO_VERSION })]);
+      console.log(`The demo was made by demo version ${from}; rebuilt it with version ${DEMO_VERSION}.`);
+    } else await upgradeInto(q);
   });
 }
 
@@ -203,9 +223,7 @@ export async function resetDemo() {
   const db = await ready();
   await db.transaction(async (q) => {
     await q('select version from app_meta where id = 1 for update');
-    for (const table of ['app_items', 'app_credentials', 'app_sessions', 'app_commands', 'app_meta']) await q(`delete from ${table}`);
-    await q("select setval(pg_get_serial_sequence('app_items', 'pos'), 1, false)");
-    await seedInto(q);
+    await rebuildDemo(q);
   });
   g.__cocoaCache = undefined;
 }
