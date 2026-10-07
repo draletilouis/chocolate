@@ -548,6 +548,8 @@ A real factory starts with the line configuration from `configState()`: the bean
 
 Raise `WORKFLOW_VERSION` when the seeded configuration changes, so existing databases get it too.
 
+**A demo database made by an older demo.** `app_meta.demo_version` records which demo made a demo database's records (`DEMO_VERSION` in `src/server/demo.ts`; empty for a real factory, and taken as 1, the old hand-written samples, when missing). When the app starts in demo mode on a database made by an older demo, `initialize()` rebuilds it with the current one, as **Reset demo data** does (everyone is signed out), and logs a `rebuildDemo` entry with the versions in `app_commands`. It happens once per new demo, under the same advisory lock as seeding. A real factory's records are never rebuilt. Raise `DEMO_VERSION` whenever the demo changes, so a deploy brings it to every demo database.
+
 ## 13. Navigation and visual system
 
 `Shell.tsx` provides:

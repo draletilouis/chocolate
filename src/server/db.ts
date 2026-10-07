@@ -77,6 +77,8 @@ async function createSchema(db: Db) {
   const statements = [
     // The data version: every saved change bumps it, and browsers ask for what changed since theirs.
     `create table if not exists app_meta (id integer primary key, version integer not null, created_at timestamptz not null default now())`,
+    // In demo mode, the version of the demo the records were made by (DEMO_VERSION in src/server/demo.ts); empty for a real factory.
+    `alter table app_meta add column if not exists demo_version integer`,
     // Batches, lots, people, settings… one row per item, with the version it last changed at.
     `create table if not exists app_items (kind text not null, id text not null, pos serial, version integer not null, deleted boolean not null default false, data jsonb, primary key (kind, id))`,
     `create index if not exists app_items_version on app_items (version)`,

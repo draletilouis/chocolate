@@ -9,6 +9,13 @@ import type { ContainerUse, Destination, OutputKind, StationId } from '@/lib/typ
 import { applyCommand } from './reduce';
 
 /**
+ * Which demo this code makes: 1 was the few hand-written sample batches, 2 the weeks of production below.
+ * Raise it whenever the demo changes. A demo database made by an older demo is rebuilt when the app
+ * starts (initialize() in state.ts), so a deploy brings the new demo with it.
+ */
+export const DEMO_VERSION = 2;
+
+/**
  * The demo factory: six weeks of production up to `today` (the factory's date, YYYY-MM-DD), made by running
  * the same commands people run in the app, so every lot, every use and every balance adds up.
  *
