@@ -303,7 +303,7 @@ export default function SetupPage() {
           </Table>
           <AddForm title="Add supplier" onSubmit={(d) => store.addSupplier({ name: String(d.get('name')), supplies: String(d.get('supplies')), contact: String(d.get('contact')) })}>
             <Field label="Name"><Input name="name" required /></Field>
-            <Field label="Supplies"><Input name="supplies" required /></Field>
+            <Field label="Supplies" hint="Materials, separated by commas. Receiving a material offers its suppliers first."><Input name="supplies" placeholder="Sugar, milk powder" required /></Field>
             <Field label="Contact"><Input name="contact" /></Field>
           </AddForm>
         </Panel>

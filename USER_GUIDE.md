@@ -161,7 +161,7 @@ The chocolate from each run waits at **Pieces** until it is made into pieces, th
 2. Select **Record pieces** on the lot you moulded.
 3. Enter the number of good pieces of each size, for example 500 × 45 g bar and 90 × 80 g bar. Leave the other sizes empty.
 4. The bar at the bottom shows how much chocolate that is and how much stays in the lot.
-5. Select **Save pieces**. Each size becomes a lot of pieces, such as `FIN-0004 · 70% Dark · 45 g bar · 500`, with a label that traces back to the batch and the supplier.
+5. Select **Save pieces**. Each size becomes a lot of pieces, such as `FIN-0006 · 70% Dark · 45 g bar · 500`, with a label that traces back to the batch and the supplier.
 
 Each size also shows how many pieces the production plan still needs of that type, for example *Plan: 300 still to make*.
 
@@ -238,12 +238,12 @@ Enter an optional closing note and select **Complete batch**. A completed batch 
 1. Open **Store**.
 2. Select **Receive ingredient**.
 3. Choose the material.
-4. Choose the supplier.
+4. Choose the supplier. Those who supply the material (as listed under **Setup → Suppliers**) come first, and the first of them is chosen for you.
 5. Enter the **Supplier's batch number** printed on the bag or the delivery note, and an invoice or delivery reference, if there are any.
 6. Enter the physically measured weight.
 7. Select **Save receipt**.
 
-The system creates a new lot. The lot's available quantity starts at the received quantity. The lot ID, such as `SUG-0032`, is the delivery's **batch number**: it is never given to another delivery, and every later use is recorded against it. The supplier's own batch number is kept with it, shown on the trace, and found by search.
+The system creates a new lot. The lot's available quantity starts at the received quantity. The lot ID, such as `SUG-0033`, is the delivery's **batch number**: it is never given to another delivery, and every later use is recorded against it. The supplier's own batch number is kept with it, shown on the trace, and found by search.
 
 ### Check the store
 

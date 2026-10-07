@@ -1,7 +1,7 @@
 import { calculateBalance } from './balance';
 import { stationById, stationName, stations } from './stations';
 import { routes, type State } from './seed';
-import type { Alert, Batch, Destination, IdCounters, Lot, OutputKind, StationId, StationRecord } from './types';
+import type { Alert, Batch, Destination, IdCounters, Lot, OutputKind, StationId, StationRecord, Supplier } from './types';
 
 export const recordBalance = (r: StationRecord) => calculateBalance(r.inputWeight, r.outputs);
 
@@ -111,6 +111,13 @@ export const lotById = (state: State, id: string): Lot | undefined => state.lots
 export const batchById = (state: State, id: string): Batch | undefined => state.batches.find((b) => b.id === id);
 export const userName = (state: State, id: string) => state.users.find((u) => u.id === id)?.name ?? id;
 export const supplierName = (state: State, id: string) => state.suppliers.find((s) => s.id === id)?.name ?? id;
+
+/** Suppliers split into those whose "Supplies" names the material (offered first) and the others */
+export function suppliersFor(state: Pick<State, 'suppliers'>, material: string): { usual: Supplier[]; others: Supplier[] } {
+  const name = material.trim().toLowerCase();
+  const supplies = (s: Supplier) => s.supplies.toLowerCase().split(',').map((m) => m.trim()).some((m) => m && (m.includes(name) || name.includes(m)));
+  return { usual: state.suppliers.filter(supplies), others: state.suppliers.filter((s) => !supplies(s)) };
+}
 
 /** Suppliers a batch traces back to: its own supplier, and the suppliers behind the lots it started from */
 export function batchSuppliers(state: State, batch: Batch, seen = new Set<string>()): string[] {
