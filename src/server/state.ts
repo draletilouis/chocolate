@@ -10,8 +10,12 @@ import { applyCommand, upgradeConfiguration } from './reduce';
 interface Cache { version: number; state: State }
 const g = globalThis as typeof globalThis & { __cocoaCache?: Cache; __cocoaInit?: Promise<void> };
 
-/** Demo mode seeds sample batches and staff. On by default only for the local embedded database. */
-export const isDemo = () => (process.env.DEMO_MODE ? process.env.DEMO_MODE === 'true' : !process.env.DATABASE_URL);
+/**
+ * Every installation runs as the demo for now, whatever DEMO_MODE says (the owner's decision, 2026-10-07):
+ * the sample factory, rebuilt when a newer demo is deployed. When real factories go live, bring back
+ * `process.env.DEMO_MODE ? process.env.DEMO_MODE === 'true' : !process.env.DATABASE_URL`.
+ */
+export const isDemo = () => true;
 
 export interface Actor { userId: string; access: Access; recordingAs?: string | null }
 
