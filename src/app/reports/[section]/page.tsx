@@ -3,8 +3,10 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
+import { FileDown } from 'lucide-react';
 import { OutcomeBar, StageTable, WhereItWent } from '@/components/BatchFlow';
-import { Badge, Empty, Input, PageHeader, Panel, Select, Stat, SubNav, Table, UnitInput, td, tdNum } from '@/components/ui';
+import { ReportSummary } from '@/components/ReportSummary';
+import { Badge, Button, Empty, Input, PageHeader, Panel, Select, Stat, SubNav, Table, UnitInput, td, tdNum } from '@/components/ui';
 import { getReportRange, ReportExport, type ProductionReportType, type ReportPeriod, type ReportRange } from '@/components/ReportExport';
 import { percentOf, round2 } from '@/lib/balance';
 import { amountOf, batchById, batchDisplayName, customerName, recordBalance, userName } from '@/lib/derive';
@@ -13,12 +15,14 @@ import { dateTime, kg, num, pct } from '@/lib/format';
 import { batchOutcomes, outcomeTotals, startName, startWeight } from '@/lib/outcomes';
 import type { ReportExportSnapshot } from '@/lib/report-export';
 import { useStore } from '@/lib/store';
+import { buildSummary, type SummaryPeriod } from '@/lib/summary';
 import { isWeighed, stationName, stations } from '@/lib/stations';
 import { piecesByTypeAndSize, piecesKg, piecesLots } from '@/lib/pieces';
 import type { Batch, Lot, RouteId } from '@/lib/types';
 
 
 const sections = [
+  { id: 'summary', label: 'Summary', href: '/reports/summary' },
   { id: 'pieces', label: 'Pieces made', href: '/reports/pieces' },
   { id: 'dispatched', label: 'Dispatched', href: '/reports/dispatched' },
   { id: 'losses', label: 'Yield by stage', href: '/reports/losses' },
@@ -64,13 +68,26 @@ function inReportRange(iso: string, range: ReportRange) {
   return (!range.from || day >= range.from) && (!range.to || day <= range.to);
 }
 
-const statusLabel = (status: string) => status === 'completed' ? 'Completed' : status === 'hold' ? 'On hold' : 'In progress';
+const periodNames: Record<ReportPeriod, string> = { all: 'All time', today: 'Today', week: 'This week', month: 'This month', year: 'This year', custom: 'Custom range' };
+const longDate = (day: string) => new Date(`${day}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+const todayLocal = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
+/** A period as the owner reads it, e.g. "This month: 1 Oct 2026 to 13 Oct 2026" */
+function summaryPeriod(period: ReportPeriod, range: ReportRange): SummaryPeriod {
+  if (!range.from || !range.to) return { from: range.from, to: range.to, label: periodNames[period] };
+  const dates = range.from === range.to ? longDate(range.from) : `${longDate(range.from)} to ${longDate(range.to)}`;
+  return { from: range.from, to: range.to, label: period === 'custom' ? dates : `${periodNames[period]}: ${dates}` };
+}
+
+const statusLabel =(status: string) => status === 'completed' ? 'Completed' : status === 'hold' ? 'On hold' : 'In progress';
 
 export default function ReportsPage() {
   const { section } = useParams<{ section: string }>();
   const store = useStore();
   const [stationFilter, setStationFilter] = useState('all');
-  const [duration, setDuration] = useState<ReportPeriod>('all');
+  // The owner's summary opens on this month; the other reports on all time
+  const [duration, setDuration] = useState<ReportPeriod>(() => (section === 'summary' ? 'month' : 'all'));
+  const [downloading, setDownloading] = useState(false);
   const [durationFrom, setDurationFrom] = useState('');
   const [durationTo, setDurationTo] = useState('');
   const durationRange = getReportRange(duration, durationFrom, durationTo);
@@ -91,6 +108,20 @@ export default function ReportsPage() {
   const withRecords = reportBatches.filter((b) => b.records.length > 0).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   const [batchId, setBatchId] = useState(withRecords[0]?.id ?? '');
   const current = sections.find((s) => s.id === section) ?? sections[0];
+
+  // The owner's summary of the chosen period, on screen and as a PDF
+  const summary = current.id === 'summary' ? buildSummary(store, summaryPeriod(duration, durationRange), todayLocal()) : null;
+  const downloadPdf = async (type: ProductionReportType, period: ReportPeriod, range: ReportRange) => {
+    if (type !== 'summary') return false;
+    const { downloadSummaryPdf } = await import('@/lib/summary-pdf');
+    await downloadSummaryPdf(buildSummary(store, summaryPeriod(period, range), todayLocal()), store.business);
+    return true;
+  };
+  const downloadThisPdf = async () => {
+    if (downloading) return;
+    setDownloading(true);
+    try { await downloadPdf('summary', duration, durationRange); } finally { setDownloading(false); }
+  };
   // Stages with a weigh-in, in line order; retired stations only for older batches that used them
   const gridStations = stations.filter((s) => s.form !== 'completion' && (!s.retired || reportBatches.some((b) => b.records.some((r) => r.station === s.id))));
 
@@ -135,6 +166,28 @@ export default function ReportsPage() {
   const pieceRow = (l: Lot) => [dateTime(l.receivedAt), l.id, l.pieces!.type, l.pieces!.size, l.received, num(piecesKg(l.received, l.pieces!.grams)), l.pieces!.fromLotId, l.source.type === 'batch' ? l.source.batchId : '', userName(store, l.pieces!.recordedBy)];
 
   const buildExportSnapshot = (type: ProductionReportType, range: ReportRange): ReportExportSnapshot => {
+    if (type === 'summary') {
+      const s = buildSummary(store, { from: range.from, to: range.to, label: range.label }, todayLocal());
+      const states = { normal: 'Usual', high: 'Higher than usual', low: 'Lower than usual', unknown: 'Not enough history' };
+      return {
+        title: 'Production summary',
+        periodLabel: range.label,
+        sections: [
+          { title: 'In short', headers: ['Summary'], rows: [[s.headline]] },
+          { title: 'Numbers', headers: ['Measure', 'Amount', 'Note'], rows: [
+            ['Beans in (kg)', num(s.beans.kg), `${s.beans.sacks} sacks, ${s.beans.suppliers} suppliers`],
+            ['Products per 100 kg of beans (kg)', s.sacks.finished ? num(s.sacks.productsPer100) : '', `From ${s.sacks.finished} finished sacks`],
+            ['Chocolate made (kg)', num(s.chocolateKg), 'Taken out of the mixer'],
+            ['Pieces made', s.pieces.count, `${num(s.pieces.kg)} kg of chocolate`],
+            ['Missing, not weighed (kg)', num(s.missing.kg), s.missing.worstPhase ? `Most at ${s.missing.worstPhase.toLowerCase()}` : ''],
+          ] },
+          { title: 'Loss at each phase', headers: ['Phase', 'Went in (kg)', 'Waste weighed (kg)', 'Waste by name', 'Moisture (kg)', 'Missing (kg)', 'Total loss (kg)', 'Loss %', 'Usual from %', 'Usual to %', 'Compared with usual'], rows: s.phases.map((p) => [
+            p.name, num(p.input), num(p.waste), p.wasteItems.map((w) => `${w.name} ${num(w.weight)} kg`).join('; '), num(p.expected), num(p.missing), num(p.loss), pct(p.lossPct), p.usual ? pct(p.usual.low) : '', p.usual ? pct(p.usual.high) : '', states[p.state],
+          ]) },
+          { title: 'Needs attention', headers: ['What', 'Detail'], rows: s.attention.map((a) => [a.title, a.detail]) },
+        ],
+      };
+    }
     if (type === 'dispatched') {
       const list = dispatchedIn(range);
       return {
@@ -263,10 +316,13 @@ export default function ReportsPage() {
               </>
             )}
           </div>
-          <ReportExport current={current.id as ProductionReportType} business={store.business} buildSnapshot={buildExportSnapshot} />
+          {summary && <Button onClick={downloadThisPdf} disabled={downloading}><FileDown size={16} /> {downloading ? 'Making PDF…' : 'Download PDF'}</Button>}
+          <ReportExport current={current.id as ProductionReportType} business={store.business} buildSnapshot={buildExportSnapshot} downloadPdf={downloadPdf} />
         </div>
       )} />
       <SubNav items={sections} current={current.id} />
+
+      {summary && <ReportSummary summary={summary} />}
 
       {current.id === 'losses' && (
         <>

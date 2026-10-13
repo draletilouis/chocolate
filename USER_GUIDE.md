@@ -43,7 +43,7 @@ The sections are:
 - **Dispatch** — goods that left the factory: every dispatch note, the customer, and the lots the goods came from. On a phone, open it from **Store** (**Dispatch goods**).
 - **Batch tracing** — enter a batch or lot number to see everything that went into it and everything it went into. On a phone, open it from **Store** (**Trace a batch**).
 - **Chocolate types** — each type's recipe, its versions and ingredient comparisons.
-- **Reports** — pieces made, goods dispatched, losses, missing weight, batch history, corrections and holds.
+- **Reports** — a one-page summary for the owner, pieces made, goods dispatched, losses, missing weight, batch history, corrections and holds.
 - **Setup** — products, piece sizes, the mixer, output rows, routes, suppliers, customers, users and thresholds.
 
 On a phone, use the bottom bar. On a desktop, use the sidebar.
@@ -341,7 +341,8 @@ Older versions stay available. Each mixing run keeps the recipe version it used 
 
 Open **Reports** and choose a section:
 
-- **Pieces made** (the first section) — the number of pieces of each size for each chocolate type, and every lot of pieces with the chocolate and batch it came from.
+- **Summary** (the first section, opening on this month) — the period in one page: a sentence that answers how it went, five numbers (beans in, products per 100 kg of beans from the sacks finished, chocolate made, pieces made, and weight missing without being weighed), the loss at each phase, and what needs a look. Each phase's loss is split into waste that was weighed (husks, rejected beans), moisture driven off in the roaster, and missing weight nobody can explain, and is compared with the factory's **usual** range: the middle 80% of its own batches through that phase over the last 90 days (at least 5 batches are needed). **Needs attention** lists batches on hold, phases that lost more than usual, records whose missing weight is above the station limit, low raw materials and corrected weights; select one to open it. Select **Download PDF** to save the summary as a one-page A4 PDF file, ready to send or print.
+- **Pieces made** — the number of pieces of each size for each chocolate type, and every lot of pieces with the chocolate and batch it came from.
 - **Dispatched** — what left the factory: each product's quantity with how many dispatches and customers took it, each customer's dispatches, pieces and kg, and every dispatch note. Cancelled dispatches are left out.
 - **Yield by stage** — every batch as a share of its starting weight (the bag weight for a sack): the weight that went into each stage, and what became products, waste and loss. Follow one batch to see every output at every stage as a percentage of the stage input and of the starting weight, and **Where the batch went**, which adds up to 100%. Material sent on counts once, where it finally left the line; liquor and butter sent to mixing count as made into chocolate, because the chocolate also holds sugar and milk powder from store. **What a batch usually turns into** averages the completed batches of one kind; enter a weight, such as a 45 kg sack, to see what to expect from it. Loss at each process compares the processes.
 - **Waste & variance** — filter station records and compare waste, by-products, unaccounted variance, and configured limits.
@@ -349,7 +350,7 @@ Open **Reports** and choose a section:
 - **Corrections** — see every changed weight, reason, time, and user.
 - **Holds** — see when holds were placed, why, by whom, and whether they were released.
 
-Use the duration filter on any report to select all time, today, this week, this month, this year, or a custom date range. Select **Export report** to download the selected report; the default **Excel workbook (.xlsx)** contains a Summary sheet and separate filterable detail sheets. CSV and print/PDF options are also available.
+Use the duration filter on any report to select all time, today, this week, this month, this year, or a custom date range. Select **Export report** to download the selected report; the default **Excel workbook (.xlsx)** contains a Summary sheet and separate filterable detail sheets. CSV and print/PDF options are also available. For the Summary, **PDF document** downloads the same PDF file as **Download PDF**; the other reports open a print view where you choose "Save as PDF".
 
 Use the Overview page for a quick view of active batches, alerts, completed batches, the production plan, and recent station records.
 
