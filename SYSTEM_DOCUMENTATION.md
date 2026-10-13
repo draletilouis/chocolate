@@ -481,6 +481,7 @@ Alerts appear in the Overview, in the production navigation counts, on batch pag
 | `/recipes` | **Chocolate types**: lists each type's current recipe, versions, and how many runs made it. |
 | `/recipes/new` | Adds a chocolate type and the first version of its recipe. |
 | `/recipes/[id]` | Renames a type, adds immutable versions, deletes types never made, and compares expected versus actual ingredients by mixing run. |
+| `/reports/summary` | **Summary** (the default report, opening on this month): `buildSummary()` in `src/lib/summary.ts` works out the answer sentence, the five numbers, the loss at each phase (waste weighed, unweighed loss the station expects such as roaster moisture, and missing weight, against the usual range: the 10th to 90th percentile of each batch's loss through that phase over the last 90 days, from 5 batches up) and the attention list. **Download PDF** draws it as an A4 PDF with jsPDF (`src/lib/summary-pdf.ts`, loaded only when asked) and saves it straight to the device. |
 | `/reports/pieces` | **Pieces made**: pieces by chocolate type and size in the period, and every lot of pieces with the chocolate lot and batch it came from. |
 | `/reports/dispatched` | **Dispatched**: what left the factory in the period by product and by customer, and every dispatch note; cancelled ones are left out. |
 | `/reports/losses` | Shows weight loss by batch/stage, follows one batch, and aggregates loss by process. |
@@ -499,7 +500,7 @@ Alerts appear in the Overview, in the production navigation counts, on batch pag
 | `/setup/users` | Lists, adds, edits and guarded-deletes staff accounts with PIN, password, access and stations; sets the idle sign-out time; changes the user used for recording; lists, sets up and removes devices for quick sign-in. The last manager cannot be removed or demoted. |
 | `/setup/alerts` | Edits thresholds. |
 
-`/reports` redirects to `/reports/pieces`; `/setup` redirects to `/setup/products`. The former `/setup/paper-catalog` URL redirects to `/setup/products`.
+`/reports` redirects to `/reports/summary`; `/setup` redirects to `/setup/products`. The former `/setup/paper-catalog` URL redirects to `/setup/products`.
 
 The server's JSON API, used by the pages (all answers are JSON; errors come as `{ "error": "…" }` with a readable message):
 
@@ -586,7 +587,7 @@ node browser-check.cjs
 node interaction-audit.cjs
 ```
 
-Both browser scripts expect a demo instance to be running on port 3100 (set `BASE_URL` for another address): they sign in as the sample manager and reset the demo data first, then look up the batches they work with in it (the bean batch waiting at winnowing, the Chocolate from store batch waiting at mixing) and read the lot numbers they make from the screen, since the demo's numbers depend on its weeks of production. They use Playwright with Microsoft Edge. The browser check covers PIN and email sign-in, the queues of all 12 stations of the line, one-screen recording with the live check, the nib split, labels, mixing runs with the changeover sheet's example, a blocked changeover and taking the leftover out, Chocolate from store, counting pieces from a chocolate lot and the Pieces made report, the production plan (progress, a duplicate line refused, changing it, reading it as an operator), receiving a delivery in one form, the batch steps with inline corrections, holds, completion, the chocolate types and adding a new one, reports, setup, the phone layout and operator menus. `interaction-audit.cjs` clicks through the same flows, saving before/after screenshots and a report under its configured output directory.
+Both browser scripts expect a demo instance to be running on port 3100 (set `BASE_URL` for another address): they sign in as the sample manager and reset the demo data first, then look up the batches they work with in it (the bean batch waiting at winnowing, the Chocolate from store batch waiting at mixing) and read the lot numbers they make from the screen, since the demo's numbers depend on its weeks of production. They use Playwright with Microsoft Edge. The browser check covers PIN and email sign-in, the queues of all 12 stations of the line, one-screen recording with the live check, the nib split, labels, mixing runs with the changeover sheet's example, a blocked changeover and taking the leftover out, Chocolate from store, counting pieces from a chocolate lot and the Pieces made report, the production plan (progress, a duplicate line refused, changing it, reading it as an operator), receiving a delivery in one form, the batch steps with inline corrections, holds, completion, the chocolate types and adding a new one, the summary report and its PDF download, reports, setup, the phone layout and operator menus. `interaction-audit.cjs` clicks through the same flows, saving before/after screenshots and a report under its configured output directory.
 
 ## 15. Current scope and limitations
 

@@ -6,11 +6,12 @@ import { Button, Field, Input, Select } from '@/components/ui';
 import { downloadReportCsv, downloadReportXlsx, openPrintableReport, type ReportExportSnapshot } from '@/lib/report-export';
 import type { BusinessDetails } from '@/lib/types';
 
-export type ProductionReportType = 'pieces' | 'dispatched' | 'losses' | 'variance' | 'batches' | 'corrections' | 'holds';
+export type ProductionReportType = 'summary' | 'pieces' | 'dispatched' | 'losses' | 'variance' | 'batches' | 'corrections' | 'holds';
 export type ReportPeriod = 'all' | 'today' | 'week' | 'month' | 'year' | 'custom';
 export interface ReportRange { from?: string; to?: string; label: string }
 
 const reportOptions: { id: ProductionReportType; label: string }[] = [
+  { id: 'summary', label: 'Summary' },
   { id: 'pieces', label: 'Pieces made' },
   { id: 'dispatched', label: 'Dispatched' },
   { id: 'losses', label: 'Yield by stage' },
@@ -35,6 +36,8 @@ interface ReportExportProps {
   current: ProductionReportType;
   business: BusinessDetails;
   buildSnapshot: (type: ProductionReportType, range: ReportRange) => ReportExportSnapshot;
+  /** Saves a designed PDF file for report types that have one; false for the others, which use the print view */
+  downloadPdf?: (type: ProductionReportType, period: ReportPeriod, range: ReportRange) => Promise<boolean>;
 }
 
 const localDate = (value: Date) => {
@@ -68,7 +71,7 @@ export function getReportRange(period: ReportPeriod, customFrom = '', customTo =
   };
 }
 
-export function ReportExport({ current, business, buildSnapshot }: ReportExportProps) {
+export function ReportExport({ current, business, buildSnapshot, downloadPdf }: ReportExportProps) {
   const [open, setOpen] = useState(false);
   const [reportType, setReportType] = useState<ProductionReportType>(current);
   const [period, setPeriod] = useState<ReportPeriod>('all');
@@ -106,9 +109,13 @@ export function ReportExport({ current, business, buildSnapshot }: ReportExportP
       return;
     }
 
-    const snapshot = { ...buildSnapshot(reportType, range), business };
     let opened = true;
     try {
+      if (format === 'pdf' && downloadPdf && await downloadPdf(reportType, period, range)) {
+        setOpen(false);
+        return;
+      }
+      const snapshot = { ...buildSnapshot(reportType, range), business };
       if (format === 'xlsx') await downloadReportXlsx(snapshot);
       else if (format === 'csv') downloadReportCsv(snapshot);
       else opened = openPrintableReport(snapshot, format === 'pdf');
@@ -176,7 +183,9 @@ export function ReportExport({ current, business, buildSnapshot }: ReportExportP
               <p className="export-format-hint">
                 {format === 'xlsx' && <><FileSpreadsheet size={15} /> A StockMaster-style workbook includes a Summary sheet and filterable detail sheets.</>}
                 {format === 'csv' && <><FileSpreadsheet size={15} /> A flat CSV includes each section of the selected report.</>}
-                {format === 'pdf' && <><FileText size={15} /> A print dialog opens; choose “Save as PDF” to download the document.</>}
+                {format === 'pdf' && (reportType === 'summary'
+                  ? <><FileText size={15} /> The PDF file downloads straight away, ready to send or print.</>
+                  : <><FileText size={15} /> A print dialog opens; choose “Save as PDF” to download the document.</>)}
                 {format === 'print' && <><Printer size={15} /> The report opens in a clean print view for paper or browser printing.</>}
               </p>
               {error && <p className="export-error" role="alert">{error}</p>}

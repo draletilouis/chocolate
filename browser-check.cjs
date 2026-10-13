@@ -398,7 +398,16 @@ async function expectText(page, text) {
 
   // Reports.
   await page.goto(`${BASE}/reports`);
-  await page.waitForURL('**/reports/pieces');
+  await page.waitForURL('**/reports/summary');
+  for (const t of ['of beans came in', 'Products per 100 kg', 'Loss at each phase', 'Winnowing', 'Husks', 'Needs attention', 'Milk powder is low.']) await expectText(page, t);
+  const [pdf] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download PDF' }).click()]);
+  if (!/^production-summary-.*\.pdf$/.test(pdf.suggestedFilename())) throw new Error(`Unexpected PDF name ${pdf.suggestedFilename()}`);
+  const pdfBytes = require('fs').readFileSync(await pdf.path());
+  if (pdfBytes.subarray(0, 5).toString() !== '%PDF-' || pdfBytes.length < 3000) throw new Error('The summary PDF is not a PDF file');
+  await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-report-summary.png`, fullPage: true });
+  ok(`report summary: answer sentence, loss at each phase, needs attention; PDF downloaded (${pdf.suggestedFilename()}, ${Math.round(pdfBytes.length / 1024)} KB)`);
+
+  await page.goto(`${BASE}/reports/pieces`);
   for (const t of ['By type and size', '70% Dark', '45 g bar', String(piecesOf('70% Dark', '45 g bar') + 500), '80 g bar', String(piecesOf('70% Dark', '80 g bar') + 90), '85% Dark']) await expectText(page, t);
   for (const [section, text] of [['losses', 'Every batch as a share of its starting weight'], ['losses', 'Follow one batch down the line'], ['losses', 'Loss at each process, all batches'], ['variance', 'Unaccounted variance'], ['batches', 'All batches'], ['corrections', 'Scale was not zeroed.'], ['holds', 'Waiting for quality sign-off.']]) {
     await page.goto(`${BASE}/reports/${section}`);
