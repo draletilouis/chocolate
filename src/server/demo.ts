@@ -10,7 +10,8 @@ import { applyCommand } from './reduce';
 
 /**
  * Which demo this code makes: 1 was the few hand-written sample batches, 2 the weeks of production below,
- * 3 the same without sorting and containers.
+ * 3 the same without sorting and containers, 4 no records at all: the setup and one person (startState() in seed.ts),
+ * so the factory records its own batches. demoState() is kept for bringing sample production back.
  * Raise it whenever the demo changes. A demo database made by an older demo is rebuilt when the app
  * starts (initialize() in state.ts), so a deploy brings the new demo with it.
  */

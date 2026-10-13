@@ -1,10 +1,10 @@
 import type { Command } from '@/lib/commands';
-import { configState, demoCredentials, seedState, type State } from '@/lib/seed';
+import { configState, demoCredentials, startState, type State } from '@/lib/seed';
 import { applyItems, collections, diffState, settings, stateFromItems, type Item, type SyncPayload } from '@/lib/sync';
 import type { Access } from '@/lib/types';
 import { hashSecret, shortId } from './crypto';
 import { factoryNow, getDb, type Db, type Query } from './db';
-import { DEMO_VERSION, demoState } from './demo';
+import { DEMO_VERSION } from './demo';
 import { applyCommand, upgradeConfiguration } from './reduce';
 
 interface Cache { version: number; state: State }
@@ -39,20 +39,10 @@ async function ready(): Promise<Db> {
   return db;
 }
 
-/** The demo factory's weeks of production up to today. Should a rule change stop them being made, the demo starts without records rather than not at all. */
-function demoFactory(): State {
-  try {
-    return demoState(factoryNow().slice(0, 10));
-  } catch (error) {
-    console.error('The demo records could not be made, so the demo starts without them:', error);
-    return seedState();
-  }
-}
-
-/** Stores the demo factory, or the line configuration only for a real factory */
+/** Stores the demo's start (the setup and one person), or the line configuration only for a real factory */
 async function seedInto(q: Query) {
   const demo = isDemo();
-  const state = demo ? demoFactory() : configState();
+  const state = demo ? startState() : configState();
   for (const item of allItems(state)) {
     await q('insert into app_items (kind, id, version, deleted, data) values ($1, $2, 1, false, $3)', [item.kind, item.id, JSON.stringify(item.data)]);
   }
