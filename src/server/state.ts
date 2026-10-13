@@ -41,8 +41,12 @@ async function ready(): Promise<Db> {
 
 /** Stores the demo's start (the setup and one person), or the line configuration only for a real factory */
 async function seedInto(q: Query) {
+  await storeAll(q, isDemo() ? startState() : configState());
+}
+
+/** Stores a whole state in an empty database as data version 1; in demo mode its people get the demo password and PIN */
+async function storeAll(q: Query, state: State) {
   const demo = isDemo();
-  const state = demo ? startState() : configState();
   for (const item of allItems(state)) {
     await q('insert into app_items (kind, id, version, deleted, data) values ($1, $2, 1, false, $3)', [item.kind, item.id, JSON.stringify(item.data)]);
   }
@@ -80,16 +84,24 @@ async function upgradeInto(q: Query) {
   await q('insert into app_commands (version, type, payload) values ($1, $2, $3)', [version + 1, 'upgradeConfiguration', JSON.stringify({ from: state.workflowVersion, to: upgraded.workflowVersion })]);
 }
 
-/** Empties the database and stores the demo factory again; everyone is signed out */
-async function rebuildDemo(q: Query) {
-  for (const table of ['app_items', 'app_credentials', 'app_sessions', 'app_commands', 'app_meta']) await q(`delete from ${table}`);
+/**
+ * Starts the demo over and keeps its setup as it is now (chocolate types, products, routes, pack sizes, output rows,
+ * suppliers, customers and settings). Batches, the store, dispatches, the plan, the mixer, the audit log, people and
+ * set-up devices are removed; Draleti Louis is the only person again and everyone is signed out.
+ */
+async function startOver(q: Query) {
+  const { state } = await loadAll(q);
+  const fresh = startState();
+  const kept: State = { ...state, batches: [], lots: [], dispatches: [], users: fresh.users, idCounters: fresh.idCounters, mixer: fresh.mixer, plan: null };
+  for (const table of ['app_items', 'app_credentials', 'app_sessions', 'app_devices', 'app_commands', 'app_meta']) await q(`delete from ${table}`);
   await q("select setval(pg_get_serial_sequence('app_items', 'pos'), 1, false)");
-  await seedInto(q);
+  await storeAll(q, kept);
+  await upgradeInto(q); // a setup kept from an older version of the line
 }
 
 /**
  * First start of a new database, or of a new version on an existing one. A demo database made by an older
- * demo is rebuilt with the current one, so deploying a new demo needs no reset by hand; a real factory's
+ * demo is started over (its setup kept), so deploying a new demo needs no reset by hand; a real factory's
  * records are never touched.
  */
 async function initialize(db: Db) {
@@ -99,9 +111,9 @@ async function initialize(db: Db) {
     if (!rows.length) await seedInto(q);
     else if (isDemo() && (rows[0].demo_version ?? 1) < DEMO_VERSION) {
       const from = rows[0].demo_version ?? 1;
-      await rebuildDemo(q);
-      await q('insert into app_commands (version, type, payload) values (1, $1, $2)', ['rebuildDemo', JSON.stringify({ from, to: DEMO_VERSION })]);
-      console.log(`The demo was made by demo version ${from}; rebuilt it with version ${DEMO_VERSION}.`);
+      await startOver(q);
+      await q('insert into app_commands (version, type, payload) values (1, $1, $2)', ['startOver', JSON.stringify({ from, to: DEMO_VERSION })]);
+      console.log(`The demo was made by demo version ${from}; started it over with version ${DEMO_VERSION}, keeping its setup.`);
     } else await upgradeInto(q);
   });
 }
@@ -208,12 +220,12 @@ export async function execute(command: Command, actor: Actor, precondition?: (st
   return outcome;
 }
 
-/** Demo instances only: put the sample factory back (everyone is signed out) */
+/** Demo instances only: start over with the setup kept (everyone is signed out) */
 export async function resetDemo() {
   const db = await ready();
   await db.transaction(async (q) => {
     await q('select version from app_meta where id = 1 for update');
-    await rebuildDemo(q);
+    await startOver(q);
   });
   g.__cocoaCache = undefined;
 }

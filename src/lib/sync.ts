@@ -54,6 +54,7 @@ export function applyItems(state: State, items: Item[]): State {
       if ((settings as readonly string[]).includes(item.id)) (next as unknown as Record<string, unknown>)[item.id] = item.data;
       continue;
     }
+    if (!(collections as readonly string[]).includes(item.kind)) continue; // a kind older versions kept, such as containers
     if (!touched.has(item.kind)) touched.set(item.kind, new Map());
     touched.get(item.kind)!.set(item.id, item.data);
   }
