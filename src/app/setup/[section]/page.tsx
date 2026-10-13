@@ -210,8 +210,8 @@ export default function SetupPage() {
       )}
       {current.id === 'business' && <BrowserDataPanel />}
       {current.id === 'business' && store.demo && (
-        <Panel title="Demo data" subtitle="This is a demo: it can be started over at any time, with the setup and no batches.">
-          <div className="p-5"><Button variant="danger" onClick={async () => { if (window.confirm('Start over? Every batch, the store, dispatches and changes to the setup and people are lost, and everyone is signed out.')) await store.resetDemo(); }}>Reset demo data</Button></div>
+        <Panel title="Demo data" subtitle="This is a demo: it can be started over at any time. The setup is kept; batches and people are not.">
+          <div className="p-5"><Button variant="danger" onClick={async () => { if (window.confirm('Start over? Every batch, the store, dispatches and every person except Draleti Louis are removed, and everyone is signed out. The setup is kept.')) await store.resetDemo(); }}>Reset demo data</Button></div>
         </Panel>
       )}
 

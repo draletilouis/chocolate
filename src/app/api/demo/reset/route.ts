@@ -2,7 +2,7 @@ import type { NextRequest } from 'next/server';
 import { SESSION_COOKIE, clearCookie, currentSession, errorResponse, jsonError, sameOrigin } from '@/server/http';
 import { isDemo, resetDemo } from '@/server/state';
 
-/** Demo instances only: a manager puts the sample factory back. Everyone is signed out. */
+/** Demo instances only: a manager starts the demo over, keeping its setup (startOver() in state.ts). Everyone is signed out. */
 export async function POST(req: NextRequest) {
   if (!sameOrigin(req)) return jsonError(403, 'Reset from the app itself.');
   if (!isDemo()) return jsonError(404, 'Not found.');
