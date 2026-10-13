@@ -5,15 +5,16 @@ import { takeOldestFirst } from '@/lib/dispatch';
 import { batchMaterialAtMixing, changeover, ingredientsOf, mixerStamp, versionOf } from '@/lib/mixing';
 import { seedState, type State } from '@/lib/seed';
 import { stationById } from '@/lib/stations';
-import type { ContainerUse, Destination, OutputKind, StationId } from '@/lib/types';
+import type { Destination, OutputKind, StationId } from '@/lib/types';
 import { applyCommand } from './reduce';
 
 /**
- * Which demo this code makes: 1 was the few hand-written sample batches, 2 the weeks of production below.
+ * Which demo this code makes: 1 was the few hand-written sample batches, 2 the weeks of production below,
+ * 3 the same without sorting and containers.
  * Raise it whenever the demo changes. A demo database made by an older demo is rebuilt when the app
  * starts (initialize() in state.ts), so a deploy brings the new demo with it.
  */
-export const DEMO_VERSION = 2;
+export const DEMO_VERSION = 3;
 
 /**
  * The demo factory: six weeks of production up to `today` (the factory's date, YYYY-MM-DD), made by running
@@ -81,7 +82,6 @@ export function demoState(today: string): State {
   f.makePieces();
   f.at(24, '08:00');
   const cb5 = f.receive({ lot: bundibugyo1 }, 150);
-  f.sort(cb5);
   f.hold(cb5, 'Beans smell smoky. Cut test before roasting.');
   f.release(cb5, 'Cut test passed: well fermented, no mould. Roast as normal.');
   f.roast(cb5);
@@ -313,10 +313,8 @@ export function demoState(today: string): State {
   f.finishMixing(ch7);
   f.at(1, '08:00');
   const atRoasting = f.receive({ lot: semuliki2 }, 120);
-  f.sort(atRoasting);
   // The batch waiting at winnowing: 90.40 kg of roasted Kuapa beans
   const atWinnowing = f.receive({ lot: kuapa2 }, 100);
-  f.sort(atWinnowing);
   f.roast(atWinnowing, { roastedKg: 90.4 });
   f.startBeans({ lot: semuliki2 }, 150);
   f.at(1, '16:00');
@@ -327,12 +325,12 @@ export function demoState(today: string): State {
   f.chocolateBatch();
   f.at(0, '07:30');
   f.receive({ lot: semuliki2 }, 130);
-  f.hold(atRoasting, 'Moisture 8.4% after sorting, above the 7.5% limit. Dry before roasting.');
+  f.hold(atRoasting, 'Moisture 8.4% on arrival, above the 7.5% limit. Dry before roasting.');
 
   return f.state;
 }
 
-type Out = [name: string, kind: OutputKind, share: number, to: Destination, container?: string];
+type Out = [name: string, kind: OutputKind, share: number, to: Destination];
 type Source = { lot: string } | { supplier: string };
 
 /** Short codes for the suppliers' own batch numbers and the kind of paper that came with a delivery */
@@ -428,11 +426,6 @@ class Factory {
   private batch(id: string) { return this.state.batches.find((b) => b.id === id)!; }
   private lot(id: string) { return this.state.lots.find((l) => l.id === id)!; }
 
-  private container(name: string | undefined, weight: number): ContainerUse | undefined {
-    const found = name && this.state.containers.find((c) => c.name === name);
-    return found ? { name: found.name, tare: found.tare, gross: round2(weight + found.tare) } : undefined;
-  }
-
   /** A delivery weighed into the store, with the supplier's batch number and the delivery note or invoice */
   deliver(material: string, supplierId: string, kg: number): string {
     const [code, note] = paper[supplierId];
@@ -453,8 +446,8 @@ class Factory {
     return this.run<string>({
       type: 'receiveDelivery',
       batch: { productId: 'P-BEANS', name: suggestBatchName(this.state, supplierId, this.now.slice(0, 10)), startWeight: kg, supplierId, lotUses: lot ? [{ lotId: lot.id, quantity: kg }] : [] },
-      input: { weight: kg, container: lot ? undefined : this.container('Jute sack', kg) },
-      outputs: [{ name: 'Accepted beans', kind: 'useful', weight: accepted, destination: 'continue:sorting' }, { name: 'Rejected beans', kind: 'waste', weight: rejected, destination: 'waste' }],
+      input: { weight: kg },
+      outputs: [{ name: 'Accepted beans', kind: 'useful', weight: accepted, destination: 'continue:roasting' }, { name: 'Rejected beans', kind: 'waste', weight: rejected, destination: 'waste' }],
     }, this.beanTeam, 20);
   }
 
@@ -462,57 +455,51 @@ class Factory {
    * Weighs a station of a batch: each of `others` is a share of what the batch carried there, `loss` the
    * share nobody weighs (moisture, dust), and the main output is what is left, unless it is given.
    */
-  private weigh(batchId: string, station: StationId, main: [name: string, to: Destination, container?: string], others: Out[], loss: [number, number], who: string, mainKg?: number) {
+  private weigh(batchId: string, station: StationId, main: [name: string, to: Destination], others: Out[], loss: [number, number], who: string, mainKg?: number) {
     const input = nextInput(this.batch(batchId), station).weight;
-    const rows = others.map(([name, kind, share, destination, container]) => ({ name, kind, weight: kg1(input * share * this.between(0.85, 1.15)), destination, container })).filter((r) => r.weight > 0);
+    const rows = others.map(([name, kind, share, destination]) => ({ name, kind, weight: kg1(input * share * this.between(0.85, 1.15)), destination })).filter((r) => r.weight > 0);
     const weight = mainKg ?? kg1(input - rows.reduce((sum, r) => sum + r.weight, 0) - input * this.between(...loss));
     const order = stationById[station].rows.map((r) => r.name);
-    const outputs = [{ name: main[0], kind: 'useful' as const, weight, destination: main[1], container: main[2] }, ...rows]
-      .sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name))
-      .map(({ container, ...o }) => ({ ...o, container: this.container(container, o.weight) }));
+    const outputs = [{ name: main[0], kind: 'useful' as const, weight, destination: main[1] }, ...rows]
+      .sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name));
     this.run({ type: 'saveRecord', batchId, station, input: { weight: input }, outputs, expectRecord: null }, who, 45);
   }
 
-  sort(id: string) {
-    this.weigh(id, 'sorting', ['Sorted beans', 'continue:roasting', 'Bean crate'], [['Sorted-out beans', 'waste', 0.017, 'waste']], [0.001, 0.003], this.beanTeam);
-  }
-
   roast(id: string, { forSale = false, roastedKg }: { forSale?: boolean; roastedKg?: number } = {}) {
-    this.weigh(id, 'roasting', ['Roasted beans', 'continue:winnowing', 'Bean crate'], [['Whole roasted beans', 'useful', forSale ? 0.015 : 0, 'sale'], ['Unusable beans', 'waste', 0.007, 'waste']], [0.06, 0.07], this.beanTeam, roastedKg);
+    this.weigh(id, 'roasting', ['Roasted beans', 'continue:winnowing'], [['Whole roasted beans', 'useful', forSale ? 0.015 : 0, 'sale'], ['Unusable beans', 'waste', 0.007, 'waste']], [0.06, 0.07], this.beanTeam, roastedKg);
   }
 
   winnow(id: string, { nibs = 'continue:pressing', loss = [0.004, 0.007] }: { nibs?: Destination; loss?: [number, number] } = {}) {
-    this.weigh(id, 'winnowing', ['Nibs for liquor', 'continue:grinding', 'Nib bucket'], [['Nibs for butter', 'useful', 0.21, nibs, 'Nib bucket'], ['Nibs for sale', 'useful', 0.03, 'sale'], ['Husks', 'waste', 0.172, 'waste', 'Husk bin']], loss, this.beanTeam);
+    this.weigh(id, 'winnowing', ['Nibs for liquor', 'continue:grinding'], [['Nibs for butter', 'useful', 0.21, nibs], ['Nibs for sale', 'useful', 0.03, 'sale'], ['Husks', 'waste', 0.172, 'waste']], loss, this.beanTeam);
   }
 
   press(id: string, cake: Destination = 'continue:powder-roasting') {
-    this.weigh(id, 'pressing', ['Cocoa cake (powder)', cake], [['Brown butter', 'useful', 0.45, 'continue:sieving', 'Butter tub'], ['Waste', 'waste', 0.005, 'waste']], [0.003, 0.006], this.butterTeam);
+    this.weigh(id, 'pressing', ['Cocoa cake (powder)', cake], [['Brown butter', 'useful', 0.45, 'continue:sieving'], ['Waste', 'waste', 0.005, 'waste']], [0.003, 0.006], this.butterTeam);
   }
 
   sieve(id: string, particles: Destination = 'continue:grinding') {
-    this.weigh(id, 'sieving', ['Sieved butter', 'continue:filtering', 'Butter tub'], [['Sieved particles', 'useful', 0.04, particles]], [0.005, 0.01], this.butterTeam);
+    this.weigh(id, 'sieving', ['Sieved butter', 'continue:filtering'], [['Sieved particles', 'useful', 0.04, particles]], [0.005, 0.01], this.butterTeam);
   }
 
   filter(id: string, butter: Destination) {
-    this.weigh(id, 'filtering', ['Cocoa butter', butter, 'Butter tub'], [['Silk butter', 'useful', 0.12, 'stock'], ['Butter for sale', 'useful', 0.18, 'sale'], ['Filter residue', 'waste', 0.015, 'waste']], [0.002, 0.004], this.butterTeam);
+    this.weigh(id, 'filtering', ['Cocoa butter', butter], [['Silk butter', 'useful', 0.12, 'stock'], ['Butter for sale', 'useful', 0.18, 'sale'], ['Filter residue', 'waste', 0.015, 'waste']], [0.002, 0.004], this.butterTeam);
   }
 
   roastPowder(id: string) {
-    this.weigh(id, 'powder-roasting', ['Roasted powder', 'continue:powder-crushing', 'Powder tray'], [['Waste', 'waste', 0.008, 'waste']], [0.005, 0.01], this.butterTeam);
+    this.weigh(id, 'powder-roasting', ['Roasted powder', 'continue:powder-crushing'], [['Waste', 'waste', 0.008, 'waste']], [0.005, 0.01], this.butterTeam);
   }
 
   crush(id: string) {
-    this.weigh(id, 'powder-crushing', ['Fine cocoa powder', 'sale', 'Powder tray'], [['Waste', 'waste', 0.004, 'waste']], [0.002, 0.004], this.butterTeam);
+    this.weigh(id, 'powder-crushing', ['Fine cocoa powder', 'sale'], [['Waste', 'waste', 0.004, 'waste']], [0.002, 0.004], this.butterTeam);
   }
 
   grind(id: string, liquor: 'mixing' | 'stock') {
-    this.weigh(id, 'grinding', ['Liquor', liquor === 'mixing' ? 'continue:mixing' : 'stock', 'Liquor pail'], [['Waste', 'waste', 0.003, 'waste']], [0.001, 0.003], 'U-KM');
+    this.weigh(id, 'grinding', ['Liquor', liquor === 'mixing' ? 'continue:mixing' : 'stock'], [['Waste', 'waste', 0.003, 'waste']], [0.001, 0.003], 'U-KM');
   }
 
   /** Receiving to winnowing in one morning */
   startBeans(from: Source, kg: number, options: { forSale?: boolean; nibs?: Destination; winnowingLoss?: [number, number] } = {}) {
     const id = this.receive(from, kg);
-    this.sort(id);
     this.roast(id, { forSale: options.forSale });
     this.winnow(id, { nibs: options.nibs, loss: options.winnowingLoss });
     return id;

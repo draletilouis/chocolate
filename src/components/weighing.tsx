@@ -6,43 +6,25 @@ import { UnitInput } from '@/components/ui';
 import { round2 } from '@/lib/balance';
 import { kg, num, pct } from '@/lib/format';
 import { stationById } from '@/lib/stations';
-import type { Balance, Container, ContainerUse, Destination, Station } from '@/lib/types';
+import type { Balance, Destination, Station } from '@/lib/types';
 
-/** What the operator typed: the scale reading and, optionally, the container it was weighed in */
-export interface WeightValue { reading: string; containerId: string }
+/** The scale reading as the operator typed it */
+export type WeightValue = string;
 
-export const emptyWeight: WeightValue = { reading: '', containerId: '' };
+export const emptyWeight: WeightValue = '';
 
-/** Net weight after taking off the container's empty weight */
-export function netWeight(value: WeightValue, containers: Container[]): { net: number; container?: ContainerUse } {
-  const reading = Number(value.reading) || 0;
-  const container = containers.find((c) => c.id === value.containerId);
-  if (!container || reading <= 0) return { net: round2(reading) };
-  return { net: round2(Math.max(0, reading - container.tare)), container: { name: container.name, tare: container.tare, gross: round2(reading) } };
+/** The typed reading in kg, 0 when empty */
+export function netWeight(value: WeightValue): number {
+  return round2(Number(value) || 0);
 }
 
-/** Turns a saved weight back into what the operator typed, so an edit starts from the scale reading */
-export function weightFrom(net: number | undefined, used: ContainerUse | undefined, containers: Container[]): WeightValue {
-  if (net === undefined) return emptyWeight;
-  if (used) return { reading: String(used.gross), containerId: containers.find((c) => c.name === used.name)?.id ?? '' };
-  return { reading: String(net), containerId: '' };
+/** Turns a saved weight back into what the operator typed, so an edit starts from it */
+export function weightFrom(weight: number | undefined): WeightValue {
+  return weight === undefined ? emptyWeight : String(weight);
 }
 
-/** Scale reading with an optional container. The net weight is shown as soon as a container is chosen. */
-export function WeightField({ value, onChange, containers, label, autoFocus }: { value: WeightValue; onChange: (value: WeightValue) => void; containers: Container[]; label: string; autoFocus?: boolean }) {
-  const { net, container } = netWeight(value, containers);
-  return (
-    <div className="weight-field">
-      <div className="weight-field-row">
-        <UnitInput unit="kg" value={value.reading} onChange={(e) => onChange({ ...value, reading: e.target.value })} aria-label={label} autoFocus={autoFocus} />
-        <select className="container-select" value={value.containerId} onChange={(e) => onChange({ ...value, containerId: e.target.value })} aria-label={`${label} container`}>
-          <option value="">No container</option>
-          {containers.map((c) => <option key={c.id} value={c.id}>{c.name} ({num(c.tare)} kg)</option>)}
-        </select>
-      </div>
-      {container && <span className="weight-net">Net <strong>{kg(net)}</strong> after the {container.name.toLowerCase()} ({kg(container.tare)})</span>}
-    </div>
-  );
+export function WeightField({ value, onChange, label, autoFocus }: { value: WeightValue; onChange: (value: WeightValue) => void; label: string; autoFocus?: boolean }) {
+  return <UnitInput unit="kg" value={value} onChange={(e) => onChange(e.target.value)} aria-label={label} autoFocus={autoFocus} />;
 }
 
 /** Where an output can go from this station, in plain words */
@@ -74,7 +56,7 @@ type Tone = 'neutral' | 'ok' | 'warn';
 function verdict(balance: Balance, limit: number, live: boolean): { tone: Tone; headline: string; detail: string } {
   if (balance.input <= 0) return { tone: 'neutral', headline: 'Enter the input weight', detail: '' };
   if (balance.measured <= 0) return { tone: 'neutral', headline: `${kg(balance.input)} to account for`, detail: 'Enter the weights.' };
-  if (balance.measured > balance.input) return { tone: 'warn', headline: `${kg(round2(balance.measured - balance.input))} more than went in`, detail: 'Check the scale and the container tare.' };
+  if (balance.measured > balance.input) return { tone: 'warn', headline: `${kg(round2(balance.measured - balance.input))} more than went in`, detail: 'Check the scale.' };
   if (Math.abs(balance.variancePct) > limit) {
     return live
       ? { tone: 'warn', headline: `${kg(balance.variance)} left to assign (${pct(balance.variancePct)})`, detail: `Weigh anything not entered yet, or check the scale. The limit is ${num(limit)}%.` }

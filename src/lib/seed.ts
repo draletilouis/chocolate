@@ -1,6 +1,6 @@
 import { stations } from './stations';
 import type {
-  Batch, Container, Customer, Dispatch, IdCounters, Lot, Mixer, ProductionPlan, OutputCategory, PackSize, Product, Recipe, Route, Supplier, Thresholds, User, BusinessDetails,
+  Batch, Customer, Dispatch, IdCounters, Lot, Mixer, ProductionPlan, OutputCategory, PackSize, Product, Recipe, Route, Supplier, Thresholds, User, BusinessDetails,
 } from './types';
 
 export interface State {
@@ -19,8 +19,6 @@ export interface State {
   thresholds: Thresholds;
   outputCategories: OutputCategory[];
   business: BusinessDetails;
-  /** Containers with their empty weight, subtracted from scale readings */
-  containers: Container[];
   /** Minutes without activity before a shared device returns to the sign-in screen (0 = never) */
   idleMinutes: number;
   /** Version of the line layout the stored rows and routes were made for */
@@ -37,15 +35,15 @@ export interface State {
 
 /**
  * 2: sorting, butter & powder and liquor as separate parts of the line. 3: chocolate made in mixing runs.
- * 4: the chocolate types of the regular recipes table. Data from an older version is brought up to
- * date by upgradeConfiguration().
+ * 4: the chocolate types of the regular recipes table. 5: no sorting (accepted beans go straight to
+ * roasting) and no containers. Data from an older version is brought up to date by upgradeConfiguration().
  */
-const WORKFLOW_VERSION = 4;
+const WORKFLOW_VERSION = 5;
 
 const at = (day: string, time: string) => `${day}T${time}:00`;
 
 export const routes: Route[] = [
-  { id: 'beans', name: 'Beans to chocolate', stations: ['receiving', 'sorting', 'roasting', 'winnowing', 'pressing', 'sieving', 'filtering', 'powder-roasting', 'powder-crushing', 'grinding', 'mixing', 'completion'], startMaterial: 'Cocoa beans delivered', note: 'Nibs split at winnowing: some for liquor, some for butter, some for sale. The liquor and cocoa butter go on to mixing, where the chocolate types are made one after another.' },
+  { id: 'beans', name: 'Beans to chocolate', stations: ['receiving', 'roasting', 'winnowing', 'pressing', 'sieving', 'filtering', 'powder-roasting', 'powder-crushing', 'grinding', 'mixing', 'completion'], startMaterial: 'Cocoa beans delivered', note: 'Nibs split at winnowing: some for liquor, some for butter, some for sale. The liquor and cocoa butter go on to mixing, where the chocolate types are made one after another.' },
   { id: 'pressing', name: 'Nibs to butter and powder', stations: ['pressing', 'sieving', 'filtering', 'powder-roasting', 'powder-crushing', 'mixing', 'completion'], startMaterial: 'Nibs for butter', note: 'For stored nibs. Brown butter is sieved and filtered; the cake becomes powder. Cocoa butter can go on to mixing.' },
   { id: 'chocolate', name: 'Chocolate from stored liquor and butter', stations: ['mixing', 'completion'], startMaterial: 'Stored liquor and cocoa butter', note: 'For liquor and cocoa butter already in store: the chocolate types are made at mixing from their lots.' },
 ];
@@ -112,27 +110,16 @@ export const customers: Customer[] = [
 /** Demo accounts, only created in demo mode. Every one signs in with the password "cocoa123" or the PIN "1234". */
 export const users: User[] = [
   { id: 'U-AM', name: 'Alex Morgan', role: 'Production manager', initials: 'AM', email: 'alex.morgan@cocoafactory.example', access: 'manager', stations: [] },
-  { id: 'U-AB', name: 'Ama Boateng', role: 'Bean processing operator', initials: 'AB', email: 'ama.boateng@cocoafactory.example', access: 'operator', stations: ['receiving', 'sorting', 'roasting', 'winnowing'] },
+  { id: 'U-AB', name: 'Ama Boateng', role: 'Bean processing operator', initials: 'AB', email: 'ama.boateng@cocoafactory.example', access: 'operator', stations: ['receiving', 'roasting', 'winnowing'] },
   { id: 'U-KM', name: 'Kwame Mensah', role: 'Butter, liquor & chocolate maker', initials: 'KM', email: 'kwame.mensah@cocoafactory.example', access: 'operator', stations: ['pressing', 'sieving', 'filtering', 'powder-roasting', 'powder-crushing', 'grinding', 'mixing'] },
   { id: 'U-LF', name: 'Lena Fischer', role: 'Packaging lead', initials: 'LF', email: 'lena.fischer@cocoafactory.example', access: 'operator', stations: ['packaging', 'completion'] },
   { id: 'U-SO', name: 'Sam Osei', role: 'Quality', initials: 'SO', email: 'sam.osei@cocoafactory.example', access: 'manager', stations: [] },
-  { id: 'U-GN', name: 'Grace Namutebi', role: 'Bean processing operator', initials: 'GN', email: 'grace.namutebi@cocoafactory.example', access: 'operator', stations: ['receiving', 'sorting', 'roasting', 'winnowing'] },
+  { id: 'U-GN', name: 'Grace Namutebi', role: 'Bean processing operator', initials: 'GN', email: 'grace.namutebi@cocoafactory.example', access: 'operator', stations: ['receiving', 'roasting', 'winnowing'] },
   { id: 'U-BO', name: 'Brian Okello', role: 'Butter & powder operator', initials: 'BO', email: 'brian.okello@cocoafactory.example', access: 'operator', stations: ['pressing', 'sieving', 'filtering', 'powder-roasting', 'powder-crushing'] },
   { id: 'U-JA', name: 'Joan Achieng', role: 'Pieces & packing', initials: 'JA', email: 'joan.achieng@cocoafactory.example', access: 'operator', stations: ['packaging', 'completion'] },
 ];
 
 export const demoCredentials = { password: 'cocoa123', pin: '1234' };
-
-/** Common containers on the line and their empty weight in kg */
-export const containers: Container[] = [
-  { id: 'C-SACK', name: 'Jute sack', tare: 0.5 },
-  { id: 'C-CRATE', name: 'Bean crate', tare: 2.4 },
-  { id: 'C-HUSK', name: 'Husk bin', tare: 2.3 },
-  { id: 'C-BUCKET', name: 'Nib bucket', tare: 1.2 },
-  { id: 'C-TUB', name: 'Butter tub', tare: 0.8 },
-  { id: 'C-TRAY', name: 'Powder tray', tare: 1.5 },
-  { id: 'C-PAIL', name: 'Liquor pail', tare: 1.6 },
-];
 
 export const packSizes: PackSize[] = [
   { id: 'PK-7', name: '7 g bar', grams: 7 },
@@ -144,7 +131,7 @@ export const packSizes: PackSize[] = [
 
 export const thresholds: Thresholds = {
   variancePct: {
-    receiving: 1, sorting: 1, roasting: 8, winnowing: 2, pressing: 2, sieving: 2, filtering: 2, 'powder-roasting': 3, 'powder-crushing': 2, grinding: 2,
+    receiving: 1, roasting: 8, winnowing: 2, pressing: 2, sieving: 2, filtering: 2, 'powder-roasting': 3, 'powder-crushing': 2, grinding: 2,
     mixing: 1.5, refining: 1.5, conching: 2, tempering: 1.5, moulding: 2, packaging: 3, completion: 0,
   },
   wastePct: 5,
@@ -169,7 +156,7 @@ const business: BusinessDetails = {
 export function seedState(): State {
   return structuredClone({
     batches: [], lots: [], recipes, products, routes, packSizes, suppliers, customers, dispatches: [], users,
-    thresholds, outputCategories, business, containers, idleMinutes: 10, workflowVersion: WORKFLOW_VERSION,
+    thresholds, outputCategories, business, idleMinutes: 10, workflowVersion: WORKFLOW_VERSION,
     idCounters: { batches: {}, lots: {} },
     mixer: { holds: null, lastRunId: null },
     mixerKeepsKg: 10,

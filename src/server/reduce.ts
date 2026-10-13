@@ -6,7 +6,7 @@ import { piecesKg } from '@/lib/pieces';
 import { batchMaterialAtMixing, changeover, ingredientsOf, mixerStamp, mixingTotals, runLotIds, sourcesOf, storedAtMixing, versionOf } from '@/lib/mixing';
 import { demoCredentials, retiredChocolateTypes, seedState, type State } from '@/lib/seed';
 import { stationById, stationName } from '@/lib/stations';
-import type { Batch, Dispatch, DispatchLine, Lot, LotCategory, LotUse, Mixer, MixingRun, OutputCategory, Recipe, RecipeIngredient, RecordedOutput, RunIngredient, StationId, StationRecord, User } from '@/lib/types';
+import type { Batch, Destination, Dispatch, DispatchLine, Lot, LotCategory, LotUse, Mixer, MixingRun, OutputCategory, Recipe, RecipeIngredient, RecordedOutput, RunIngredient, StationId, StationRecord, User } from '@/lib/types';
 
 /** A command that cannot be applied; the message is shown to the person who tried */
 export class CommandError extends Error {}
@@ -134,9 +134,9 @@ function saveRecord(s: State, cmd: SaveRecord, ctx: CommandContext): State {
   const draft: StationRecord = {
     id: existing?.id ?? `${cmd.station}-${ctx.now}`, station: cmd.station,
     inputMaterial: existing?.inputMaterial ?? cmd.options?.inputMaterial ?? (carried.weight > 0 ? carried.material : station.input),
-    inputWeight: round2(cmd.input.weight), inputContainer: cmd.input.container,
+    inputWeight: round2(cmd.input.weight),
     inputLotIds: existing?.inputLotIds ?? (cmd.options?.inputMaterial ? [] : b.records.length ? [] : b.startInput.lotIds),
-    outputs: outputs.map((o) => ({ name: o.name, kind: o.kind, weight: round2(o.weight), destination: o.destination, container: o.container })),
+    outputs: outputs.map((o) => ({ name: o.name, kind: o.kind, weight: round2(o.weight), destination: o.destination })),
     recordedAt: ctx.now, recordedBy: ctx.userId, rev: ctx.newId(), note: cmd.note || undefined, destinationsSaved: true,
   };
   return commitRecord(s, b.id, draft, !early, ctx.now);
@@ -617,13 +617,6 @@ function runCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
       return { state: { ...s, outputCategories: s.outputCategories.map((c) => (c.id === cmd.categoryId ? { ...c, station: cmd.station, name: cmd.name, kind: cmd.kind } : c)) } };
     case 'deleteOutputCategory':
       return { state: { ...s, outputCategories: s.outputCategories.filter((c) => c.id !== cmd.categoryId) } };
-    case 'addContainer':
-      return { state: { ...s, containers: [...s.containers, { ...cmd.container, id: `C-${ctx.newId()}` }] } };
-    case 'updateContainer':
-      return { state: { ...s, containers: s.containers.map((c) => (c.id === cmd.containerId ? { ...cmd.container, id: c.id } : c)) } };
-    case 'deleteContainer':
-      // Records keep their own copy of the container name and tare, so removing one never changes history.
-      return { state: { ...s, containers: s.containers.filter((c) => c.id !== cmd.containerId) } };
     case 'setIdleMinutes':
       return { state: { ...s, idleMinutes: cmd.minutes } };
     case 'importBrowserData':
@@ -641,10 +634,13 @@ function runCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
  * The chocolate types become those of the factory's recipes table. A type that was already made keeps
  * its versions and gets the table's recipe as a new one; a type never made is replaced by the table's,
  * and one the table does not have is removed.
+ *
+ * Before version 5 there was a sorting station: see withoutSorting().
  */
-export function upgradeConfiguration(s: State, now: string): State {
+export function upgradeConfiguration(stored: State, now: string): State {
   const seed = seedState();
-  if (s.workflowVersion >= seed.workflowVersion) return s;
+  if (stored.workflowVersion >= seed.workflowVersion) return stored;
+  const s = stored.workflowVersion >= 5 ? stored : withoutSorting(stored);
   const withStored = <T extends { id: string }>(current: T[], stored: T[]) => [...current, ...stored.filter((x) => !current.some((c) => c.id === x.id))];
   const line = s.workflowVersion >= 3 ? {} : {
     routes: withStored(seed.routes, s.routes),
@@ -673,6 +669,29 @@ export function upgradeConfiguration(s: State, now: string): State {
   return { ...s, ...line, recipes: [...types, ...own], workflowVersion: seed.workflowVersion };
 }
 
+/**
+ * Takes the sorting station out of the line: accepted beans go straight to roasting. Batches waiting at
+ * sorting move on to roasting with the accepted beans.
+ */
+function withoutSorting(s: State): State {
+  const sorting = 'sorting' as StationId;
+  const roasting: Destination = 'continue:roasting';
+  const retarget = (to: Destination): Destination => (to === `continue:${sorting}` ? roasting : to);
+  const variancePct = { ...s.thresholds.variancePct };
+  delete variancePct[sorting];
+  return {
+    ...s,
+    routes: s.routes.map((r) => (r.stations.includes(sorting) ? { ...r, stations: r.stations.filter((st) => st !== sorting) } : r)),
+    outputCategories: s.outputCategories.filter((c) => c.station !== sorting).map((c) => (c.to === `continue:${sorting}` ? { ...c, to: roasting } : c)),
+    users: s.users.map((u) => (u.stations.includes(sorting) ? { ...u, stations: u.stations.filter((st) => st !== sorting) } : u)),
+    thresholds: { ...s.thresholds, variancePct },
+    batches: s.batches.map((b) => {
+      if (b.nextStation !== sorting || b.records.some((r) => r.station === sorting)) return b;
+      return { ...b, nextStation: 'roasting', records: b.records.map((r) => ({ ...r, outputs: r.outputs.map((o) => ({ ...o, destination: retarget(o.destination) })) })) };
+    }),
+  };
+}
+
 type LegacyUser = Partial<User> & { password?: string; pin?: string };
 
 /**
@@ -693,7 +712,6 @@ export function migrateLegacy(stored: Record<string, unknown>, now: string): { s
     products: [...seed.products, ...(data.products ?? []).filter((p) => !seed.products.some((x) => x.id === p.id))],
     routes: data.routes ?? seed.routes, packSizes: data.packSizes ?? seed.packSizes, suppliers: data.suppliers ?? [], customers: [], dispatches: [], users,
     outputCategories: storedCategories.length ? storedCategories : seed.outputCategories,
-    containers: data.containers ?? seed.containers,
     thresholds: { ...seed.thresholds, ...(data.thresholds ?? {}), variancePct: { ...seed.thresholds.variancePct, ...(data.thresholds?.variancePct ?? {}) } },
     business: { ...seed.business, ...(data.business ?? {}) }, idleMinutes: data.idleMinutes ?? seed.idleMinutes, workflowVersion: data.workflowVersion ?? 1,
     // Browsers kept no counters: numbers continue from the highest IDs, and applyCommand() keeps the server's.

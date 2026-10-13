@@ -5,12 +5,12 @@ import type { Command } from './commands';
 import type { State } from './seed';
 import { applyItems, emptyState, type SyncPayload } from './sync';
 import type {
-  Access, BusinessDetails, Container, ContainerUse, Customer, Destination, Ingredient, LotCategory, OutputKind, PackSize, PlanLine, Product,
+  Access, BusinessDetails, Customer, Destination, Ingredient, LotCategory, OutputKind, PackSize, PlanLine, Product,
   RecipeIngredient, Route, StationId, Supplier, User,
 } from './types';
 
 /** One weighed output and where it goes, saved together in a single step */
-export interface OutputEntry { name: string; kind: OutputKind; weight: number; destination: Destination; container?: ContainerUse }
+export interface OutputEntry { name: string; kind: OutputKind; weight: number; destination: Destination }
 
 /** Optional controls used when a process is recorded from the batch view. */
 export interface RecordOptions {
@@ -50,9 +50,9 @@ export type SignInResult = { ok: true; notice?: string } | { ok: false; error: s
 interface Actions {
   createBatch: (input: NewBatchInput) => Promise<string | undefined>;
   /** Bean deliveries: the batch and its receiving record in one save */
-  receiveDelivery: (batch: NewBatchInput, input: { weight: number; container?: ContainerUse }, outputs: OutputEntry[], note?: string) => Promise<string | undefined>;
+  receiveDelivery: (batch: NewBatchInput, input: { weight: number }, outputs: OutputEntry[], note?: string) => Promise<string | undefined>;
   /** Saves a station's input, weights and destinations at once. expectRecord is recordStamp() of the record the form started from. */
-  saveRecord: (batchId: string, station: StationId, input: { weight: number; container?: ContainerUse }, outputs: OutputEntry[], note: string | undefined, options: RecordOptions | undefined, expectRecord: string | null) => Promise<boolean>;
+  saveRecord: (batchId: string, station: StationId, input: { weight: number }, outputs: OutputEntry[], note: string | undefined, options: RecordOptions | undefined, expectRecord: string | null) => Promise<boolean>;
   /** One chocolate type made at mixing; answers the chocolate lot's ID. expectMixer is mixerStamp() of the mixer the form was opened on. */
   saveMixingRun: (run: { batchId: string; recipeId: string; toRun: number; ingredients: { name: string; actual: number; lotId?: string }[]; made: number; kept: number; expectMixer: string }) => Promise<string | undefined>;
   undoMixingRun: (batchId: string, runId: string) => Promise<boolean>;
@@ -105,9 +105,6 @@ interface Actions {
   addOutputCategory: (station: StationId, name: string, kind: OutputKind) => Promise<boolean>;
   updateOutputCategory: (categoryId: string, patch: { station: StationId; name: string; kind: OutputKind }) => Promise<boolean>;
   deleteOutputCategory: (categoryId: string) => Promise<boolean>;
-  addContainer: (container: Omit<Container, 'id'>) => Promise<boolean>;
-  updateContainer: (containerId: string, patch: Omit<Container, 'id'>) => Promise<boolean>;
-  deleteContainer: (containerId: string) => Promise<boolean>;
   setIdleMinutes: (minutes: number) => Promise<boolean>;
   /** Uploads records an older version kept in this browser; answers how many people were added and how many need a new password or PIN */
   importBrowserData: (data: Record<string, unknown>) => Promise<{ people: number; needSecrets: number } | undefined>;
@@ -342,9 +339,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addOutputCategory: (station, name, kind) => done({ type: 'addOutputCategory', station, name, kind }),
       updateOutputCategory: (categoryId, patch) => done({ type: 'updateOutputCategory', categoryId, ...patch }),
       deleteOutputCategory: (categoryId) => done({ type: 'deleteOutputCategory', categoryId }),
-      addContainer: (container) => done({ type: 'addContainer', container }),
-      updateContainer: (containerId, container) => done({ type: 'updateContainer', containerId, container }),
-      deleteContainer: (containerId) => done({ type: 'deleteContainer', containerId }),
       setIdleMinutes: (minutes) => done({ type: 'setIdleMinutes', minutes }),
       importBrowserData: (data) => value<{ people: number; needSecrets: number }>({ type: 'importBrowserData', data }),
       async setCurrentUser(userId) {

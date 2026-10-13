@@ -44,7 +44,7 @@ The sections are:
 - **Batch tracing** — enter a batch or lot number to see everything that went into it and everything it went into. On a phone, open it from **Store** (**Trace a batch**).
 - **Chocolate types** — each type's recipe, its versions and ingredient comparisons.
 - **Reports** — pieces made, goods dispatched, losses, missing weight, batch history, corrections and holds.
-- **Setup** — products, piece sizes, containers, output rows, routes, suppliers, customers, users and thresholds.
+- **Setup** — products, piece sizes, the mixer, output rows, routes, suppliers, customers, users and thresholds.
 
 On a phone, use the bottom bar. On a desktop, use the sidebar.
 
@@ -57,10 +57,10 @@ On a phone, use the bottom bar. On a desktop, use the sidebar.
 1. On **My work**, select **Receive a delivery** (or **New batch** on the production line).
 2. Choose the **Supplier**. If the beans were already received into the store, choose their lot under **Beans from** instead: the weight you enter is taken off that lot. The **Batch name** fills itself in from the supplier and the date, for example `Kuapa 28 Sep`; change it if you like. The name and supplier are printed on labels.
 3. Weigh the delivery and enter the **Delivered weight**.
-4. Enter the **Accepted beans** and any **Rejected beans**. The bar at the bottom checks the balance while you type.
+4. Enter the **Accepted beans** and any **Rejected beans**. The line above **Save delivery** checks the balance while you type.
 5. Select **Save delivery**.
 
-The batch and its receiving record are saved together. The next screen shows the **Batch card**, which carries the batch name and the supplier. Select **Print batch card** and keep it with the beans, then select **Record sorting** when they are sorted.
+The batch and its receiving record are saved together. The next screen shows the **Batch card**, which carries the batch name and the supplier. Select **Print batch card** and keep it with the beans, then select **Record roasting** when they are roasted.
 
 ### Other batches
 
@@ -81,10 +81,9 @@ Open the batch from **My work**, a station queue, the batch page or search. Ever
 
 1. **Input.** The weight sent from the previous station is already filled in. If you reweighed it, select **Reweighed? Change** and enter the new reading.
 2. **Weights.** Enter the kilograms beside each output. Leave a row empty if there was none. Select **Add another output** for anything not listed.
-3. **Containers.** If you weigh in a container (husk bin, nib bucket, butter tub…), pick it next to the weight and type the scale reading. Its empty weight is taken off and the net weight is shown. The container you used last time is picked for you.
-4. **Where it goes.** Each output shows where it goes as a coloured tag (→ next station, Keep in store, For sale, Rework, Waste bin). The usual choice is already set; tap the tag to change it.
-5. **Check.** The bar at the bottom shows how much is still unassigned or missing, and turns orange when it is above the limit. Check the scale and the container before saving.
-6. **Save.** Select **Save** (for example **Save winnowing**).
+3. **Where it goes.** Each output shows where it goes as a coloured tag (→ next station, Keep in store, For sale, Rework, Waste bin). The usual choice is already set; tap the tag to change it.
+4. **Check.** The line above the save button shows how much is still unassigned or missing, and turns orange when it is above the limit. Check the scale before saving.
+5. **Save.** Select **Save** (for example **Save winnowing**).
 
 Pieces are counted from the chocolate lots instead: see "Make pieces".
 
@@ -99,7 +98,7 @@ Only output sent on to a station becomes that station's input. One batch can con
 After saving, the result is one line:
 
 - **Balance OK · 0.50 kg missing (0.55%)** — within the limit.
-- **6.20 kg missing** or **more than went in** (orange) — above the limit or impossible; check the scale and the container.
+- **6.20 kg missing** or **more than went in** (orange) — above the limit or impossible; check the scale.
 - **Waste is … of the input** (amber) — waste is above the waste limit set in Setup.
 
 Select **Show details** for the full figures:
@@ -120,8 +119,8 @@ Your **My work** page lists the batches waiting at your own stations. To see any
 
 The five production parts are:
 
-1. **Bean processing:** Receiving, Sorting, Roasting, Winnowing.
-   - Sort the beans by hand, then reweigh them at **Sorting**.
+1. **Bean processing:** Receiving, Roasting, Winnowing.
+   - Accepted beans go straight from **Receiving** to **Roasting**.
    - Whole roasted beans taken off after roasting are weighed at **Roasting** and stored for sale.
    - At **Winnowing**, weigh the crushed nibs in portions: nibs for liquor, nibs for butter, nibs for sale. Husks are waste.
 2. **Butter & powder:** Pressing, Butter sieving, Filter pan, Powder roasting, Powder crushing.
@@ -137,14 +136,14 @@ The five production parts are:
 
 ### Make chocolate at mixing
 
-Liquor from liquor grinding and cocoa butter from the filter pan go on to **Mixing**. There the chocolate types are made one after another, in **runs**. The mixer keeps some chocolate between types (10 kg to start; set in **Setup → Containers**), and each run is made on top of it. The screen works out what to add, as in the changeover sheet.
+Liquor from liquor grinding and cocoa butter from the filter pan go on to **Mixing**. There the chocolate types are made one after another, in **runs**. The mixer keeps some chocolate between types (10 kg to start; set in **Setup → Mixer**), and each run is made on top of it. The screen works out what to add, as in the changeover sheet.
 
 1. Open the batch at **Mixing**. The top shows what **the mixer holds**, for example *10.00 kg of 85% Dark*, and what this batch brought (for example *49.80 kg liquor left*).
 2. Choose the **Chocolate type** and enter the **Fresh ingredients to run** in kg.
 3. For each ingredient the screen shows what the mixer already holds and what to **add**. For 30 kg of 70% Dark on 10 kg of 85% Dark: add 16.50 kg liquor, 3.00 kg cocoa butter and 10.50 kg sugar.
 4. Weigh each ingredient in and enter the weight. Choose where it comes from: **This batch** (its own liquor or cocoa butter) or a lot in store.
    - **When one lot is not enough:** if you enter more than the lot holds, the screen says so and offers **Take the other … kg from** the next lot. Select it and the ingredient is split: each lot gets its own line and weight. You can also select **+ From another lot too** and enter the weights yourself. Each lot is drawn down by its own weight, and the trace shows both.
-5. Enter the **Chocolate taken out** and what is **Kept in the mixer for the next run** (0 if you run the mixer empty). The bar at the bottom checks the balance.
+5. Enter the **Chocolate taken out** and what is **Kept in the mixer for the next run** (0 if you run the mixer empty). The line above the save button checks the balance.
 6. Select **Save** (for example **Save 70% Dark**). The chocolate becomes a lot, such as `D70-0002`.
 
 Repeat for the next type. Some changeovers are not possible on top of what the mixer holds:
@@ -161,7 +160,7 @@ The chocolate from each run waits at **Pieces** until it is made into pieces, th
 1. Open **Pieces** (Finishing, or **My work** if it is your station). It lists the chocolate lots with chocolate left, for example *D70-0002 · 70% Dark · 30.00 kg left*.
 2. Select **Record pieces** on the lot you moulded.
 3. Enter the number of good pieces of each size, for example 500 × 45 g bar and 90 × 80 g bar. Leave the other sizes empty.
-4. The bar at the bottom shows how much chocolate that is and how much stays in the lot.
+4. The line above the save button shows how much chocolate that is and how much stays in the lot.
 5. Select **Save pieces**. Each size becomes a lot of pieces, such as `FIN-0006 · 70% Dark · 45 g bar · 500`, with a label that traces back to the batch and the supplier.
 
 Each size also shows how many pieces the production plan still needs of that type, for example *Plan: 300 still to make*.
@@ -363,7 +362,7 @@ Alerts can mean:
 - a batch is on hold; or
 - a raw material in store (all its lots together) is below the low-stock threshold.
 
-Select an alert to open the related batch or material lot. Investigate the scale reading, tare, destination, or inventory quantity, then add a correction or note when appropriate.
+Select an alert to open the related batch or material lot. Investigate the scale reading, destination, or inventory quantity, then add a correction or note when appropriate.
 
 ## 14. Setup tasks
 
@@ -372,7 +371,7 @@ Users with access to Setup can configure:
 - **Business details** — the business name and contact details shown on exported Excel and print/PDF reports.
 - **Products** — products, batch prefixes, routes, and recipes.
 - **Piece sizes** — the sizes chocolate is made into (7 g, 45 g and 80 g bars, 200 g sachet, 1 kg pack to start). Add a size whenever a new one is made; a size already made cannot be deleted.
-- **Containers** — bins, buckets and tubs with their empty weight, taken off the scale reading at every station.
+- **Mixer** — how much chocolate the mixer usually keeps between runs, and what it holds now.
 - **Output categories** — the standard rows workers see at each station.
 - **Routes** — the default station order for each batch type.
 - **Suppliers** — delivery sources and contact details.
@@ -394,7 +393,6 @@ Other editable areas follow the same traceability rule. Mixing runs are changed 
 - A useful output stored as a lot is not automatically carried into the next station.
 - By-products are tracked separately and are not counted as recorded waste.
 - Missing weight is reported separately from waste.
-- Pick the container when you weigh in one, so its empty weight is taken off.
 - Sign out when you hand the device over, so the next records carry the right name.
 - Saving needs a connection to the server. If the connection drops, a banner says so and the weights you typed stay on the screen: save again once it is back.
 - If someone else saves the same station for the same batch while you are typing, the form tells you within a few seconds and **Save** turns off, so nobody's weights are overwritten. Select **See the saved weights**, then **Edit weights** if they need changing.

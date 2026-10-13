@@ -70,7 +70,7 @@ node interaction-audit.cjs   # clicks through every flow and saves screenshots (
 - `src/app/api/**` – session, setup, sync, commands, devices and demo-reset endpoints
 - `src/lib/store.tsx` – the browser side: loads the data from the server, sends changes, checks for other devices' changes every 5 seconds
 - `src/lib/derive.ts` – queues, next input, stations with material waiting after a split, suggested batch names, search, alerts, traceability helpers
-- `src/components/weighing.tsx` – weight field with container tare, destination tags, live balance bar and saved verdict
+- `src/components/weighing.tsx` – weight field, destination tags, live balance bar and saved verdict
 - `src/components/Shell.tsx` – sidebar (desktop) and bottom navigation (mobile)
 - `src/components/BatchLabel.tsx` – printable batch cards and labels with the batch name and supplier
 - `src/app/work` – My work (each person's waiting batches); `src/app/search` – search

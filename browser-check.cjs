@@ -4,7 +4,7 @@ const { chromium } = require('@playwright/test');
 
 const BASE = process.env.BASE_URL || 'http://127.0.0.1:3100';
 const SCREENSHOT_DIR = 'C:/Users/hp/Documents/Codex/2026-09-14/we/work/chocolate-checks';
-const STATIONS = ['receiving', 'sorting', 'roasting', 'winnowing', 'pressing', 'sieving', 'filtering', 'powder-roasting', 'powder-crushing', 'grinding', 'mixing', 'refining', 'conching', 'tempering', 'moulding', 'packaging', 'completion'];
+const STATIONS = ['receiving', 'roasting', 'winnowing', 'pressing', 'sieving', 'filtering', 'powder-roasting', 'powder-crushing', 'grinding', 'mixing', 'refining', 'conching', 'tempering', 'moulding', 'packaging', 'completion'];
 const STATION_NAMES = { sieving: 'Butter sieving', filtering: 'Filter pan', 'powder-roasting': 'Powder roasting', 'powder-crushing': 'Powder crushing', grinding: 'Liquor grinding', packaging: 'Pieces' };
 const stationLabel = (id) => STATION_NAMES[id] ?? id.charAt(0).toUpperCase() + id.slice(1);
 const checked = [];
@@ -18,11 +18,6 @@ async function expectText(page, text) {
     console.log((await page.locator('main').innerText()).slice(0, 3000));
     throw new Error(`Expected to find "${text}" on ${page.url()}`);
   }
-}
-
-// Station forms pick the container last used for each output; the weights this check types are net, so it weighs without one.
-async function noContainers(page) {
-  for (const select of await page.locator('main select[aria-label$=" container"]').all()) await select.selectOption('');
 }
 
 (async () => {
@@ -114,7 +109,7 @@ async function noContainers(page) {
   ok('active batch rows');
 
   // Each part of the line has its own sidebar entry and page; the production page itself stays short.
-  const PARTS = { 'bean-processing': ['receiving', 'sorting', 'roasting', 'winnowing'], 'butter-powder': ['pressing', 'sieving', 'filtering', 'powder-roasting', 'powder-crushing'], liquor: ['grinding'], 'chocolate-making': ['mixing'], finishing: ['packaging', 'completion'] };
+  const PARTS = { 'bean-processing': ['receiving', 'roasting', 'winnowing'], 'butter-powder': ['pressing', 'sieving', 'filtering', 'powder-roasting', 'powder-crushing'], liquor: ['grinding'], 'chocolate-making': ['mixing'], finishing: ['packaging', 'completion'] };
   const PART_LABELS = { 'bean-processing': 'Bean processing', 'butter-powder': 'Butter & powder', liquor: 'Liquor', 'chocolate-making': 'Chocolate making', finishing: 'Finishing' };
   const sidebarParts = page.getByRole('group', { name: 'Parts of the production line' });
   for (const [slug, ids] of Object.entries(PARTS)) {
@@ -138,7 +133,7 @@ async function noContainers(page) {
   await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-part-butter-powder.png`, fullPage: true });
   await page.goto(`${BASE}/production`);
   if (await page.getByRole('link', { name: /Open station/ }).count()) throw new Error('Production page should not list stations (long scroll)');
-  ok('five parts as sidebar entries with their own pages; all 13 stations of the line open their queues');
+  ok('five parts as sidebar entries with their own pages; all 12 stations of the line open their queues');
 
   // Winnowing on one screen: input already filled in, each output shows where it goes, one Save.
   await page.goto(`${BASE}/production/stations/winnowing`);
@@ -149,7 +144,6 @@ async function noContainers(page) {
   for (const [name, value] of [['Nibs for liquor', 'continue:grinding'], ['Nibs for butter', 'continue:pressing'], ['Nibs for sale', 'sale'], ['Husks', 'waste']]) {
     if ((await page.getByLabel(`${name} destination`).inputValue()) !== value) throw new Error(`${name} should default to ${value}`);
   }
-  await noContainers(page);
   for (const [name, value] of [['Nibs for liquor', '50'], ['Nibs for butter', '20'], ['Nibs for sale', '4'], ['Husks', '15.9']]) await page.getByRole('spinbutton', { name, exact: true }).fill(value);
   await expectText(page, 'Entered 89.90 of 90.40 kg');
   await expectText(page, 'Balance OK · 0.50 kg missing (0.55%)');
@@ -179,7 +173,6 @@ async function noContainers(page) {
   // Pressing with a custom output row; butter kept in store, cake for sale, so the batch ends after grinding.
   await page.goto(`${BASE}/production/batches/${WIN}/record/pressing`);
   await expectText(page, '20.00 kg');
-  await noContainers(page);
   await page.getByRole('spinbutton', { name: 'Brown butter', exact: true }).fill('9');
   await page.getByRole('spinbutton', { name: 'Cocoa cake (powder)', exact: true }).fill('10.8');
   await page.getByRole('button', { name: 'Add another output' }).click();
@@ -197,7 +190,6 @@ async function noContainers(page) {
 
   // Liquor grinding: weighed after fine grinding, labelled with the batch name and supplier, and sent on to mixing.
   if ((await page.getByLabel('Liquor destination').inputValue()) !== 'continue:mixing') throw new Error('Liquor should go on to mixing by default');
-  await noContainers(page);
   await page.getByRole('spinbutton', { name: 'Liquor', exact: true }).fill('49.8');
   await page.getByRole('button', { name: 'Save liquor grinding' }).click();
   await page.getByText('Liquor grinding saved.').waitFor();
@@ -228,13 +220,13 @@ async function noContainers(page) {
   // One step list with the weights behind each step, and corrections next to the weight.
   await page.goto(`${BASE}/production/batches/${WIN}`);
   await page.getByRole('heading', { name: 'Steps' }).waitFor();
-  for (const t of ['Receiving', 'Sorting', 'Roasting', 'Winnowing', 'Pressing', 'Liquor grinding', 'Mixing', 'missing 0.50 kg (0.55%)', 'Completion']) await expectText(page, t);
+  for (const t of ['Receiving', 'Roasting', 'Winnowing', 'Pressing', 'Liquor grinding', 'Mixing', 'missing 0.50 kg (0.55%)', 'Completion']) await expectText(page, t);
   await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-batch-timeline.png`, fullPage: true });
-  await page.getByRole('button', { name: 'Details', exact: true }).nth(3).click();
+  await page.getByRole('button', { name: 'Details', exact: true }).nth(2).click();
   await expectText(page, 'For sale');
   await page.getByRole('button', { name: 'Correct Husks' }).click();
   await page.getByLabel('Corrected weight').fill('15.8');
-  await page.getByLabel('Correction reason').fill('Bin tare was wrong.');
+  await page.getByLabel('Correction reason').fill('Scale was not zeroed.');
   await page.getByRole('button', { name: 'Save correction' }).click();
   await expectText(page, 'Corrected Husks: 15.90 → 15.80 kg');
   await page.getByRole('button', { name: 'Put on hold' }).click();
@@ -339,7 +331,7 @@ async function noContainers(page) {
   const NEW_CB = page.url().match(/batches\/(CB-\d+)\//)[1];
   await expectText(page, 'Receiving saved.');
   await expectText(page, 'Batch card');
-  await page.getByRole('link', { name: /Record sorting/ }).waitFor();
+  await page.getByRole('link', { name: /Record roasting/ }).waitFor();
   ok('receive a delivery: batch and receiving saved in one form, batch card printed from there');
 
   // Lot records: traceability, labels, receive. The old Materials list now opens the Store.
@@ -408,7 +400,7 @@ async function noContainers(page) {
   await page.goto(`${BASE}/reports`);
   await page.waitForURL('**/reports/pieces');
   for (const t of ['By type and size', '70% Dark', '45 g bar', String(piecesOf('70% Dark', '45 g bar') + 500), '80 g bar', String(piecesOf('70% Dark', '80 g bar') + 90), '85% Dark']) await expectText(page, t);
-  for (const [section, text] of [['losses', 'Every batch as a share of its starting weight'], ['losses', 'Follow one batch down the line'], ['losses', 'Loss at each process, all batches'], ['variance', 'Unaccounted variance'], ['batches', 'All batches'], ['corrections', 'Bin tare was wrong.'], ['holds', 'Waiting for quality sign-off.']]) {
+  for (const [section, text] of [['losses', 'Every batch as a share of its starting weight'], ['losses', 'Follow one batch down the line'], ['losses', 'Loss at each process, all batches'], ['variance', 'Unaccounted variance'], ['batches', 'All batches'], ['corrections', 'Scale was not zeroed.'], ['holds', 'Waiting for quality sign-off.']]) {
     await page.goto(`${BASE}/reports/${section}`);
     await expectText(page, text);
   }
@@ -446,7 +438,7 @@ async function noContainers(page) {
   ok(`production plan: pieces left per type and size from the pieces made (${before.left}), a duplicate line refused, plan changed (${after.left}), shown on Overview`);
 
   // Setup.
-  for (const [section, text] of [['products', 'Batch prefix'], ['pack-sizes', '45 g bar'], ['outputs', 'Nibs for liquor'], ['containers', 'Husk bin'], ['routes', 'Beans to chocolate'], ['suppliers', 'Kuapa Kokoo'], ['customers', 'Lakeview Hotel'], ['users', 'Current user'], ['alerts', 'Variance limit per station']]) {
+  for (const [section, text] of [['products', 'Batch prefix'], ['pack-sizes', '45 g bar'], ['outputs', 'Nibs for liquor'], ['mixer', 'Chocolate usually kept in the mixer'], ['routes', 'Beans to chocolate'], ['suppliers', 'Kuapa Kokoo'], ['customers', 'Lakeview Hotel'], ['users', 'Current user'], ['alerts', 'Variance limit per station']]) {
     await page.goto(`${BASE}/setup/${section}`);
     await expectText(page, text);
   }
@@ -470,8 +462,8 @@ async function noContainers(page) {
   let overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   if (overflow) throw new Error('Horizontal overflow on mobile production page');
   await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-mobile-production.png`, fullPage: true });
-  await page.goto(`${BASE}/production/batches/${NEW_CB}/record/sorting`);
-  await page.getByRole('button', { name: 'Save sorting' }).waitFor();
+  await page.goto(`${BASE}/production/batches/${NEW_CB}/record/roasting`);
+  await page.getByRole('button', { name: 'Save roasting' }).waitFor();
   overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   if (overflow) throw new Error('Horizontal overflow on mobile record page');
   await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-mobile-record.png`, fullPage: true });
@@ -495,7 +487,7 @@ async function noContainers(page) {
   await page.getByRole('button', { name: 'Sign in as Ama Boateng' }).click();
   for (const digit of '1234') await page.getByRole('button', { name: digit, exact: true }).click();
   await page.waitForURL('**/work');
-  await page.getByRole('link', { name: /Record Sorting for/ }).first().waitFor();
+  await page.getByRole('link', { name: /Record Roasting for/ }).first().waitFor();
   if ((await page.getByRole('navigation', { name: 'Mobile navigation' }).getByRole('link').count()) !== 2) throw new Error('Operators should see only My work and Production line');
   await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-my-work.png`, fullPage: true });
   ok('operator PIN sign-in lands on My work with a two-item menu');
