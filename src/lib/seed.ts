@@ -164,6 +164,14 @@ export function seedState(): State {
   });
 }
 
+/**
+ * The factory as it starts for now: the line setup, suppliers, customers and contact details, with no batches,
+ * stock or dispatches yet, and Draleti Louis as the only person.
+ */
+export function startState(): State {
+  return { ...seedState(), users: [{ id: 'U-DL', name: 'Draleti Louis', role: 'Production manager', initials: 'DL', email: 'dralouis01@gmail.com', access: 'manager', stations: [] }] };
+}
+
 /** A real factory's first start: the line configuration only. People, suppliers, contact details and records are added by the factory. */
 export function configState(): State {
   return { ...seedState(), suppliers: [], customers: [], users: [], business: { name: business.name, address: '', phone: '', email: '' } };
