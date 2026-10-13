@@ -62,11 +62,6 @@ let WIN;
 let CHM;
 let D70;
 
-// Station forms pick the container last used for each output; the weights this audit types are net, so it weighs without one.
-async function noContainers(page) {
-  for (const select of await page.locator('main select[aria-label$=" container"]').all()) await select.selectOption('');
-}
-
 async function signIn(page) {
   // Start from the sample factory: the data lives on the server now, so reset the demo there (this signs everyone out).
   await page.goto(`${BASE}/production`);
@@ -143,7 +138,6 @@ async function beanAndPressingFlow(page) {
   await action(page, 'Change the input weight', page.getByRole('button', { name: 'Reweighed? Change' }), async () => {
     await page.getByRole('spinbutton', { name: 'Input weight', exact: true }).waitFor();
   });
-  await noContainers(page);
   for (const [name, value] of [['Nibs for liquor', '50'], ['Nibs for butter', '20'], ['Nibs for sale', '4'], ['Husks', '15.9']]) {
     await page.getByRole('spinbutton', { name, exact: true }).fill(value);
   }
@@ -161,7 +155,6 @@ async function beanAndPressingFlow(page) {
     await waitForUrl(page, '**/record/pressing');
     await page.getByRole('spinbutton', { name: 'Brown butter', exact: true }).waitFor();
   });
-  await noContainers(page);
   await page.getByRole('spinbutton', { name: 'Brown butter', exact: true }).fill('9');
   await page.getByRole('spinbutton', { name: 'Cocoa cake (powder)', exact: true }).fill('10.8');
   await action(page, 'Add a custom pressing output', page.getByRole('button', { name: 'Add another output' }), async () => {
@@ -186,7 +179,6 @@ async function beanAndPressingFlow(page) {
     await waitForUrl(page, '**/record/grinding');
     await page.getByRole('spinbutton', { name: 'Liquor', exact: true }).waitFor();
   });
-  await noContainers(page);
   await page.getByRole('spinbutton', { name: 'Liquor', exact: true }).fill('49.8');
   await action(page, 'Save liquor grinding', page.getByRole('button', { name: 'Save liquor grinding' }), async () => {
     await waitForText(page, 'Sent on: 49.80 kg liquor to mixing.');
@@ -213,14 +205,14 @@ async function beanAndPressingFlow(page) {
 
 async function batchControls(page) {
   await page.goto(`${BASE}/production/batches/${WIN}`);
-  await action(page, 'Open the winnowing step', page.getByRole('button', { name: 'Details', exact: true }).nth(3), async () => {
+  await action(page, 'Open the winnowing step', page.getByRole('button', { name: 'Details', exact: true }).nth(2), async () => {
     await page.getByRole('button', { name: 'Correct Husks' }).waitFor();
   });
   await action(page, 'Open correction form', page.getByRole('button', { name: 'Correct Husks' }), async () => {
     await page.getByLabel('Corrected weight').waitFor();
   });
   await page.getByLabel('Corrected weight').fill('15.8');
-  await page.getByLabel('Correction reason').fill('Bin tare was wrong.');
+  await page.getByLabel('Correction reason').fill('Scale was not zeroed.');
   await action(page, 'Save correction', page.getByRole('button', { name: 'Save correction' }), async () => {
     await waitForText(page, 'Corrected Husks: 15.90 → 15.80 kg');
   });

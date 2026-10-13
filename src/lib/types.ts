@@ -1,7 +1,7 @@
 export type OutputKind = 'useful' | 'byproduct' | 'waste';
 
 export type StationId =
-  | 'receiving' | 'sorting' | 'roasting' | 'winnowing'
+  | 'receiving' | 'roasting' | 'winnowing'
   | 'pressing' | 'sieving' | 'filtering' | 'powder-roasting' | 'powder-crushing'
   | 'grinding'
   | 'mixing' | 'refining' | 'conching' | 'tempering'
@@ -42,18 +42,11 @@ export interface Station {
  */
 export type Destination = `continue:${StationId}` | 'stock' | 'sale' | 'rework' | 'waste' | 'mixer';
 
-/** A container weighed together with the material. Its empty weight (tare) is subtracted from the scale reading. */
-export interface Container { id: string; name: string; tare: number }
-
-/** How a net weight was worked out: the scale reading (gross) minus the container's tare */
-export interface ContainerUse { name: string; tare: number; gross: number }
-
 export interface RecordedOutput {
   name: string;
   kind: OutputKind;
   /** Net weight in kg */
   weight: number;
-  container?: ContainerUse;
   destination: Destination;
   /** Inventory lot created when the output was sent to stock, sale or rework */
   lotId?: string;
@@ -90,8 +83,6 @@ export interface StationRecord {
   station: StationId;
   inputMaterial: string;
   inputWeight: number;
-  /** Set when the input was reweighed in a container */
-  inputContainer?: ContainerUse;
   inputLotIds: string[];
   outputs: RecordedOutput[];
   packaging?: PackagingResult;

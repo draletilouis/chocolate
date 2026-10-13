@@ -4,20 +4,13 @@ export const stations: Station[] = [
   {
     id: 'receiving', name: 'Receiving', group: 'Bean processing',
     input: 'Cocoa beans delivered', output: 'Accepted beans · rejected beans',
-    rows: [{ name: 'Accepted beans', kind: 'useful', to: 'continue:sorting' }, { name: 'Rejected beans', kind: 'waste', to: 'waste' }],
-    next: ['sorting'], form: 'weights',
+    rows: [{ name: 'Accepted beans', kind: 'useful', to: 'continue:roasting' }, { name: 'Rejected beans', kind: 'waste', to: 'waste' }],
+    next: ['roasting'], form: 'weights',
     help: 'Weigh the beans you accept from the delivery and any you reject.',
   },
   {
-    id: 'sorting', name: 'Sorting', group: 'Bean processing',
-    input: 'Accepted beans', output: 'Sorted beans · sorted-out beans',
-    rows: [{ name: 'Sorted beans', kind: 'useful', to: 'continue:roasting' }, { name: 'Sorted-out beans', kind: 'waste', to: 'waste' }],
-    next: ['roasting'], form: 'weights',
-    help: 'Sort the beans by hand, then reweigh the sorted beans and what was taken out.',
-  },
-  {
     id: 'roasting', name: 'Roasting', group: 'Bean processing',
-    input: 'Sorted beans', output: 'Roasted beans · whole beans taken off',
+    input: 'Accepted beans', output: 'Roasted beans · whole beans taken off',
     rows: [{ name: 'Roasted beans', kind: 'useful', to: 'continue:winnowing' }, { name: 'Whole roasted beans', kind: 'useful', to: 'sale' }, { name: 'Unusable beans', kind: 'waste', to: 'waste' }],
     next: ['winnowing'], form: 'weights', lossLabel: 'Moisture and roasting loss',
     help: 'Whole roasted beans taken off for sale or other use are weighed separately. Moisture lost in the roaster shows up as variance.',

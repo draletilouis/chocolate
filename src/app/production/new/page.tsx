@@ -199,20 +199,20 @@ function ReceiveDelivery({ productId, productField, batchDate, setBatchDate, sta
 
   const suggested = suggestBatchName(store, supplierId, batchDate);
   const batchName = name ?? suggested;
-  const input = netWeight(delivered, store.containers);
-  const nets = rows.map((r) => netWeight(r.weight, store.containers));
-  const balance = calculateBalance(input.net, rows.map((r, i) => ({ kind: r.kind, weight: nets[i].net })));
+  const input = netWeight(delivered);
+  const nets = rows.map((r) => netWeight(r.weight));
+  const balance = calculateBalance(input, rows.map((r, i) => ({ kind: r.kind, weight: nets[i] })));
 
   async function save(event: FormEvent) {
     event.preventDefault();
     setError('');
-    if (!(input.net > 0)) return setError('Enter the delivered weight from the scale.');
-    const outputs = rows.map((r, i) => ({ name: r.name, kind: r.kind, weight: nets[i].net, destination: r.destination, container: nets[i].container })).filter((o) => o.weight > 0);
+    if (!(input > 0)) return setError('Enter the delivered weight from the scale.');
+    const outputs = rows.map((r, i) => ({ name: r.name, kind: r.kind, weight: nets[i], destination: r.destination })).filter((o) => o.weight > 0);
     if (outputs.length === 0) return setError('Enter the accepted beans.');
     if (saving.current) return;
     saving.current = true;
     setBusy(true);
-    const id = await store.receiveDelivery({ productId, name: batchName, batchDate, startWeight: input.net, supplierId, note: note || undefined, lotUses: fromLot ? [{ lotId: fromLot.id, quantity: input.net }] : [] }, { weight: input.net, container: input.container }, outputs, note || undefined);
+    const id = await store.receiveDelivery({ productId, name: batchName, batchDate, startWeight: input, supplierId, note: note || undefined, lotUses: fromLot ? [{ lotId: fromLot.id, quantity: input }] : [] }, { weight: input }, outputs, note || undefined);
     saving.current = false;
     setBusy(false);
     if (id) router.push(`/production/batches/${id}/record/receiving?saved=1`);
@@ -250,17 +250,17 @@ function ReceiveDelivery({ productId, productField, batchDate, setBatchDate, sta
       </Panel>
       <section className="input-card">
         <div className="input-card-label">{fromLot ? 'Weight taken from the store' : 'Delivered weight'}</div>
-        <WeightField value={delivered} onChange={setDelivered} containers={store.containers} label="Delivered weight" autoFocus />
-        {fromLot && input.net > fromLot.available + 0.005 && <Notice tone="warn">The scale shows {kg(input.net)} but lot {fromLot.id} has only {kg(fromLot.available)} on record. The batch is saved at the scale weight and the lot goes to zero.</Notice>}
+        <WeightField value={delivered} onChange={setDelivered} label="Delivered weight" autoFocus />
+        {fromLot && input > fromLot.available + 0.005 && <Notice tone="warn">The scale shows {kg(input)} but lot {fromLot.id} has only {kg(fromLot.available)} on record. The batch is saved at the scale weight and the lot goes to zero.</Notice>}
       </section>
-      <Panel title="Weigh the beans" subtitle="Accepted beans go on to sorting. Leave rejected empty if there were none.">
+      <Panel title="Weigh the beans" subtitle="Accepted beans go on to roasting. Leave rejected empty if there were none.">
         {rows.map((row, index) => (
           <div key={row.name} className="weigh-row">
             <div className="weigh-row-head">
               <span className="weigh-row-name">{row.name}{row.kind === 'waste' && <span className="kind-tag">waste</span>}</span>
               <DestinationSelect station={station} value={row.destination} onChange={(destination) => setRows(rows.map((r, i) => (i === index ? { ...r, destination } : r)))} label={row.name} />
             </div>
-            <WeightField value={row.weight} onChange={(weight) => setRows(rows.map((r, i) => (i === index ? { ...r, weight } : r)))} containers={store.containers} label={row.name} />
+            <WeightField value={row.weight} onChange={(weight) => setRows(rows.map((r, i) => (i === index ? { ...r, weight } : r)))} label={row.name} />
           </div>
         ))}
       </Panel>

@@ -12,7 +12,7 @@ import { batchStages, outcomeTotals, startName, startWeight } from '@/lib/outcom
 import { piecesByTypeAndSize } from '@/lib/pieces';
 import { BalanceVerdict, DestinationSelect, LiveBalance, WeightField, emptyWeight, netWeight, weightFrom, type WeightValue } from '@/components/weighing';
 import { calculateBalance, percentOf, round2 } from '@/lib/balance';
-import { batchById, batchDisplayName, defaultDestination, isReadyAt, lastContainerId, nextInput, recordBalance, recordFor, recordStamp, userName, waitingAt } from '@/lib/derive';
+import { batchById, batchDisplayName, defaultDestination, isReadyAt, nextInput, recordBalance, recordFor, recordStamp, userName, waitingAt } from '@/lib/derive';
 import { dateTime, destinationLabel, kg, pct } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { isStationId, stationById, stationName } from '@/lib/stations';
@@ -94,10 +94,9 @@ function StationForm({ batch, station, record, independent, onSaved, onShowSaved
   // refuses to overwrite them, and the form says so as soon as it sees one.
   const [startedFrom] = useState(() => recordStamp(batch, station.id));
   const changedElsewhere = recordStamp(batch, station.id) !== startedFrom;
-  const containers = store.containers;
   const ready = nextInput(batch, station.id);
-  const [input, setInput] = useState<WeightValue>(() => record ? weightFrom(record.inputWeight, record.inputContainer, containers) : !independent && ready.weight > 0 ? { reading: String(ready.weight), containerId: '' } : emptyWeight);
-  const [changingInput, setChangingInput] = useState(independent || (!record && ready.weight <= 0) || !!record?.inputContainer);
+  const [input, setInput] = useState<WeightValue>(() => record ? weightFrom(record.inputWeight) : !independent && ready.weight > 0 ? weightFrom(ready.weight) : emptyWeight);
+  const [changingInput, setChangingInput] = useState(independent || (!record && ready.weight <= 0));
   const [rows, setRows] = useState<Row[]>(() => {
     const configured = store.outputCategories.filter((c) => c.station === station.id);
     const saved = new Map((record?.outputs ?? []).map((o) => [o.name, o]));
@@ -107,11 +106,11 @@ function StationForm({ batch, station, record, independent, onSaved, onShowSaved
         const was = saved.get(c.name);
         return {
           name: c.name, kind: c.kind, custom: false,
-          weight: was ? weightFrom(was.weight, was.container, containers) : { reading: '', containerId: lastContainerId(store, station.id, c.name) },
+          weight: weightFrom(was?.weight),
           destination: was?.destination ?? defaultDestination(station.id, c.name, c.kind, i),
         };
       }),
-      ...(record?.outputs ?? []).filter((o) => !names.has(o.name)).map((o): Row => ({ name: o.name, kind: o.kind, custom: true, weight: weightFrom(o.weight, o.container, containers), destination: o.destination })),
+      ...(record?.outputs ?? []).filter((o) => !names.has(o.name)).map((o): Row => ({ name: o.name, kind: o.kind, custom: true, weight: weightFrom(o.weight), destination: o.destination })),
     ];
   });
   const [note, setNote] = useState(record?.note ?? '');
@@ -119,9 +118,9 @@ function StationForm({ batch, station, record, independent, onSaved, onShowSaved
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const inputNet = netWeight(input, containers);
-  const nets = rows.map((r) => netWeight(r.weight, containers));
-  const balance = calculateBalance(inputNet.net, rows.map((r, i) => ({ kind: r.kind, weight: nets[i].net })));
+  const inputNet = netWeight(input);
+  const nets = rows.map((r) => netWeight(r.weight));
+  const balance = calculateBalance(inputNet, rows.map((r, i) => ({ kind: r.kind, weight: nets[i] })));
   const limit = store.thresholds.variancePct[station.id] ?? 0;
   const update = (index: number, patch: Partial<Row>) => setRows(rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
 
@@ -129,12 +128,12 @@ function StationForm({ batch, station, record, independent, onSaved, onShowSaved
     event.preventDefault();
     if (saving || changedElsewhere) return;
     setError('');
-    if (!(inputNet.net > 0)) { setChangingInput(true); return setError('Enter the input weight.'); }
+    if (!(inputNet > 0)) { setChangingInput(true); return setError('Enter the input weight.'); }
     const options = independent ? { advanceWorkflow: false, inputMaterial: station.input } : undefined;
-    const outputs = rows.map((r, i) => ({ name: r.name.trim() || 'Other output', kind: r.kind, weight: nets[i].net, destination: r.destination, container: nets[i].container })).filter((o) => o.weight > 0);
+    const outputs = rows.map((r, i) => ({ name: r.name.trim() || 'Other output', kind: r.kind, weight: nets[i], destination: r.destination })).filter((o) => o.weight > 0);
     if (outputs.length === 0) return setError('Enter at least one weight.');
     setSaving(true);
-    const saved = await store.saveRecord(batch.id, station.id, { weight: inputNet.net, container: inputNet.container }, outputs, note || undefined, options, startedFrom);
+    const saved = await store.saveRecord(batch.id, station.id, { weight: inputNet }, outputs, note || undefined, options, startedFrom);
     setSaving(false);
     // On failure the weights stay on screen; the reason is shown at the top.
     if (saved) onSaved();
@@ -152,18 +151,18 @@ function StationForm({ batch, station, record, independent, onSaved, onShowSaved
         <div className="input-card-label">Input</div>
         {!changingInput ? (
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0"><strong className="text-[22px] tabular-nums">{kg(inputNet.net)}</strong> <span className="text-muted">{(record?.inputMaterial ?? ready.material).toLowerCase()}</span></div>
+            <div className="min-w-0"><strong className="text-[22px] tabular-nums">{kg(inputNet)}</strong> <span className="text-muted">{(record?.inputMaterial ?? ready.material).toLowerCase()}</span></div>
             <Button variant="secondary" onClick={() => setChangingInput(true)}>Reweighed? Change</Button>
           </div>
         ) : (
           <div>
             <p className="mb-2 text-[13px] text-muted">{independent ? 'Enter the scale reading for this process.' : ready.weight > 0 ? `${kg(ready.weight)} ${ready.material.toLowerCase()} was sent here. Enter the new scale reading.` : 'Nothing was sent here. Enter the weight you are starting with.'}</p>
-            <WeightField value={input} onChange={setInput} containers={containers} label="Input weight" autoFocus />
+            <WeightField value={input} onChange={setInput} label="Input weight" autoFocus />
           </div>
         )}
       </section>
 
-      <Panel title="Weigh the outputs" subtitle="Leave a row empty if there was none. If you weigh in a container, pick it and its empty weight is taken off. Each output shows where it goes; tap to change.">
+      <Panel title="Weigh the outputs" subtitle="Leave a row empty if there was none. Each output shows where it goes; tap to change.">
         {rows.map((row, index) => {
           const label = row.custom ? `Output ${index + 1}` : row.name;
           return (
@@ -182,7 +181,7 @@ function StationForm({ batch, station, record, independent, onSaved, onShowSaved
                 )}
                 <DestinationSelect station={station} value={row.destination} onChange={(destination) => update(index, { destination })} label={label} />
               </div>
-              <WeightField value={row.weight} onChange={(weight) => update(index, { weight })} containers={containers} label={row.custom ? `${label} weight` : row.name} autoFocus={index === 0 && !changingInput && !record} />
+              <WeightField value={row.weight} onChange={(weight) => update(index, { weight })} label={row.custom ? `${label} weight` : row.name} autoFocus={index === 0 && !changingInput && !record} />
             </div>
           );
         })}
@@ -247,14 +246,13 @@ function SavedView({ batch, station, record, independent, justSaved, onEdit }: {
 
       <BalanceVerdict balance={recordBalance(record)} limit={limit} wasteLimit={store.thresholds.wastePct} />
 
-      <Panel title={record.packaging ? 'Packaging' : 'What was weighed'} subtitle={`Input ${kg(record.inputWeight)} ${record.inputMaterial.toLowerCase()}${record.inputContainer ? ` (${kg(record.inputContainer.gross)} on the scale − ${kg(record.inputContainer.tare)} ${record.inputContainer.name.toLowerCase()})` : ''}`}>
+      <Panel title={record.packaging ? 'Packaging' : 'What was weighed'} subtitle={`Input ${kg(record.inputWeight)} ${record.inputMaterial.toLowerCase()}`}>
         {record.packaging && <div className="border-b border-line px-5 py-3 text-[13px]">{store.packSizes.find((p) => p.id === record.packaging!.packSizeId)?.name}: {record.packaging.totalUnits} made, {record.packaging.rejectedUnits} rejected, <strong>{record.packaging.acceptedUnits} accepted</strong></div>}
         {record.outputs.map((o) => (
           <div key={o.name} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-line px-5 py-3 last:border-b-0">
             <span>
               <strong>{o.name}</strong> <span className="tabular-nums">{record.packaging ? `${o.name === 'Accepted units' ? record.packaging.acceptedUnits : record.packaging.rejectedUnits} units` : kg(o.weight)}</span>
               <span className="block text-[12px] text-muted tabular-nums">{pct(percentOf(o.weight, record.inputWeight))} of this input · {pct(percentOf(o.weight, startWeight(fresh)))} of the {startName(fresh)}</span>
-              {o.container && <span className="block text-[12px] text-muted">{kg(o.container.gross)} on the scale − {kg(o.container.tare)} {o.container.name.toLowerCase()}</span>}
             </span>
             <span className="text-[13px]">{destinationLabel(o.destination, (s) => stationName(s as StationId))}{o.lotId && <> · <Link href={`/materials/${o.lotId}`} className="font-semibold text-green">lot {o.lotId}</Link></>}</span>
           </div>

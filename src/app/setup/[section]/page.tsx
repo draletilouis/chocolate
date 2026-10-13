@@ -13,7 +13,7 @@ const sections = [
   { id: 'business', label: 'Business details', href: '/setup/business' },
   { id: 'products', label: 'Products', href: '/setup/products' },
   { id: 'pack-sizes', label: 'Piece sizes', href: '/setup/pack-sizes' },
-  { id: 'containers', label: 'Containers', href: '/setup/containers' },
+  { id: 'mixer', label: 'Mixer', href: '/setup/mixer' },
   { id: 'outputs', label: 'Output categories', href: '/setup/outputs' },
   { id: 'routes', label: 'Routes', href: '/setup/routes' },
   { id: 'suppliers', label: 'Suppliers', href: '/setup/suppliers' },
@@ -179,6 +179,7 @@ export default function SetupPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const current = sections.find((s) => s.id === section) ?? sections[0];
   if (section === 'paper-catalog') redirect('/setup/products');
+  if (section === 'containers') redirect('/setup/mixer');
 
   return (
     <>
@@ -373,21 +374,7 @@ export default function SetupPage() {
 
       {current.id === 'users' && <DevicesPanel />}
 
-      {current.id === 'containers' && (
-        <Panel title="Containers" subtitle="Bins, buckets and tubs weighed together with the material. Operators pick the container and its empty weight is taken off the scale reading.">
-          <Table head={['Container', 'Empty weight', '']}>
-            {store.containers.map((c) => <Fragment key={c.id}>
-              <tr key={c.id}><td className={td}>{c.name}</td><td className={tdNum}>{c.tare.toFixed(2)} kg</td><td className={td}><RowActions onEdit={() => setEditingId(c.id)} onDelete={() => { if (window.confirm(`Delete ${c.name}? Past records keep the weight they used.`)) store.deleteContainer(c.id); }} /></td></tr>
-              {editingId === c.id && <tr key={`${c.id}-edit`}><td className={td} colSpan={3}><EditForm onCancel={() => setEditingId(null)} onSubmit={(d) => { store.updateContainer(c.id, { name: String(d.get('name')).trim(), tare: Number(d.get('tare')) }); setEditingId(null); }}><Field label="Name"><Input name="name" defaultValue={c.name} required /></Field><Field label="Empty weight (kg)" hint="Weigh the empty container."><Input name="tare" type="number" min="0" step="0.01" defaultValue={c.tare} required /></Field></EditForm></td></tr>}
-            </Fragment>)}
-          </Table>
-          <AddForm title="Add container" onSubmit={(d) => store.addContainer({ name: String(d.get('name')).trim(), tare: Number(d.get('tare')) })}>
-            <Field label="Name"><Input name="name" required placeholder="e.g. Husk bin 2" /></Field>
-            <Field label="Empty weight (kg)" hint="Weigh the empty container."><Input name="tare" type="number" min="0" step="0.01" required /></Field>
-          </AddForm>
-        </Panel>
-      )}
-      {current.id === 'containers' && (
+      {current.id === 'mixer' && (
         <Panel title="Mixer" subtitle="The mixer keeps some chocolate between types; the next run is made on top of it.">
           <div className="grid gap-4 p-5 md:grid-cols-2">
             <Field label="Chocolate usually kept in the mixer (kg)" hint="Suggested on every run; the operator can change it."><NumberSetting value={store.mixerKeepsKg} step="0.1" onSave={store.setMixerKeeps} label="Chocolate kept in the mixer" /></Field>

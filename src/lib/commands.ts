@@ -17,8 +17,7 @@ const destination = z.string().refine(
   'Unknown destination',
 ) as unknown as z.ZodType<Destination>; // 'mixer' is only ever set by mixing itself, never sent
 const kind = z.enum(['useful', 'byproduct', 'waste']);
-const container = z.object({ name: text(80).min(1), tare: qty, gross: qty });
-const output = z.object({ name: text(80).min(1), kind, weight: qty, destination, container: container.optional() });
+const output = z.object({ name: text(80).min(1), kind, weight: qty, destination });
 const options = z.object({ advanceWorkflow: z.boolean().optional(), inputMaterial: text(120).optional() }).optional();
 const lotCategory = z.enum(['Raw material', 'Intermediate', 'By-product', 'Rework', 'Finished goods']);
 const pin = z.string().regex(/^\d{4}$/, 'The PIN must be 4 digits');
@@ -44,9 +43,9 @@ const userFields = { name: text(80).min(1), role: text(80).min(1), email, access
 
 export const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('createBatch'), input: newBatch }),
-  z.object({ type: z.literal('receiveDelivery'), batch: newBatch, input: z.object({ weight: qty, container: container.optional() }), outputs: z.array(output).min(1).max(30), note: text(1000).optional() }),
+  z.object({ type: z.literal('receiveDelivery'), batch: newBatch, input: z.object({ weight: qty }), outputs: z.array(output).min(1).max(30), note: text(1000).optional() }),
   // expectRecord: recordStamp() of the record the form was opened on (null for a new one), so two people cannot overwrite each other unseen.
-  z.object({ type: z.literal('saveRecord'), batchId: id, station, input: z.object({ weight: qty, container: container.optional() }), outputs: z.array(output).max(30), note: text(1000).optional(), options, expectRecord: z.string().max(200).nullable().optional() }),
+  z.object({ type: z.literal('saveRecord'), batchId: id, station, input: z.object({ weight: qty }), outputs: z.array(output).max(30), note: text(1000).optional(), options, expectRecord: z.string().max(200).nullable().optional() }),
   // Mixing: one chocolate type per run, made on top of what the mixer holds (expectMixer: mixerStamp() the form was opened on).
   z.object({ type: z.literal('saveMixingRun'), batchId: id, recipeId: id, toRun: qty, ingredients: z.array(z.object({ name: text(80).min(1), actual: qty, lotId: text(80).optional() })).min(1).max(60), made: qty, kept: qty, expectMixer: z.string().max(200) }),
   z.object({ type: z.literal('undoMixingRun'), batchId: id, runId: id }),
@@ -98,9 +97,6 @@ export const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('addOutputCategory'), station, name: text(80).min(1), kind }),
   z.object({ type: z.literal('updateOutputCategory'), categoryId: id, station, name: text(80).min(1), kind }),
   z.object({ type: z.literal('deleteOutputCategory'), categoryId: id }),
-  z.object({ type: z.literal('addContainer'), container: z.object({ name: text(80).min(1), tare: qty }) }),
-  z.object({ type: z.literal('updateContainer'), containerId: id, container: z.object({ name: text(80).min(1), tare: qty }) }),
-  z.object({ type: z.literal('deleteContainer'), containerId: id }),
   z.object({ type: z.literal('setIdleMinutes'), minutes: z.number().int().min(0).max(24 * 60) }),
   // Records a browser kept before the move to the server, uploaded once by a manager.
   z.object({ type: z.literal('importBrowserData'), data: z.record(z.unknown()) }),

@@ -165,7 +165,7 @@ export function nextBatchId(state: State, prefix: string) {
 }
 
 const lotPrefixes: Record<string, string> = {
-  'Cocoa beans': 'BEAN', 'Accepted beans': 'BEAN', 'Sorted beans': 'BEAN', 'Roasted beans': 'RST', 'Whole roasted beans': 'WRB',
+  'Cocoa beans': 'BEAN', 'Accepted beans': 'BEAN', 'Roasted beans': 'RST', 'Whole roasted beans': 'WRB',
   Nibs: 'NIB', 'Nibs for liquor': 'NIB', 'Nibs for butter': 'NIB', 'Nibs for sale': 'NIB', 'Whole peeled beans': 'REW', Husks: 'HUSK',
   'Brown butter': 'BRB', 'Sieved butter': 'BRB', 'Sieved particles': 'PRT', 'Silk butter': 'SILK', 'Butter for sale': 'BUT',
   'Cocoa cake (powder)': 'CAKE', 'Roasted powder': 'PWD', 'Fine cocoa powder': 'PWD',
@@ -224,17 +224,6 @@ export function suggestBatchName(state: State, supplierId: string, isoDate: stri
   let n = 2;
   while (taken.has(`${base} (${n})`)) n += 1;
   return `${base} (${n})`;
-}
-
-/** The container last used for this output at this station, so the operator does not pick it every time */
-export function lastContainerId(state: State, station: StationId, output: string): string {
-  const records = state.batches.flatMap((b) => b.records).filter((r) => r.station === station).sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
-  for (const r of records) {
-    const used = output === '__input' ? r.inputContainer : r.outputs.find((o) => o.name === output)?.container;
-    if (used) return state.containers.find((c) => c.name === used.name)?.id ?? '';
-    if (output === '__input' || r.outputs.some((o) => o.name === output)) return '';
-  }
-  return '';
 }
 
 /** Batches, lots and dispatches matching a search: name, ID, product, material, supplier, customer or order number */
