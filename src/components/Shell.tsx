@@ -10,6 +10,7 @@ import { groupBySlug, lineStations, stationById, stationGroups } from '@/lib/sta
 import { LoginScreen } from './LoginScreen';
 import { Button, Notice } from './ui';
 import { brand } from '@/lib/brand';
+import { BrandMark } from '@/components/BrandMark';
 
 interface NavItem { href: string; label: string; short?: string; icon: LucideIcon; count?: 'alerts' | 'batches' | 'work'; managers?: boolean; phone?: false; also?: string }
 
@@ -106,7 +107,7 @@ export function Shell({ children }: { children: ReactNode }) {
       {/* Desktop sidebar: always visible */}
       <aside className="sidebar hidden md:flex">
         <Link href={home} className="nav-brand">
-          <span className="brand-logo-shell" aria-hidden="true">{brand.initials}</span>
+          <BrandMark className="brand-logo-shell" />
           <span className="brand-copy">
             <span className="brand-app">{brand.name}</span>
             <span className="brand-sub">Production records</span>
@@ -179,7 +180,7 @@ export function Shell({ children }: { children: ReactNode }) {
       {/* Mobile header */}
       <header className="mobile-header md:hidden">
         <Link href={home} className="flex items-center gap-2.5">
-          <span className="avatar is-small" style={{ background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', color: '#1A3862', border: '1px solid #cbd5e1' }}>{brand.initials}</span>
+          <BrandMark className="avatar is-small brand-avatar" />
           <span className="text-[15px] font-extrabold tracking-tight">{user?.name.split(' ')[0]}</span>
         </Link>
         <span className="flex items-center gap-1">
