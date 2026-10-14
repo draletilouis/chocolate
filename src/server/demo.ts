@@ -599,10 +599,12 @@ class Factory {
 
   /**
    * The packing team makes every chocolate lot from an earlier day into pieces: the sizes of its type, then
-   * 45 g bars, with 7 g bars making up the last grams so the lot is used up.
+   * 45 g bars, with 7 g bars making up the last grams so the lot is used up. Then they type in the batch
+   * number the pieces carry: one per chocolate lot, the day it was packed and a count (260912-1).
    */
   makePieces() {
     const today = this.now.slice(0, 10);
+    let packed = 0;
     for (const lot of chocolateWaiting(this.state).filter((l) => l.receivedAt.slice(0, 10) < today)) {
       const total = Math.round(lot.available * 1000);
       const grams = (pack: string) => this.state.packSizes.find((p) => p.id === pack)!.grams;
@@ -621,7 +623,9 @@ class Factory {
       counts.set('PK-45', bars);
       counts.set('PK-7', Math.floor((left - bars * 45) / 7));
       const pieces = Array.from(counts, ([packSizeId, count]) => ({ packSizeId, count })).filter((p) => p.count > 0).sort((a, b) => grams(a.packSizeId) - grams(b.packSizeId));
-      this.run({ type: 'recordPieces', lotId: lot.id, pieces }, this.packTeam, 35);
+      const made = this.run<string[]>({ type: 'recordPieces', lotId: lot.id, pieces }, this.packTeam, 35);
+      const batchNumber = `${today.slice(2).replaceAll('-', '')}-${++packed}`;
+      for (const lotId of made) this.run({ type: 'setPiecesBatchNumber', lotId, batchNumber }, this.packTeam, 1);
     }
   }
 

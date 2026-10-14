@@ -8,6 +8,7 @@ import { Back, Button, Field, Input, LinkButton, Notice, PageHeader, Panel, Sele
 import { amountOf } from '@/lib/derive';
 import { dispatchGroups, stockForDispatch, takeOldestFirst, type StockItem } from '@/lib/dispatch';
 import { date } from '@/lib/format';
+import { batchNumberOf } from '@/lib/pieces';
 import { useStore } from '@/lib/store';
 
 export default function NewDispatchPage() {
@@ -109,7 +110,7 @@ function NewDispatch() {
               <Field label="From">
                 <Select value={row.lotId} onChange={(e) => change(index, { lotId: e.target.value })} aria-label={`From ${index + 1}`} disabled={!item}>
                   <option value="">Oldest lots first</option>
-                  {item?.lots.map((l) => <option key={l.id} value={l.id}>{l.id} · {amountOf(l.available, l.unit)} · {date(l.receivedAt)}</option>)}
+                  {item?.lots.map((l) => <option key={l.id} value={l.id}>{l.pieces?.batchNumber ? `Batch ${l.pieces.batchNumber} · ` : ''}{l.id} · {amountOf(l.available, l.unit)} · {date(l.receivedAt)}</option>)}
                 </Select>
               </Field>
               <Button variant="ghost" className="px-2" onClick={() => setRows(rows.length > 1 ? rows.filter((_, i) => i !== index) : [emptyRow])} title="Remove this line"><X size={15} /><span className="sr-only">Remove line {index + 1}</span></Button>
@@ -140,5 +141,5 @@ function NewDispatch() {
 function LinePlan({ item, lines, short, whole }: { item: StockItem; lines: { lotId: string; quantity: number }[]; short: number; whole: boolean }) {
   if (!whole) return <div className="md:col-span-4"><Notice tone="warn">{item.material} goes out in whole pieces.</Notice></div>;
   if (short > 0) return <div className="md:col-span-4"><Notice tone="warn">{amountOf(short, item.unit)} more than {lines.length > 1 ? 'these lots have' : 'is in store'} for this line.</Notice></div>;
-  return <div className="text-[12px] text-muted md:col-span-4">Taken from {lines.map((l) => `${l.lotId} (${amountOf(l.quantity, item.unit)})`).join(', ')}</div>;
+  return <div className="text-[12px] text-muted md:col-span-4">Taken from {lines.map((l) => { const bn = batchNumberOf(item.lots.find((x) => x.id === l.lotId)); return `${bn ? `batch ${bn}, ` : ''}${l.lotId} (${amountOf(l.quantity, item.unit)})`; }).join(', ')}</div>;
 }

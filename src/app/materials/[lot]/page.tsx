@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { ArrowDown, Pencil, Trash2, Truck, Waypoints } from 'lucide-react';
 import { Back, Badge, Button, Empty, Field, Input, LinkButton, Notice, PageHeader, Panel, Select, Stat } from '@/components/ui';
 import { BatchLabel } from '@/components/BatchLabel';
+import { PiecesBatchNumber } from '@/components/PiecesBatchNumber';
 import { amountOf, batchById, customerName, lotOrigin, recordBalance, userName } from '@/lib/derive';
 import { piecesFrom, piecesKg } from '@/lib/pieces';
 import { dateTime, kg } from '@/lib/format';
@@ -68,13 +69,18 @@ export default function LotPage() {
       {lot.pieces && (
         <Notice tone="neutral">{lot.received} pieces of {lot.pieces.size} ({kg(piecesKg(lot.received, lot.pieces.grams))} of {lot.pieces.type}) made from <Link href={`/materials/${lot.pieces.fromLotId}`} className="font-semibold text-green">{lot.pieces.fromLotId}</Link> by {userName(store, lot.pieces.recordedBy)}.{lot.uses.length === 0 && lot.available === lot.received ? ' Entered by mistake? Undo it from the Pieces screen of that lot.' : ''}</Notice>
       )}
+      {lot.pieces && (
+        <Panel title="Batch number" subtitle={lot.pieces.batchNumber ? 'The number these pieces carry.' : 'Not added yet. Type the number these pieces carry; the app does not make one up.'}>
+          <div className="px-5 py-3 text-[13px]"><PiecesBatchNumber lot={lot} /></div>
+        </Panel>
+      )}
       {lot.chocolate && madePieces.length > 0 && (
         <Panel title="Pieces made from this lot">
-          {madePieces.map((p) => <div key={p.id} className="border-b border-line px-5 py-2.5 text-[13px] last:border-b-0"><Link href={`/materials/${p.id}`} className="font-semibold text-green">{p.id}</Link> · <strong className="tabular-nums">{p.received}</strong> × {p.pieces!.size} <span className="text-muted">· {dateTime(p.receivedAt)}</span></div>)}
+          {madePieces.map((p) => <div key={p.id} className="border-b border-line px-5 py-2.5 text-[13px] last:border-b-0"><Link href={`/materials/${p.id}`} className="font-semibold text-green">{p.id}</Link> · <strong className="tabular-nums">{p.received}</strong> × {p.pieces!.size} <span className="text-muted">· {p.pieces!.batchNumber ? `batch ${p.pieces!.batchNumber}` : 'no batch number yet'} · {dateTime(p.receivedAt)}</span></div>)}
         </Panel>
       )}
 
-      {sourceBatch && <BatchLabel batch={sourceBatch} material={lot.material} quantity={`${lot.received} ${unit}`} madeAt={lot.receivedAt} lotId={lot.id} />}
+      {sourceBatch && <BatchLabel batch={sourceBatch} material={lot.material} quantity={`${lot.received} ${unit}`} madeAt={lot.receivedAt} lotId={lot.id} piecesBatchNumber={lot.pieces ? lot.pieces.batchNumber ?? '' : undefined} />}
 
       <Panel title="Traceability" subtitle="Where this lot came from and where it went.">
         <ol className="px-5 py-3 text-[13px]">

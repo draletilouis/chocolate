@@ -24,7 +24,9 @@ export default function TracePage() {
     event.preventDefault();
     const id = text.trim().toUpperCase();
     // A whole batch or lot number opens its trace at once.
-    const exact = store.lots.find((l) => l.id.toUpperCase() === id) ?? store.batches.find((b) => b.id.toUpperCase() === id);
+    // So does a batch number given to pieces, unless more than one lot of pieces carries it: those are listed.
+    const numbered = store.lots.filter((l) => l.pieces?.batchNumber?.toUpperCase() === id);
+    const exact = store.lots.find((l) => l.id.toUpperCase() === id) ?? store.batches.find((b) => b.id.toUpperCase() === id) ?? (numbered.length === 1 ? numbered[0] : undefined);
     if (exact) router.push(`/trace/${exact.id}`);
     else setQuery(text.trim());
   }
@@ -39,7 +41,7 @@ export default function TracePage() {
   const lotRow = (l: Lot) => (
     <RowLink key={l.id} href={`/trace/${l.id}`}>
       <span className="min-w-0 flex-1">
-        <span className="flex flex-wrap items-center gap-2"><strong>{l.id}</strong><span>{l.material}</span><Badge>{l.pieces ? `${l.received} pieces · ${kg(piecesKg(l.received, l.pieces.grams))}` : kg(l.received)}</Badge></span>
+        <span className="flex flex-wrap items-center gap-2"><strong>{l.id}</strong><span>{l.material}</span>{l.pieces && (l.pieces.batchNumber ? <span>Batch <strong>{l.pieces.batchNumber}</strong></span> : <Badge tone="warn">No batch number</Badge>)}<Badge>{l.pieces ? `${l.received} pieces · ${kg(piecesKg(l.received, l.pieces.grams))}` : kg(l.received)}</Badge></span>
         <span className="block text-[12px] text-muted">{lotOrigin(store, l)} · {date(l.receivedAt)}</span>
       </span>
     </RowLink>
@@ -57,7 +59,7 @@ export default function TracePage() {
     <>
       <PageHeader eyebrow="Traceability" title="Trace a batch" subtitle="Enter the number on a product, a chocolate lot, an ingredient or a production batch. Its page lists everything that went into it, back to the deliveries, and everything it went into." />
       <form className="search-form mb-5" onSubmit={submit} role="search">
-        <Input value={text} onChange={(e) => { setText(e.target.value); if (!e.target.value.trim()) setQuery(''); }} placeholder="e.g. FIN-0001, D70-0001, SUG-031, CH-017" aria-label="Batch or lot number" />
+        <Input value={text} onChange={(e) => { setText(e.target.value); if (!e.target.value.trim()) setQuery(''); }} placeholder="e.g. a batch number, FIN-0001, D70-0001, SUG-031" aria-label="Batch or lot number" />
         <Button type="submit">Trace</Button>
       </form>
 

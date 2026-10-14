@@ -17,12 +17,15 @@ interface LabelProps {
   quantity: string;
   madeAt: string;
   lotId?: string;
+  /** Pieces only: the batch number someone typed in for them, '' while none has been added */
+  piecesBatchNumber?: string;
 }
 
-function useLabel({ batch, material, quantity, madeAt, lotId }: LabelProps) {
+function useLabel({ batch, material, quantity, madeAt, lotId, piecesBatchNumber }: LabelProps) {
   const store = useStore();
   const suppliers = batchSuppliers(store, batch);
   const lines: [string, string][] = [
+    ...(piecesBatchNumber !== undefined ? [['Batch number', piecesBatchNumber || 'Not added yet'] as [string, string]] : []),
     ['Batch ID', batch.id],
     ['Supplier', suppliers.join(', ') || 'Not recorded'],
     [lotId ? 'Net weight' : 'Start weight', quantity],
@@ -83,6 +86,7 @@ export function BatchLabel({ title = 'Label', ...props }: LabelProps & { title?:
           </dl>
         </div>
         {!batch.name && <div className="mt-3"><Notice tone="warn">This batch has no name, so the label shows its ID. Give the batch a name from its page to put it on the label.</Notice></div>}
+        {props.piecesBatchNumber === '' && <div className="mt-3"><Notice tone="warn">These pieces have no batch number yet. Add it above before printing the label.</Notice></div>}
         {suppliers.length === 0 && <div className="mt-3"><Notice tone="warn">No supplier is recorded for this batch.</Notice></div>}
       </div>
     </Panel>

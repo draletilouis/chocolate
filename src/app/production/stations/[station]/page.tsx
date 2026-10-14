@@ -2,10 +2,12 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useState } from 'react';
 import { ArrowRight, Plus } from 'lucide-react';
 import { Back, Badge, Empty, LinkButton, Notice, PageHeader, Panel, RowLink } from '@/components/ui';
 import { batchDisplayName, chocolateWaiting, nextInput, recordBalance, recordFor, stationQueue } from '@/lib/derive';
-import { piecesLots } from '@/lib/pieces';
+import { piecesLots, piecesWithoutBatchNumber } from '@/lib/pieces';
+import { PiecesBatchNumber } from '@/components/PiecesBatchNumber';
 import { dateTime, kg, kindLabel } from '@/lib/format';
 import { useStore } from '@/lib/store';
 import { groupOf, isStationId, stationById } from '@/lib/stations';
@@ -86,6 +88,8 @@ function PiecesQueue() {
   const station = stationById.packaging;
   const waiting = chocolateWaiting(store);
   const recent = piecesLots(store).slice(0, 8);
+  const unnumbered = piecesWithoutBatchNumber(store);
+  const [allUnnumbered, setAllUnnumbered] = useState(false);
   return (
     <>
       <Back href={`/production/parts/${groupOf(station.id).slug}`} label={station.group} />
@@ -102,11 +106,22 @@ function PiecesQueue() {
           </RowLink>
         ))}
       </Panel>
+      {unnumbered.length > 0 && (
+        <Panel title="Pieces waiting for a batch number" subtitle={`${unnumbered.length} lot${unnumbered.length === 1 ? '' : 's'} of counted pieces. Type the batch number the pieces carry; the app does not make one up.`}>
+          {(allUnnumbered ? unnumbered : unnumbered.slice(0, 10)).map((lot) => (
+            <div key={lot.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3 text-[13px] last:border-b-0">
+              <span className="min-w-0 flex-1"><strong className="tabular-nums">{lot.received}</strong> × {lot.pieces!.size} <span className="text-muted">of {lot.pieces!.type} · <Link href={`/materials/${lot.id}`} className="font-semibold text-green">{lot.id}</Link> · {dateTime(lot.receivedAt)}</span></span>
+              <PiecesBatchNumber lot={lot} />
+            </div>
+          ))}
+          {unnumbered.length > 10 && <div className="px-5 py-2"><button type="button" className="btn btn-ghost" onClick={() => setAllUnnumbered((v) => !v)} aria-pressed={allUnnumbered}>{allUnnumbered ? 'Show the first 10' : `Show all ${unnumbered.length}`}</button></div>}
+        </Panel>
+      )}
       {recent.length > 0 && (
         <Panel title="Pieces made recently">
           {recent.map((lot) => (
             <RowLink key={lot.id} href={`/materials/${lot.id}`}>
-              <span className="flex-1 text-[13px]"><strong className="tabular-nums">{lot.received}</strong> × {lot.pieces!.size} <span className="text-muted">of {lot.pieces!.type} · {lot.id} · {dateTime(lot.receivedAt)}</span></span>
+              <span className="flex-1 text-[13px]"><strong className="tabular-nums">{lot.received}</strong> × {lot.pieces!.size} <span className="text-muted">of {lot.pieces!.type} · {lot.id} · {dateTime(lot.receivedAt)}</span>{lot.pieces!.batchNumber ? <span className="ml-2">Batch <strong>{lot.pieces!.batchNumber}</strong></span> : <span className="ml-2"><Badge tone="warn">No batch number</Badge></span>}</span>
             </RowLink>
           ))}
         </Panel>

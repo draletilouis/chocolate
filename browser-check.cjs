@@ -282,9 +282,27 @@ async function expectText(page, text) {
   await expectText(page, '0.30 kg stays in the lot');
   await page.screenshot({ path: `${SCREENSHOT_DIR}/screen-pieces.png`, fullPage: true });
   await page.getByRole('button', { name: 'Save pieces' }).click();
-  const [, FIN45, FIN80] = (await captured(/(Pieces saved\. 500 × 45 g bar \(FIN-\d+\) · 90 × 80 g bar \(FIN-\d+\)\.)/)).match(/\((FIN-\d+)\).*\((FIN-\d+)\)/);
+  const [, FIN45, FIN80] = (await captured(/(500 × 45 g bar · FIN-\d+[\s\S]*?90 × 80 g bar · FIN-\d+)/)).match(/(FIN-\d+)[\s\S]*?(FIN-\d+)/);
   await expectText(page, '0.30 kg');
   ok(`pieces: good pieces per size from a chocolate lot (590 = 29.70 kg), too much refused, lots ${FIN45} and ${FIN80}`);
+
+  // Batch numbers: the next step after counting. Nothing is filled in; the number typed is kept and traced.
+  await expectText(page, 'Next, add the batch number of each lot.');
+  for (const lot of [FIN45, FIN80]) if (await page.getByLabel(`Batch number for ${lot}`).inputValue() !== '') throw new Error(`${lot} got a batch number nobody typed`);
+  await page.getByRole('button', { name: /^Add/ }).first().click();
+  await expectText(page, 'Enter the batch number.');
+  await page.getByLabel(`Batch number for ${FIN45}`).fill('CHK-2410');
+  await page.getByLabel(`Batch number for ${FIN45}`).press('Enter');
+  await expectText(page, 'Batch number CHK-2410');
+  await page.goto(`${BASE}/production/stations/packaging`);
+  await expectText(page, 'Pieces waiting for a batch number');
+  await page.getByLabel(`Batch number for ${FIN80}`).waitFor();
+  await page.goto(`${BASE}/trace`);
+  await page.getByLabel('Batch or lot number').fill('chk-2410');
+  await page.getByRole('button', { name: 'Trace' }).click();
+  await page.waitForURL(`**/trace/${FIN45}`);
+  await expectText(page, 'Batch number CHK-2410');
+  ok(`batch numbers: none by default, a blank one refused, CHK-2410 typed for ${FIN45} and found by trace, ${FIN80} still waiting`);
 
   // Dispatch: goods out to a customer from a chosen lot, more than the lot has refused, a delivery note, the
   // customer on the trace, and a cancel that puts the goods back.

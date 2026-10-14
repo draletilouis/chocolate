@@ -83,7 +83,7 @@ export default function StorePage() {
                   {lots.map((lot) => (
                     <RowLink key={lot.id} href={`/trace/${lot.id}`}>
                       <span className="min-w-0 flex-1">
-                        <span className="flex flex-wrap items-center gap-2"><strong>{lot.id}</strong><Badge tone={lot.available <= 0 ? 'neutral' : 'green'}>{lot.available <= 0 ? 'Used up' : `${amount(lot.available, lot.unit)} left`}</Badge></span>
+                        <span className="flex flex-wrap items-center gap-2"><strong>{lot.id}</strong>{lot.pieces && (lot.pieces.batchNumber ? <span>Batch <strong>{lot.pieces.batchNumber}</strong></span> : <Badge tone="warn">No batch number</Badge>)}<Badge tone={lot.available <= 0 ? 'neutral' : 'green'}>{lot.available <= 0 ? 'Used up' : `${amount(lot.available, lot.unit)} left`}</Badge></span>
                         <span className="block text-[12px] text-muted">{lotOrigin(store, lot)} · {date(lot.receivedAt)} · {amount(lot.received, lot.unit)} {lot.source.type === 'supplier' ? 'received' : 'made'}{usedBy(lot)}</span>
                       </span>
                     </RowLink>

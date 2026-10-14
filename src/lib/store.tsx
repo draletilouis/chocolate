@@ -63,6 +63,7 @@ interface Actions {
   /** Good pieces of each size made from a chocolate lot; answers the lots of pieces made */
   recordPieces: (lotId: string, pieces: { packSizeId: string; count: number }[]) => Promise<string[] | undefined>;
   removePieces: (lotId: string) => Promise<boolean>;
+  setPiecesBatchNumber: (lotId: string, batchNumber: string) => Promise<boolean>;
   setPlan: (plan: { lines: PlanLine[]; from: string; note?: string }) => Promise<boolean>;
   completeBatch: (batchId: string, note?: string) => Promise<boolean>;
   updateBatchDetails: (batchId: string, patch: { name?: string; note?: string }) => Promise<boolean>;
@@ -300,6 +301,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setMixerKeeps: (kg) => done({ type: 'setMixerKeeps', kg }),
       recordPieces: (lotId, pieces) => value<string[]>({ type: 'recordPieces', lotId, pieces }),
       removePieces: (lotId) => done({ type: 'removePieces', lotId }),
+      setPiecesBatchNumber: (lotId, batchNumber) => done({ type: 'setPiecesBatchNumber', lotId, batchNumber }),
       setPlan: (plan) => done({ type: 'setPlan', ...plan }),
       completeBatch: (batchId, note) => done({ type: 'completeBatch', batchId, note }),
       updateBatchDetails: (batchId, patch) => done({ type: 'updateBatchDetails', batchId, ...patch }),

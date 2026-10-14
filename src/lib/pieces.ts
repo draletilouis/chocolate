@@ -7,6 +7,12 @@ export const piecesKg = (count: number, grams: number) => Math.round(count * gra
 /** Every lot of pieces, newest first */
 export const piecesLots = (state: Pick<State, 'lots'>) => state.lots.filter((l) => l.pieces).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
 
+/** The batch number someone gave a lot of pieces, if any */
+export const batchNumberOf = (lot?: Lot) => lot?.pieces?.batchNumber || undefined;
+
+/** Pieces still waiting for someone to give them a batch number, oldest first */
+export const piecesWithoutBatchNumber = (state: Pick<State, 'lots'>) => piecesLots(state).filter((l) => !l.pieces!.batchNumber).reverse();
+
 /** Pieces lots made from one chocolate lot */
 export const piecesFrom = (state: Pick<State, 'lots'>, lotId: string) => piecesLots(state).filter((l) => l.pieces!.fromLotId === lotId);
 
