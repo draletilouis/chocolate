@@ -205,8 +205,11 @@ export interface Lot {
   uses: LotUse[];
   /** Chocolate made at mixing: its type and the run that made it */
   chocolate?: { type: string; recipeId: string; recipeVersion: number; runId: string };
-  /** Pieces of one size made from a chocolate lot; the lot counts pieces */
-  pieces?: { type: string; recipeId: string; packSizeId: string; size: string; grams: number; fromLotId: string; recordedBy: string };
+  /**
+   * Pieces of one size made from a chocolate lot; the lot counts pieces. batchNumber is the number the
+   * factory gives the pieces, typed in after they are counted; it stays empty until someone adds it.
+   */
+  pieces?: { type: string; recipeId: string; packSizeId: string; size: string; grams: number; fromLotId: string; recordedBy: string; batchNumber?: string };
 }
 
 export interface RecipeIngredient { name: string; percent: number }

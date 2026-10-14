@@ -7,6 +7,7 @@ import { Printer, Undo2 } from 'lucide-react';
 import { Back, Button, Empty, Field, Notice, PageHeader, Panel, Table, Textarea, td, tdNum } from '@/components/ui';
 import { amountOf, customerName, userName } from '@/lib/derive';
 import { date, dateTime } from '@/lib/format';
+import { batchNumberOf } from '@/lib/pieces';
 import { useStore } from '@/lib/store';
 import type { Dispatch } from '@/lib/types';
 
@@ -33,7 +34,7 @@ function DispatchNote() {
     const win = window.open('', '_blank', 'width=720,height=820');
     if (!win) return;
     const business = store.business;
-    const rows = d.lines.map((l) => `<tr><td>${escapeHtml(l.material)}</td><td>${escapeHtml(l.lotId)}</td><td class="num">${escapeHtml(amountOf(l.quantity, l.unit))}</td></tr>`).join('');
+    const rows = d.lines.map((l) => `<tr><td>${escapeHtml(l.material)}</td><td>${escapeHtml(batchNumberOf(lotOf(l.lotId)) ?? '')}</td><td>${escapeHtml(l.lotId)}</td><td class="num">${escapeHtml(amountOf(l.quantity, l.unit))}</td></tr>`).join('');
     win.document.open();
     win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(`Delivery note ${d.id}`)}</title>
 <style>
@@ -52,7 +53,7 @@ function DispatchNote() {
   <div><h1>Delivery note</h1><div class="number">${escapeHtml(d.id)}</div><div class="muted" style="text-align:right">${escapeHtml(date(d.at))}</div></div>
 </div>
 <div class="to"><div class="muted">Deliver to</div><strong>${escapeHtml(customer?.name ?? d.customerId)}</strong>${customer?.address ? `<div>${escapeHtml(customer.address)}</div>` : ''}${customer?.contact ? `<div class="muted">${escapeHtml(customer.contact)}</div>` : ''}${d.reference ? `<div style="margin-top:6px">Order / invoice: <strong>${escapeHtml(d.reference)}</strong></div>` : ''}</div>
-<table><thead><tr><th>Product</th><th>Lot</th><th class="num">Quantity</th></tr></thead><tbody>${rows}</tbody></table>
+<table><thead><tr><th>Product</th><th>Batch number</th><th>Lot</th><th class="num">Quantity</th></tr></thead><tbody>${rows}</tbody></table>
 ${d.note ? `<p>${escapeHtml(d.note)}</p>` : ''}
 <div class="sign"><div>Dispatched by: ${escapeHtml(userName(store, d.recordedBy))}</div><div>Received by (name, signature, date)</div></div>
 </body></html>`);
@@ -89,13 +90,14 @@ ${d.note ? `<p>${escapeHtml(d.note)}</p>` : ''}
       )}
 
       <Panel title="Goods" subtitle="Each line came off this lot in the store. Open a lot to trace it back to the deliveries.">
-        <Table head={['Product', 'Lot', 'Quantity', 'Made', 'Batch']}>
+        <Table head={['Product', 'Batch number', 'Lot', 'Quantity', 'Made', 'Production batch']}>
           {dispatch.lines.map((l) => {
             const lot = lotOf(l.lotId);
             const batchId = lot?.source.type === 'batch' ? lot.source.batchId : undefined;
             return (
               <tr key={l.lotId}>
                 <td className={td}>{l.material}</td>
+                <td className={td}>{batchNumberOf(lot) ?? <span className="text-faint">—</span>}</td>
                 <td className={td}><Link href={`/trace/${l.lotId}`} className="font-semibold text-green">{l.lotId}</Link></td>
                 <td className={`${tdNum} font-semibold`}>{amountOf(l.quantity, l.unit)}</td>
                 <td className={td}>{lot ? date(lot.receivedAt) : '—'}</td>

@@ -326,6 +326,17 @@ function removePieces(s: State, lotId: string): State {
   return { ...s, lots };
 }
 
+/**
+ * The batch number of a lot of pieces, typed in after they are counted. It can be corrected until some of
+ * the pieces leave the factory: from then on dispatch notes and customers know the pieces by it.
+ */
+function setPiecesBatchNumber(s: State, lotId: string, batchNumber: string): State {
+  const lot = s.lots.find((l) => l.id === lotId) ?? fail('That lot was not found.');
+  const pieces = lot.pieces ?? fail(`Lot ${lot.id} is not a lot of pieces.`);
+  if (pieces.batchNumber && pieces.batchNumber !== batchNumber && lot.uses.some((u) => u.dispatchId)) fail(`Pieces from lot ${lot.id} were dispatched as batch ${pieces.batchNumber}; that number can no longer change.`);
+  return { ...s, lots: s.lots.map((l) => (l.id === lot.id ? { ...l, pieces: { ...pieces, batchNumber } } : l)) };
+}
+
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 /** The next dispatch note number. Dispatches are never removed (a cancelled one stays), so a number is never given twice. */
@@ -440,6 +451,7 @@ function runCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
       return { state: { ...s, plan: { lines: cmd.lines.filter((l) => l.pieces > 0), from: cmd.from, note: cmd.note || undefined, updatedAt: ctx.now, updatedBy: ctx.userId } } };
     }
     case 'removePieces': return { state: removePieces(s, cmd.lotId) };
+    case 'setPiecesBatchNumber': return { state: setPiecesBatchNumber(s, cmd.lotId, cmd.batchNumber) };
     case 'completeBatch': {
       const b = findBatch(s, cmd.batchId);
       if (b.status === 'completed') fail(`${batchDisplayName(b)} is already completed.`);

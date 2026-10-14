@@ -162,6 +162,9 @@ The chocolate from each run waits at **Pieces** until it is made into pieces, th
 3. Enter the number of good pieces of each size, for example 500 × 45 g bar and 90 × 80 g bar. Leave the other sizes empty.
 4. The line above the save button shows how much chocolate that is and how much stays in the lot.
 5. Select **Save pieces**. Each size becomes a lot of pieces, such as `FIN-0006 · 70% Dark · 45 g bar · 500`, with a label that traces back to the batch and the supplier.
+6. **Add the batch numbers.** The saved message lists each lot with an empty **Batch number** box. Type the batch number the pieces carry and select **Add batch number**. The app never fills one in: a lot stays without a batch number until someone types it.
+
+Pieces without a batch number wait under **Pieces waiting for a batch number** on the Pieces screen, and on **My work** for the people at Pieces. The number shows on the label, in the Store, on dispatch notes and in Batch tracing, where typing it opens the pieces' trace. A wrong number can be changed with **Change** until some of the pieces are dispatched; after that it stays, because the customer's delivery note carries it.
 
 Each size also shows how many pieces the production plan still needs of that type, for example *Plan: 300 still to make*.
 

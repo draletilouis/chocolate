@@ -7,6 +7,7 @@ import { ArrowRight, Pause, Target, Truck } from 'lucide-react';
 import { Badge, Button, Empty, Input, LinkButton, PageHeader, Panel } from '@/components/ui';
 import { batchDisplayName, chocolateWaiting, nextInput, stationQueue } from '@/lib/derive';
 import { kg } from '@/lib/format';
+import { piecesWithoutBatchNumber } from '@/lib/pieces';
 import { planProgress } from '@/lib/plan';
 import { useStore } from '@/lib/store';
 import { lineStations, stationById, stationName } from '@/lib/stations';
@@ -23,10 +24,13 @@ export default function WorkPage() {
     .filter((s) => (everything ? true : mine.includes(s.id)))
     .map((station) => ({ station, ...stationQueue(store, station.id) }));
   // Pieces are made from chocolate lots, not batches
-  const chocolate = lineStations.some((s) => s.form === 'pieces' && (everything || mine.includes(s.id))) ? chocolateWaiting(store) : [];
+  const makesPieces = lineStations.some((s) => s.form === 'pieces' && (everything || mine.includes(s.id)));
+  const chocolate = makesPieces ? chocolateWaiting(store) : [];
+  // Counted pieces still need the batch number they carry, typed in by hand
+  const unnumbered = makesPieces ? piecesWithoutBatchNumber(store) : [];
   const busy = queues.filter((q) => q.ready.length > 0 || q.held.length > 0);
-  const quiet = queues.filter((q) => q.ready.length === 0 && q.held.length === 0 && (q.station.form !== 'pieces' || chocolate.length === 0));
-  const total = busy.reduce((n, q) => n + q.ready.length, 0) + chocolate.length;
+  const quiet = queues.filter((q) => q.ready.length === 0 && q.held.length === 0 && (q.station.form !== 'pieces' || chocolate.length + unnumbered.length === 0));
+  const total = busy.reduce((n, q) => n + q.ready.length, 0) + chocolate.length + (unnumbered.length ? 1 : 0);
   const receives = everything || mine.includes('receiving');
   // Mixing and pieces work to the plan, so it is one tap away for them
   const plan = mine.some((s) => s === 'mixing' || s === 'packaging') || everything ? planProgress(store) : null;
@@ -104,7 +108,19 @@ export default function WorkPage() {
         </Panel>
       )}
 
-      {busy.length === 0 && chocolate.length === 0 && <Panel><Empty>Nothing is waiting at {everything ? 'any station' : 'your stations'}. {receives ? 'Start with a new delivery when beans arrive.' : 'New work appears here as soon as the station before you saves.'}</Empty></Panel>}
+      {unnumbered.length > 0 && (
+        <Panel title="Batch numbers" subtitle={`${unnumbered.length} lot${unnumbered.length === 1 ? '' : 's'} of pieces without a batch number · ${stationById.packaging.group}`}>
+          <div className="work-card">
+            <div className="min-w-0">
+              <div className="work-card-name">Add the batch numbers</div>
+              <div className="text-[13px] text-muted">Oldest: {unnumbered[0].pieces!.type} · {unnumbered[0].pieces!.size} · {unnumbered[0].id}</div>
+            </div>
+            <LinkButton href="/production/stations/packaging">Add batch numbers <ArrowRight size={16} /></LinkButton>
+          </div>
+        </Panel>
+      )}
+
+      {busy.length === 0 && chocolate.length === 0 && unnumbered.length === 0 && <Panel><Empty>Nothing is waiting at {everything ? 'any station' : 'your stations'}. {receives ? 'Start with a new delivery when beans arrive.' : 'New work appears here as soon as the station before you saves.'}</Empty></Panel>}
       {!everything && quiet.length > 0 && busy.length > 0 && <p className="text-[12px] text-muted">Nothing waiting at: {quiet.map((q) => q.station.name.toLowerCase()).join(', ')}.</p>}
     </>
   );

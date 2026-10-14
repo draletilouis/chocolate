@@ -55,6 +55,8 @@ export const commandSchema = z.discriminatedUnion('type', [
   // Pieces: good pieces of each size made from a chocolate lot, and undoing an unused lot of pieces.
   z.object({ type: z.literal('recordPieces'), lotId: id, pieces: z.array(z.object({ packSizeId: id, count: z.number().int().min(0).max(10_000_000) })).min(1).max(30) }),
   z.object({ type: z.literal('removePieces'), lotId: id }),
+  // The batch number given to a lot of pieces after they are counted; the app never fills it in itself.
+  z.object({ type: z.literal('setPiecesBatchNumber'), lotId: id, batchNumber: text(40).min(1, 'Enter the batch number.') }),
   // The production plan in pieces; managers only.
   z.object({ type: z.literal('setPlan'), lines: z.array(z.object({ recipeId: id, packSizeId: id, pieces: z.number().int().min(0).max(100_000_000) })).max(100), from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), note: text(500).optional() }),
   z.object({ type: z.literal('completeBatch'), batchId: id, note: text(1000).optional() }),
@@ -107,7 +109,7 @@ export type CommandType = Command['type'];
 
 /** Commands an operator may run. Everything else needs manager access. */
 export const operatorCommands = new Set<CommandType>([
-  'createBatch', 'receiveDelivery', 'saveRecord', 'saveMixingRun', 'undoMixingRun', 'emptyMixer', 'finishMixing', 'recordPieces', 'removePieces', 'completeBatch', 'updateBatchDetails', 'deleteBatch', 'placeHold', 'addCorrection',
+  'createBatch', 'receiveDelivery', 'saveRecord', 'saveMixingRun', 'undoMixingRun', 'emptyMixer', 'finishMixing', 'recordPieces', 'removePieces', 'setPiecesBatchNumber', 'completeBatch', 'updateBatchDetails', 'deleteBatch', 'placeHold', 'addCorrection',
 ]);
 
 export const signInSchema = z.discriminatedUnion('method', [

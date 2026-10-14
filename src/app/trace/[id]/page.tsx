@@ -36,7 +36,7 @@ function LotTrace({ lot, alsoBatch }: { lot: Lot; alsoBatch?: Batch }) {
     <>
       <Back href="/trace" label="Batch tracing" />
       <PageHeader eyebrow={lot.pieces ? 'Finished pieces' : lot.chocolate ? 'Chocolate' : delivered ? 'Delivery' : lot.category} title={`${lot.id} · ${lot.material}`}
-        subtitle={`${lotOrigin(store, lot)} · ${dateTime(lot.receivedAt)}`} action={<LinkButton variant="secondary" href={`/materials/${lot.id}`}>Open lot record</LinkButton>} />
+        subtitle={`${lot.pieces ? (lot.pieces.batchNumber ? `Batch number ${lot.pieces.batchNumber} · ` : 'No batch number yet · ') : ''}${lotOrigin(store, lot)} · ${dateTime(lot.receivedAt)}`} action={<LinkButton variant="secondary" href={`/materials/${lot.id}`}>Open lot record</LinkButton>} />
       {alsoBatch && <Notice tone="neutral">A production batch has the same number: <Link href={`/production/batches/${alsoBatch.id}`} className="font-semibold text-green">open batch {alsoBatch.id}</Link>.</Notice>}
 
       <div className="mb-5 grid grid-cols-3 gap-3">

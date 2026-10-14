@@ -34,7 +34,7 @@ function Origin({ step, forward }: { step: TraceStep; forward: boolean }) {
     return <>{batch?.status === 'completed' ? 'Completed' : batch?.status === 'hold' ? 'On hold' : waiting.length ? `Waiting at ${waiting.map((s) => stationName(s).toLowerCase()).join(', ')}` : 'In progress'}{step.at && ` · started ${date(step.at)}`}</>;
   }
   if (!lot) return <>Made inside batch <BatchLink batch={batch} batchId={origin.batchId} />, not stored as a lot{delivered}</>;
-  if (lot.pieces) return <>{lot.received} pieces counted {date(lot.receivedAt)} · batch <BatchLink batch={batch} batchId={origin.batchId} /></>;
+  if (lot.pieces) return <>{lot.pieces.batchNumber ? <>Batch number <strong className="text-ink">{lot.pieces.batchNumber}</strong> · </> : 'No batch number yet · '}{lot.received} pieces counted {date(lot.receivedAt)} · made by batch <BatchLink batch={batch} batchId={origin.batchId} /></>;
   if (origin.run) {
     const takenOut = origin.run.takenOut === lot.id;
     return <>{takenOut ? 'Taken out of the mixer after' : 'Made in'} mixing run {(origin.runIndex ?? 0) + 1} of batch <BatchLink batch={batch} batchId={origin.batchId} /> · recipe v{origin.run.recipeVersion} · {kg(lot.received)} · {date(lot.receivedAt)}</>;

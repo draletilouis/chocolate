@@ -233,7 +233,7 @@ export function searchRecords(state: State, query: string) {
   const hit = (...values: (string | undefined)[]) => values.some((v) => v?.toLowerCase().includes(q));
   return {
     batches: state.batches.filter((b) => hit(b.id, b.name, b.product, ...batchSuppliers(state, b))).sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
-    lots: state.lots.filter((l) => hit(l.id, l.material, ...(l.source.type === 'supplier' ? [supplierName(state, l.source.supplierId), l.source.supplierBatch] : [l.source.batchId]))).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt)),
+    lots: state.lots.filter((l) => hit(l.id, l.material, ...(l.source.type === 'supplier' ? [supplierName(state, l.source.supplierId), l.source.supplierBatch] : [l.source.batchId, l.pieces?.batchNumber]))).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt)),
     dispatches: state.dispatches.filter((d) => hit(d.id, d.reference, customerName(state, d.customerId))).sort((a, b) => b.at.localeCompare(a.at)),
   };
 }

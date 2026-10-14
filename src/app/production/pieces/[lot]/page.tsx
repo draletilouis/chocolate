@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { ArrowRight, Check, CheckCircle2, Undo2 } from 'lucide-react';
 import { Back, Button, Empty, LinkButton, Notice, PageHeader, Panel, UnitInput } from '@/components/ui';
+import { PiecesBatchNumber } from '@/components/PiecesBatchNumber';
 import { batchById, batchDisplayName, userName } from '@/lib/derive';
 import { dateTime, kg } from '@/lib/format';
 import { piecesFrom, piecesKg } from '@/lib/pieces';
@@ -50,8 +51,20 @@ export default function PiecesPage() {
         subtitle={<>{lot.chocolate.type} made at mixing by {batch ? <Link href={`/production/batches/${batch.id}`} className="font-semibold text-green">{batchDisplayName(batch)}</Link> : lot.source.batchId} · {dateTime(lot.receivedAt)}</>} />
       {saved && (
         <div className="saved-banner" role="status">
-          <div className="flex items-start gap-2"><CheckCircle2 size={18} className="mt-0.5 shrink-0" /><div><strong>Pieces saved.</strong> {saved.map((lotId) => { const l = store.lots.find((x) => x.id === lotId); return l ? `${l.received} × ${l.pieces?.size} (${l.id})` : lotId; }).join(' · ')}.</div></div>
-          <div className="mt-3 flex flex-wrap gap-2">{saved.map((lotId) => <LinkButton key={lotId} variant="secondary" href={`/materials/${lotId}`}>Label for {lotId}</LinkButton>)}<LinkButton href="/production/stations/packaging">Pieces queue <ArrowRight size={15} /></LinkButton></div>
+          <div className="flex items-start gap-2"><CheckCircle2 size={18} className="mt-0.5 shrink-0" /><div><strong>Pieces saved.</strong> Next, add the batch number of each lot. The app does not give one: type the number the pieces carry.</div></div>
+          <div className="mt-3">
+            {saved.map((lotId, i) => {
+              const l = store.lots.find((x) => x.id === lotId);
+              return l?.pieces && (
+                <div key={lotId} className="flex flex-wrap items-center gap-3 border-t border-[#bbf7d0] py-2 text-ink">
+                  <span className="min-w-[180px] text-[13px]"><strong className="tabular-nums">{l.received}</strong> × {l.pieces.size} <span className="text-muted">· {l.id}</span></span>
+                  <PiecesBatchNumber lot={l} autoFocus={i === 0} />
+                  {l.pieces.batchNumber && <LinkButton variant="secondary" href={`/materials/${l.id}`}>Label</LinkButton>}
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2"><LinkButton variant="secondary" href="/production/stations/packaging">Pieces queue <ArrowRight size={15} /></LinkButton></div>
         </div>
       )}
 
@@ -87,7 +100,9 @@ export default function PiecesPage() {
           const unused = p.uses.length === 0 && p.available === p.received;
           return (
             <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-5 py-3 text-[13px] last:border-b-0">
-              <span><Link href={`/materials/${p.id}`} className="font-semibold text-green">{p.id}</Link> · <strong className="tabular-nums">{p.received}</strong> × {p.pieces!.size} <span className="text-muted">· {kg(piecesKg(p.received, p.pieces!.grams))} · {dateTime(p.receivedAt)} · {userName(store, p.pieces!.recordedBy)}</span></span>
+              <span className="min-w-0 flex-1"><Link href={`/materials/${p.id}`} className="font-semibold text-green">{p.id}</Link> · <strong className="tabular-nums">{p.received}</strong> × {p.pieces!.size} <span className="text-muted">· {kg(piecesKg(p.received, p.pieces!.grams))} · {dateTime(p.receivedAt)} · {userName(store, p.pieces!.recordedBy)}</span>
+                {/* Lots just saved take their batch number in the banner above */}
+                {!saved?.includes(p.id) && <span className="mt-1.5 block"><PiecesBatchNumber lot={p} /></span>}</span>
               {unused && <Button variant="ghost" onClick={async () => { if (window.confirm(`Undo ${p.id} (${p.received} × ${p.pieces!.size})? The chocolate goes back to ${lot.id}.`)) await store.removePieces(p.id); }} aria-label={`Undo ${p.id}`}><Undo2 size={14} /> Undo</Button>}
             </div>
           );
