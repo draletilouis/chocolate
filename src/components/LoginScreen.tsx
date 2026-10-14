@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { ArrowLeft, Delete, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { brand } from '@/lib/brand';
+import { BrandMark } from '@/components/BrandMark';
 
 type Mode = 'pick' | 'pin' | 'email';
 
@@ -68,7 +69,7 @@ export function LoginScreen() {
   const side = (
     <aside className="login-left">
       <div className="login-brand">
-        <span className="login-brand-icon" aria-hidden="true">{brand.initials}</span>
+        <BrandMark className="login-brand-icon" />
         <div>
           <div className="login-brand-name">{brand.name}</div>
           <div className="login-brand-sub">Production workspace</div>
@@ -98,7 +99,7 @@ export function LoginScreen() {
       <main className="login-right">
         <div className="login-form-area">
           <div className="login-form-card" style={{ maxWidth: mode === 'pick' ? 560 : 440 }}>
-            <div className="login-mobile-brand"><span className="login-brand-icon is-light" aria-hidden="true">{brand.initials}</span><span className="login-mobile-wordmark">{brand.name}</span></div>
+            <div className="login-mobile-brand"><BrandMark className="login-brand-icon is-light" /><span className="login-mobile-wordmark">{brand.name}</span></div>
             {(store.notice || store.endedWhileOpen) && <div className="login-notice" role="status">{store.notice ?? 'You were signed out. Sign in again to carry on.'}</div>}
 
             {mode === 'pick' && (
@@ -215,7 +216,7 @@ function FirstManager() {
 
   return (
     <div className="login-form-card">
-      <div className="login-mobile-brand"><span className="login-brand-icon is-light" aria-hidden="true">{brand.initials}</span><span className="login-mobile-wordmark">{brand.name}</span></div>
+      <div className="login-mobile-brand"><BrandMark className="login-brand-icon is-light" /><span className="login-mobile-wordmark">{brand.name}</span></div>
       <div className="login-form-header">
         <div className="login-form-eyebrow">First start</div>
         <h2 className="login-form-title">Set up your factory</h2>

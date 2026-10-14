@@ -241,6 +241,9 @@
   .login-brand { position: relative; z-index: 1; display: flex; align-items: center; gap: 14px; }
   .login-brand-icon { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; background: linear-gradient(135deg, #F7941D 0%, #DE7E0E 100%); color: #fff; font-weight: 800; font-size: 15px; letter-spacing: 0.02em; }
   .login-brand-icon.is-light { width: 40px; height: 40px; }
+  /* Equator's black compass-star mark sits on white in every logo tile */
+  .is-mark { background: #fff; border: 1px solid #e2e8f0; }
+  .brand-mark-img { width: 64%; height: 64%; object-fit: contain; }
   .login-brand-name { color: #fff; font-size: 19px; font-weight: 600; letter-spacing: -0.02em; }
   .login-brand-sub { font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase; color: rgba(255,255,255,0.5); }
   .login-left-body { position: relative; z-index: 1; max-width: 400px; }
