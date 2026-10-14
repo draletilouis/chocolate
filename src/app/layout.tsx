@@ -2,8 +2,9 @@ import type { ReactNode } from 'react';
 import './globals.css';
 import { Shell } from '@/components/Shell';
 import { StoreProvider } from '@/lib/store';
+import { brand } from '@/lib/brand';
 
-export const metadata = { title: 'Chocolate Factory · Production', description: 'Record what happens at every station of the chocolate production line' };
+export const metadata = { title: `${brand.name} · Production`, description: 'Record what happens at every station of the chocolate production line' };
 
 export default function Layout({ children }: { children: ReactNode }) {
   return (

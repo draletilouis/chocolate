@@ -9,6 +9,7 @@ import { useStore } from '@/lib/store';
 import { groupBySlug, lineStations, stationById, stationGroups } from '@/lib/stations';
 import { LoginScreen } from './LoginScreen';
 import { Button, Notice } from './ui';
+import { brand } from '@/lib/brand';
 
 interface NavItem { href: string; label: string; short?: string; icon: LucideIcon; count?: 'alerts' | 'batches' | 'work'; managers?: boolean; phone?: false; also?: string }
 
@@ -66,7 +67,7 @@ export function Shell({ children }: { children: ReactNode }) {
     waiting: lineStations.filter((s) => s.group === g.name).reduce((n, s) => n + waitingCount(store, s.id), 0),
   }));
   const partSlug = pathname.startsWith('/production/parts/') ? pathname.split('/')[3] : undefined;
-  const pageTitle = partSlug && groupBySlug(partSlug) ? `Production line · ${groupBySlug(partSlug)!.name}` : pathname.startsWith('/search') ? 'Search' : active?.label ?? 'Chocolate Factory';
+  const pageTitle = partSlug && groupBySlug(partSlug) ? `Production line · ${groupBySlug(partSlug)!.name}` : pathname.startsWith('/search') ? 'Search' : active?.label ?? brand.name;
   const home = !isManager || myStations.length > 0 ? '/work' : '/production';
   const blocked = !isManager && managerOnly.some((p) => pathname === p || pathname.startsWith(`${p}/`));
   // Operators who open a manager page (an old link, a shared device) go straight to their own work.
@@ -105,9 +106,9 @@ export function Shell({ children }: { children: ReactNode }) {
       {/* Desktop sidebar: always visible */}
       <aside className="sidebar hidden md:flex">
         <Link href={home} className="nav-brand">
-          <span className="brand-logo-shell" aria-hidden="true">CF</span>
+          <span className="brand-logo-shell" aria-hidden="true">{brand.initials}</span>
           <span className="brand-copy">
-            <span className="brand-app">Chocolate Factory</span>
+            <span className="brand-app">{brand.name}</span>
             <span className="brand-sub">Production records</span>
           </span>
         </Link>
@@ -178,7 +179,7 @@ export function Shell({ children }: { children: ReactNode }) {
       {/* Mobile header */}
       <header className="mobile-header md:hidden">
         <Link href={home} className="flex items-center gap-2.5">
-          <span className="avatar is-small" style={{ background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', color: '#1A3862', border: '1px solid #cbd5e1' }}>CF</span>
+          <span className="avatar is-small" style={{ background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', color: '#1A3862', border: '1px solid #cbd5e1' }}>{brand.initials}</span>
           <span className="text-[15px] font-extrabold tracking-tight">{user?.name.split(' ')[0]}</span>
         </Link>
         <span className="flex items-center gap-1">

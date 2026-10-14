@@ -1,3 +1,4 @@
+import { brand } from './brand';
 import { stations } from './stations';
 import type {
   Batch, Customer, Dispatch, IdCounters, Lot, Mixer, ProductionPlan, OutputCategory, PackSize, Product, Recipe, Route, Supplier, Thresholds, User, BusinessDetails,
@@ -143,7 +144,7 @@ const slugOf = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').
 export const outputCategories: OutputCategory[] = stations.flatMap((s) => s.rows.map((row) => ({ ...row, id: `${s.id}:${slugOf(row.name)}`, station: s.id })));
 
 const business: BusinessDetails = {
-  name: 'Chocolate Factory',
+  name: brand.name,
   address: 'Kampala, Uganda',
   phone: '+256 700 000 000',
   email: 'production@cocoafactory.example',
@@ -171,6 +172,9 @@ export function seedState(): State {
 export function startState(): State {
   return { ...seedState(), users: [{ id: 'U-DL', name: 'Draleti Louis', role: 'Production manager', initials: 'DL', email: 'dralouis01@gmail.com', access: 'manager', stations: [] }] };
 }
+
+/** The business name every installation had before it was made for Equator Chocolate */
+export const placeholderBusinessName = 'Chocolate Factory';
 
 /** A real factory's first start: the line configuration only. People, suppliers, contact details and records are added by the factory. */
 export function configState(): State {
