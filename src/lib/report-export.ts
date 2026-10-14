@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import type { BusinessDetails } from './types';
+import { brand } from '@/lib/brand';
 
 export type ReportCell = string | number | null | undefined;
 
@@ -97,7 +98,7 @@ function columnWidth(header: string, rows: ReportCell[][], index: number) {
 }
 
 function reportSubtitle(snapshot: ReportExportSnapshot) {
-  const business = snapshot.business ?? { name: 'Chocolate Factory', address: '', phone: '', email: '' };
+  const business = snapshot.business ?? { name: brand.name, address: '', phone: '', email: '' };
   return [business.name, business.address, business.phone, business.email, snapshot.periodLabel].filter(Boolean).join(' | ');
 }
 
@@ -170,7 +171,7 @@ function addSummarySheet(workbook: ExcelJS.Workbook, snapshot: ReportExportSnaps
   const sheet = workbook.addWorksheet('Summary');
   styleTitle(sheet, snapshot.title, reportSubtitle(snapshot), 8);
 
-  const business = snapshot.business ?? { name: 'Chocolate Factory', address: '', phone: '', email: '' };
+  const business = snapshot.business ?? { name: brand.name, address: '', phone: '', email: '' };
   sheet.getCell('A4').value = 'Generated';
   sheet.getCell('B4').value = generated;
   sheet.getCell('B4').numFmt = DATE_TIME_FORMAT;
@@ -244,7 +245,7 @@ function addSummarySheet(workbook: ExcelJS.Workbook, snapshot: ReportExportSnaps
 export async function buildReportWorkbook(snapshot: ReportExportSnapshot) {
   const workbook = new ExcelJS.Workbook();
   const generated = new Date();
-  const businessName = snapshot.business?.name || 'Chocolate Factory';
+  const businessName = snapshot.business?.name || brand.name;
   workbook.creator = businessName;
   workbook.company = businessName;
   workbook.subject = `${snapshot.title} report`;
@@ -286,7 +287,7 @@ const generatedAt = () => new Date().toLocaleString('en-GB', {
 export function buildReportCsv(snapshot: ReportExportSnapshot) {
   const rows: ReportCell[][] = [
     [snapshot.title],
-    ['Business', snapshot.business?.name || 'Chocolate Factory'],
+    ['Business', snapshot.business?.name || brand.name],
     ['Address', snapshot.business?.address || ''],
     ['Phone', snapshot.business?.phone || ''],
     ['Email', snapshot.business?.email || ''],
@@ -318,7 +319,7 @@ export function downloadReportCsv(snapshot: ReportExportSnapshot) {
 }
 
 function printableHtml(snapshot: ReportExportSnapshot) {
-  const business = snapshot.business ?? { name: 'Chocolate Factory', address: '', phone: '', email: '' };
+  const business = snapshot.business ?? { name: brand.name, address: '', phone: '', email: '' };
   const contact = [business.address, business.phone, business.email].filter(Boolean).join(' · ');
   const sections = snapshot.sections.map((section) => `
     <section class="report-section">
@@ -371,7 +372,7 @@ function printableHtml(snapshot: ReportExportSnapshot) {
       <div class="meta"><span><strong>Period:</strong> ${escapeHtml(snapshot.periodLabel)}</span><span><strong>Generated:</strong> ${escapeHtml(generatedAt())}</span></div>
     </header>
     ${sections}
-    <footer>Generated from Chocolate Factory production records</footer>
+    <footer>Generated from ${escapeHtml(brand.name)} production records</footer>
   </body>
 </html>`;
 }

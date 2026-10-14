@@ -4,7 +4,7 @@ import { batchDisplayName, isReadyAt, issuedNumbers, nextBatchId, nextInput, nex
 import { kg } from '@/lib/format';
 import { piecesKg } from '@/lib/pieces';
 import { batchMaterialAtMixing, changeover, ingredientsOf, mixerStamp, mixingTotals, runLotIds, sourcesOf, storedAtMixing, versionOf } from '@/lib/mixing';
-import { demoCredentials, retiredChocolateTypes, seedState, type State } from '@/lib/seed';
+import { demoCredentials, placeholderBusinessName, retiredChocolateTypes, seedState, type State } from '@/lib/seed';
 import { stationById, stationName } from '@/lib/stations';
 import type { Batch, Destination, Dispatch, DispatchLine, Lot, LotCategory, LotUse, Mixer, MixingRun, OutputCategory, Recipe, RecipeIngredient, RecordedOutput, RunIngredient, StationId, StationRecord, User } from '@/lib/types';
 
@@ -649,8 +649,10 @@ function runCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
  *
  * Before version 5 there was a sorting station: see withoutSorting().
  */
-export function upgradeConfiguration(stored: State, now: string): State {
+export function upgradeConfiguration(saved: State, now: string): State {
   const seed = seedState();
+  // The old placeholder name becomes Equator Chocolate on labels and documents; a name the factory typed stays.
+  const stored = saved.business.name === placeholderBusinessName ? { ...saved, business: { ...saved.business, name: seed.business.name } } : saved;
   if (stored.workflowVersion >= seed.workflowVersion) return stored;
   const s = stored.workflowVersion >= 5 ? stored : withoutSorting(stored);
   const withStored = <T extends { id: string }>(current: T[], stored: T[]) => [...current, ...stored.filter((x) => !current.some((c) => c.id === x.id))];
