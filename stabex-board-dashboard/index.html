@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Board Performance Dashboard</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f4f3f0;
+    --surface: #fcfcfb;
+    --border: #e4e2dc;
+    --grid: #ebe9e4;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #77756f;
+    --accent: #c8102e;
+    --series-1: #2a78d6;
+    --series-1-soft: #9ec5f4;
+    --target: #52514e;
+    --good: #0ca30c;
+    --warning: #fab219;
+    --critical: #d03b3b;
+    --good-text: #006300;
+    --warning-text: #8a5a00;
+    --critical-text: #b02525;
+    --good-bg: #e7f5e7;
+    --warning-bg: #fdf3dc;
+    --critical-bg: #fbe8e8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #121211;
+      --surface: #1a1a19;
+      --border: #2e2e2b;
+      --grid: #2a2a27;
+      --text-primary: #f0efec;
+      --text-secondary: #c3c2b7;
+      --text-muted: #9a998f;
+      --accent: #ff5a6e;
+      --series-1: #3987e5;
+      --series-1-soft: #1c5cab;
+      --target: #c3c2b7;
+      --good-text: #6fd46f;
+      --warning-text: #f7c75a;
+      --critical-text: #f08080;
+      --good-bg: #16301a;
+      --warning-bg: #352a10;
+      --critical-bg: #3a1a1a;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #121211;
+    --surface: #1a1a19;
+    --border: #2e2e2b;
+    --grid: #2a2a27;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --text-muted: #9a998f;
+    --accent: #ff5a6e;
+    --series-1: #3987e5;
+    --series-1-soft: #1c5cab;
+    --target: #c3c2b7;
+    --good-text: #6fd46f;
+    --warning-text: #f7c75a;
+    --critical-text: #f08080;
+    --good-bg: #16301a;
+    --warning-bg: #352a10;
+    --critical-bg: #3a1a1a;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text-primary);
+    font: 15px/1.45 "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 20px 24px 32px; }
+
+  header.top {
+    display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between;
+    gap: 12px; border-bottom: 3px solid var(--accent); padding-bottom: 12px; margin-bottom: 16px;
+  }
+  .company { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-secondary); font-weight: 600; }
+  h1 { margin: 2px 0 0; font-size: 26px; line-height: 1.2; }
+  .period { color: var(--text-secondary); font-size: 14px; margin-top: 2px; }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    font: inherit; font-size: 13px; padding: 7px 12px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text-primary);
+  }
+  button:hover { border-color: var(--text-muted); }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  .sample-banner {
+    background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning);
+    border-radius: 8px; padding: 8px 12px; margin-bottom: 14px; font-size: 13px;
+  }
+  .sample-banner[hidden] { display: none; }
+
+  .headline {
+    background: var(--surface); border: 1px solid var(--border); border-left: 5px solid var(--accent);
+    border-radius: 8px; padding: 14px 18px; margin-bottom: 16px;
+  }
+  .headline .lbl { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); font-weight: 600; }
+  .headline p { margin: 4px 0 0; font-size: 19px; line-height: 1.4; font-weight: 500; }
+
+  .kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .kpi .name { font-size: 13px; color: var(--text-secondary); font-weight: 600; min-height: 2.6em; }
+  .kpi .val { font-size: 28px; font-weight: 700; line-height: 1.1; margin: 4px 0 8px; white-space: nowrap; }
+  .kpi .val small { font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-left: 2px; }
+  .kpi .cmp { font-size: 12.5px; color: var(--text-secondary); display: grid; gap: 2px; }
+  .kpi .cmp b { color: var(--text-primary); font-weight: 600; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700;
+    padding: 3px 9px 3px 7px; border-radius: 999px; margin-top: 10px;
+  }
+  .chip .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .chip.good { background: var(--good-bg); color: var(--good-text); } .chip.good .dot { background: var(--good); }
+  .chip.warn { background: var(--warning-bg); color: var(--warning-text); } .chip.warn .dot { background: var(--warning); }
+  .chip.bad { background: var(--critical-bg); color: var(--critical-text); } .chip.bad .dot { background: var(--critical); }
+
+  .charts { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .card h2 { margin: 0; font-size: 15px; }
+  .card .sub { font-size: 12.5px; color: var(--text-muted); margin: 2px 0 8px; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw-bar { width: 12px; height: 12px; border-radius: 3px; background: var(--series-1); }
+  .sw-line { width: 16px; height: 0; border-top: 2px dashed var(--target); }
+  svg { display: block; width: 100%; height: auto; overflow: visible; }
+  svg text { fill: var(--text-secondary); font-size: 11px; }
+  svg .val-label { fill: var(--text-primary); font-weight: 600; }
+  svg .gridline { stroke: var(--grid); stroke-width: 1; }
+  svg .bar { fill: var(--series-1); }
+  svg .bar:hover, svg .hit:hover + .bar { opacity: .8; }
+  svg .target { stroke: var(--target); stroke-width: 2; stroke-dasharray: 5 4; fill: none; }
+  svg .tdot { fill: var(--surface); stroke: var(--target); stroke-width: 2; }
+
+  .story { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .story ul { margin: 8px 0 0; padding-left: 0; list-style: none; display: grid; gap: 8px; }
+  .story li { padding-left: 22px; position: relative; font-size: 14px; }
+  .story li::before { position: absolute; left: 0; top: 0; font-weight: 700; }
+  .story .wins li::before { content: "▲"; color: var(--good-text); font-size: 12px; top: 2px; }
+  .story .risks li::before { content: "!"; color: var(--critical-text); left: 5px; }
+  .story .asks li::before { content: "→"; color: var(--accent); }
+  .story .wins { border-top: 4px solid var(--good); }
+  .story .risks { border-top: 4px solid var(--critical); }
+  .story .asks { border-top: 4px solid var(--accent); }
+
+  footer { margin-top: 16px; font-size: 12px; color: var(--text-muted); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+
+  #tip {
+    position: fixed; pointer-events: none; z-index: 20; background: var(--text-primary); color: var(--surface);
+    font-size: 12px; padding: 6px 9px; border-radius: 6px; white-space: nowrap; display: none;
+  }
+
+  /* Edit panel */
+  dialog { width: min(980px, 96vw); max-height: 92vh; border: 1px solid var(--border); border-radius: 12px; padding: 0; background: var(--surface); color: var(--text-primary); }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  .dlg-head { position: sticky; top: 0; background: var(--surface); padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 10px; z-index: 1; }
+  .dlg-head h3 { margin: 0; font-size: 17px; }
+  .dlg-body { padding: 8px 20px 20px; }
+  .dlg-body h4 { margin: 18px 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-secondary); }
+  .dlg-body .hint { font-size: 12px; color: var(--text-muted); margin: 0 0 6px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  label.f { display: grid; gap: 3px; font-size: 12px; color: var(--text-secondary); }
+  input, textarea, select {
+    font: inherit; font-size: 13px; padding: 6px 8px; border-radius: 6px; width: 100%;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text-primary);
+  }
+  textarea { min-height: 84px; resize: vertical; }
+  table.ed { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.ed th { text-align: left; font-weight: 600; color: var(--text-secondary); padding: 4px; }
+  table.ed td { padding: 2px 4px; }
+  table.ed td.num input { text-align: right; }
+
+  @media (max-width: 1100px) {
+    .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .charts { grid-template-columns: 1fr 1fr; }
+    .charts .card:first-child { grid-column: 1 / -1; }
+  }
+  @media (max-width: 680px) {
+    .wrap { padding: 14px 16px 24px; }
+    .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .charts, .story, .grid2, .grid3 { grid-template-columns: 1fr; }
+    .kpi .val { font-size: 23px; }
+    h1 { font-size: 21px; }
+    .headline p { font-size: 16px; }
+  }
+  @media print {
+    @page { size: A4 landscape; margin: 8mm; }
+    body { background: #fff; font-size: 12px; }
+    .toolbar, .sample-banner, #tip { display: none !important; }
+    .wrap { max-width: none; padding: 0; }
+    .card, .headline { break-inside: avoid; }
+    .kpis { grid-template-columns: repeat(6, 1fr); }
+    .charts { grid-template-columns: 1.5fr 1fr 1fr; }
+    .story { grid-template-columns: repeat(3, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="company" id="company"></div>
+      <h1 id="title"></h1>
+      <div class="period" id="period"></div>
+    </div>
+    <div class="toolbar">
+      <button id="btnEdit" class="primary">Edit figures</button>
+      <button id="btnPresent">Present full screen</button>
+      <button id="btnPrint">Print / Save PDF</button>
+      <button id="btnTheme" title="Switch light / dark">Light / Dark</button>
+    </div>
+  </header>
+
+  <div class="sample-banner" id="sampleBanner">
+    <strong>Sample figures.</strong> Every number on this page is a placeholder. Click <b>Edit figures</b> and enter the real numbers from Power BI / Business Central before you present.
+  </div>
+
+  <section class="headline">
+    <div class="lbl">The story this month</div>
+    <p id="headline"></p>
+  </section>
+
+  <section class="kpis" id="kpis" aria-label="Key performance indicators"></section>
+
+  <section class="charts">
+    <div class="card">
+      <h2 id="trendTitle"></h2>
+      <div class="sub" id="trendSub"></div>
+      <div class="legend"><span><i class="sw-bar"></i>Actual</span><span><i class="sw-line"></i>Target</span></div>
+      <div id="trend"></div>
+    </div>
+    <div class="card">
+      <h2 id="mixTitle"></h2>
+      <div class="sub" id="mixSub"></div>
+      <div id="mix"></div>
+    </div>
+    <div class="card">
+      <h2 id="geoTitle"></h2>
+      <div class="sub" id="geoSub"></div>
+      <div id="geo"></div>
+    </div>
+  </section>
+
+  <section class="story">
+    <div class="card wins"><h2>What went well</h2><ul id="wins"></ul></div>
+    <div class="card risks"><h2>What needs attention</h2><ul id="risks"></ul></div>
+    <div class="card asks"><h2>Decisions needed from the Board</h2><ul id="asks"></ul></div>
+  </section>
+
+  <footer>
+    <span id="source"></span>
+    <span>Status: <b style="color:var(--good-text)">● On track</b> ≥ 100% of target · <b style="color:var(--warning-text)">● Watch</b> 95–99% · <b style="color:var(--critical-text)">● Action</b> &lt; 95%</span>
+  </footer>
+</div>
+
+<div id="tip" role="tooltip"></div>
+
+<dialog id="dlg">
+  <form method="dialog" id="edForm">
+    <div class="dlg-head">
+      <h3>Edit dashboard figures</h3>
+      <div class="toolbar">
+        <button type="button" id="btnReset">Reset to sample</button>
+        <button type="button" id="btnCancel">Cancel</button>
+        <button type="submit" class="primary" id="btnSave">Save &amp; update</button>
+      </div>
+    </div>
+    <div class="dlg-body" id="edBody"></div>
+  </form>
+</dialog>
+
+<script>
+/* =====================================================================
+   SAMPLE DATA - every figure below is a placeholder.
+   Replace it with the real figures, either with the "Edit figures"
+   button (saved in this browser) or by editing this block directly.
+   ===================================================================== */
+const SAMPLE = {
+  isSample: true,
+  company: "Stabex International",
+  title: "Board Performance Dashboard",
+  period: "September 2026 · Year to date",
+  asAt: "30 Sep 2026",
+  source: "Source: Microsoft Dynamics 365 Business Central via Power BI",
+  headline: "Volumes are ahead of target and last year, but margin per litre is squeezed by supply costs. Cash is healthy; customer debt is rising and needs a firm collection push.",
+  kpis: [
+    { name: "Revenue (YTD)",          prefix: "UGX ", suffix: "bn",  actual: 1248, target: 1200, lastYear: 1105, lowerIsBetter: false, dp: 0 },
+    { name: "Fuel volume sold (YTD)", prefix: "",     suffix: "M L", actual: 312,  target: 300,  lastYear: 288,  lowerIsBetter: false, dp: 0 },
+    { name: "Gross margin per litre", prefix: "UGX ", suffix: "",    actual: 412,  target: 440,  lastYear: 430,  lowerIsBetter: false, dp: 0 },
+    { name: "EBITDA (YTD)",           prefix: "UGX ", suffix: "bn",  actual: 86,   target: 88,   lastYear: 79,   lowerIsBetter: false, dp: 0 },
+    { name: "Cash & bank",            prefix: "UGX ", suffix: "bn",  actual: 64,   target: 55,   lastYear: 48,   lowerIsBetter: false, dp: 0 },
+    { name: "Debtor days",            prefix: "",     suffix: "days",actual: 41,   target: 35,   lastYear: 37,   lowerIsBetter: true,  dp: 0 }
+  ],
+  trend: {
+    title: "Monthly fuel volume vs target",
+    unit: "M litres",
+    months: [
+      { m: "Oct", actual: 31.0, target: 32.0 }, { m: "Nov", actual: 32.4, target: 32.0 },
+      { m: "Dec", actual: 36.1, target: 34.5 }, { m: "Jan", actual: 32.2, target: 32.5 },
+      { m: "Feb", actual: 31.5, target: 31.0 }, { m: "Mar", actual: 34.0, target: 33.0 },
+      { m: "Apr", actual: 33.1, target: 33.0 }, { m: "May", actual: 34.8, target: 33.5 },
+      { m: "Jun", actual: 35.2, target: 34.0 }, { m: "Jul", actual: 36.0, target: 34.5 },
+      { m: "Aug", actual: 35.6, target: 35.0 }, { m: "Sep", actual: 36.9, target: 35.5 }
+    ]
+  },
+  mix: {
+    title: "Volume by product",
+    unit: "M litres YTD",
+    items: [
+      { name: "Diesel (AGO)", value: 158 }, { name: "Petrol (PMS)", value: 121 },
+      { name: "Jet A-1", value: 14 }, { name: "Kerosene (BIK)", value: 9 },
+      { name: "LPG", value: 6 }, { name: "Lubricants", value: 4 }
+    ]
+  },
+  geo: {
+    title: "Volume by country",
+    unit: "M litres YTD",
+    items: [
+      { name: "Uganda", value: 205 }, { name: "Kenya", value: 41 },
+      { name: "Rwanda", value: 27 }, { name: "South Sudan", value: 22 },
+      { name: "DR Congo", value: 17 }
+    ]
+  },
+  wins: [
+    "Volume 4% ahead of target and 8% above last year",
+    "Cash position UGX 64bn, comfortably above plan",
+    "New stations opened on schedule"
+  ],
+  risks: [
+    "Margin per litre 6% below target on higher supply costs",
+    "Debtor days up to 41 (target 35): two large accounts overdue",
+    "EBITDA slightly behind plan (98%)"
+  ],
+  asks: [
+    "Approve credit-limit review for top 10 corporate customers",
+    "Note the margin-recovery plan from management",
+    "Approve capex for next phase of station expansion"
+  ]
+};
+
+const STORE_KEY = "board-dashboard-data-v1";
+let data = load();
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return structuredClone(SAMPLE);
+}
+function save() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch (e) {}
+}
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmt = (n, dp = 0) => Number(n).toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
+
+function status(k) {
+  if (!k.target) return null;
+  const ratio = k.lowerIsBetter ? k.target / k.actual : k.actual / k.target;
+  if (ratio >= 1) return { cls: "good", text: "On track" };
+  if (ratio >= 0.95) return { cls: "warn", text: "Watch" };
+  return { cls: "bad", text: "Action needed" };
+}
+function pctDiff(a, b) {
+  if (!b) return "–";
+  const d = (a - b) / b * 100;
+  return (d >= 0 ? "+" : "−") + Math.abs(d).toFixed(1) + "%";
+}
+
+function renderKpis() {
+  $("kpis").innerHTML = data.kpis.map(k => {
+    const s = status(k);
+    const unitBefore = k.prefix ? `<small>${esc(k.prefix.trim())}</small> ` : "";
+    const unitAfter = k.suffix ? `<small>${esc(k.suffix)}</small>` : "";
+    return `<article class="card kpi">
+      <div class="name">${esc(k.name)}</div>
+      <div class="val">${unitBefore}${fmt(k.actual, k.dp)}${unitAfter}</div>
+      <div class="cmp">
+        <span>Target ${fmt(k.target, k.dp)} · <b>${pctDiff(k.actual, k.target)}</b></span>
+        <span>Last year ${fmt(k.lastYear, k.dp)} · <b>${pctDiff(k.actual, k.lastYear)}</b></span>
+      </div>
+      ${s ? `<span class="chip ${s.cls}"><i class="dot"></i>${s.text}</span>` : ""}
+    </article>`;
+  }).join("");
+}
+
+/* Monthly actual (bars) vs target (dashed line) - one shared axis */
+function renderTrend() {
+  const t = data.trend, ms = t.months;
+  const W = 620, H = 250, L = 34, R = 8, T = 22, B = 24;
+  const max = Math.max(...ms.flatMap(d => [d.actual, d.target])) * 1.12 || 1;
+  const nice = niceStep(max / 4);
+  const top = Math.ceil(max / nice) * nice;
+  const y = v => T + (H - T - B) * (1 - v / top);
+  const band = (W - L - R) / ms.length;
+  const bw = Math.min(28, band * 0.6);
+  let s = "";
+  for (let v = 0; v <= top + 1e-9; v += nice) {
+    s += `<line class="gridline" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/>`;
+    s += `<text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${fmt(v, nice < 1 ? 1 : 0)}</text>`;
+  }
+  ms.forEach((d, i) => {
+    const cx = L + band * i + band / 2, yt = y(d.actual), h = y(0) - yt;
+    s += `<path class="bar" d="${roundTopBar(cx - bw / 2, yt, bw, h, 4)}"/>`;
+    s += `<rect class="hit" x="${cx - band / 2}" y="${T}" width="${band}" height="${H - T - B}" fill="transparent"
+            data-tip="${esc(d.m)}: actual ${fmt(d.actual, 1)} vs target ${fmt(d.target, 1)} ${esc(t.unit)} (${pctDiff(d.actual, d.target)})"/>`;
+    s += `<text x="${cx}" y="${H - 6}" text-anchor="middle">${esc(d.m)}</text>`;
+  });
+  const pts = ms.map((d, i) => [L + band * i + band / 2, y(d.target)]);
+  s += `<polyline class="target" points="${pts.map(p => p.join(",")).join(" ")}"/>`;
+  const last = ms[ms.length - 1], lx = pts[pts.length - 1][0];
+  s += `<text class="val-label" x="${lx}" y="${y(last.actual) - 8}" text-anchor="middle">${fmt(last.actual, 1)}</text>`;
+  $("trend").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(t.title)}">${s}</svg>`;
+  $("trendTitle").textContent = t.title;
+  const sumA = ms.reduce((a, d) => a + Number(d.actual), 0), sumT = ms.reduce((a, d) => a + Number(d.target), 0);
+  $("trendSub").textContent = `${t.unit} · last ${ms.length} months · ${pctDiff(sumA, sumT)} vs target overall`;
+}
+
+/* Ranked horizontal bars with share labels */
+function renderBars(el, block) {
+  const items = [...block.items].sort((a, b) => b.value - a.value);
+  const total = items.reduce((a, d) => a + Number(d.value), 0) || 1;
+  const max = Math.max(...items.map(d => d.value)) || 1;
+  const W = 360, rowH = 30, LBL = 104, VAL = 74;
+  const H = items.length * rowH;
+  let s = "";
+  items.forEach((d, i) => {
+    const yy = i * rowH, w = Math.max(2, (W - LBL - VAL) * d.value / max);
+    const share = d.value / total * 100;
+    s += `<text x="0" y="${yy + 19}">${esc(d.name)}</text>`;
+    s += `<path class="bar" d="${roundRightBar(LBL, yy + 7, w, 16, 4)}"/>`;
+    s += `<text class="val-label" x="${LBL + w + 6}" y="${yy + 19}">${fmt(d.value)} <tspan style="font-weight:400" fill="var(--text-muted)">· ${share.toFixed(0)}%</tspan></text>`;
+    s += `<rect x="0" y="${yy}" width="${W}" height="${rowH}" fill="transparent" data-tip="${esc(d.name)}: ${fmt(d.value)} ${esc(block.unit)} (${share.toFixed(1)}% of total)"/>`;
+  });
+  $(el).innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(block.title)}">${s}</svg>`;
+  $(el + "Title").textContent = block.title;
+  $(el + "Sub").textContent = `${block.unit} · total ${fmt(total)}`;
+}
+
+function niceStep(raw) {
+  const p = Math.pow(10, Math.floor(Math.log10(raw)));
+  const n = raw / p;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p;
+}
+function roundTopBar(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h);
+  return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`;
+}
+function roundRightBar(x, y, w, h, r) {
+  r = Math.min(r, h / 2, w);
+  return `M${x},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h - r}Q${x + w},${y + h} ${x + w - r},${y + h}H${x}Z`;
+}
+
+function renderList(id, arr) {
+  $(id).innerHTML = arr.filter(s => s.trim()).map(s => `<li>${esc(s)}</li>`).join("");
+}
+
+function render() {
+  $("company").textContent = data.company;
+  $("title").textContent = data.title;
+  $("period").textContent = data.period;
+  $("headline").textContent = data.headline;
+  $("source").textContent = `${data.source} · Figures as at ${data.asAt}`;
+  $("sampleBanner").hidden = !data.isSample;
+  document.title = data.title;
+  renderKpis();
+  renderTrend();
+  renderBars("mix", data.mix);
+  renderBars("geo", data.geo);
+  renderList("wins", data.wins);
+  renderList("risks", data.risks);
+  renderList("asks", data.asks);
+}
+
+/* Tooltip */
+const tip = $("tip");
+document.addEventListener("mousemove", e => {
+  const t = e.target.closest && e.target.closest("[data-tip]");
+  if (!t) { tip.style.display = "none"; return; }
+  tip.textContent = t.getAttribute("data-tip");
+  tip.style.display = "block";
+  const x = Math.min(e.clientX + 14, window.innerWidth - tip.offsetWidth - 8);
+  tip.style.left = x + "px";
+  tip.style.top = (e.clientY + 16) + "px";
+});
+
+/* ---------- Edit panel ---------- */
+function inp(path, val, type = "text", cls = "") {
+  return `<input data-path="${path}" type="${type}" ${type === "number" ? 'step="any"' : ""} value="${esc(val)}" class="${cls}">`;
+}
+function buildEditor() {
+  const d = data;
+  let h = "";
+  h += `<h4>Header</h4><div class="grid2">
+    <label class="f">Company ${inp("company", d.company)}</label>
+    <label class="f">Dashboard title ${inp("title", d.title)}</label>
+    <label class="f">Period shown ${inp("period", d.period)}</label>
+    <label class="f">Figures as at ${inp("asAt", d.asAt)}</label>
+  </div>
+  <label class="f" style="margin-top:10px">Source line ${inp("source", d.source)}</label>
+  <label class="f" style="margin-top:10px">The story this month (one or two sentences)
+    <textarea data-path="headline">${esc(d.headline)}</textarea></label>`;
+
+  h += `<h4>Headline numbers</h4><p class="hint">Status is worked out automatically from Actual vs Target. Tick "Lower is better" for things like debtor days or costs.</p>
+  <table class="ed"><tr><th>Measure</th><th>Prefix</th><th>Suffix</th><th>Actual</th><th>Target</th><th>Last year</th><th>Decimals</th><th>Lower is better</th></tr>`;
+  d.kpis.forEach((k, i) => {
+    h += `<tr><td>${inp(`kpis.${i}.name`, k.name)}</td><td style="width:70px">${inp(`kpis.${i}.prefix`, k.prefix)}</td>
+      <td style="width:70px">${inp(`kpis.${i}.suffix`, k.suffix)}</td>
+      <td class="num">${inp(`kpis.${i}.actual`, k.actual, "number")}</td><td class="num">${inp(`kpis.${i}.target`, k.target, "number")}</td>
+      <td class="num">${inp(`kpis.${i}.lastYear`, k.lastYear, "number")}</td><td class="num" style="width:70px">${inp(`kpis.${i}.dp`, k.dp, "number")}</td>
+      <td style="text-align:center"><input type="checkbox" data-path="kpis.${i}.lowerIsBetter" ${k.lowerIsBetter ? "checked" : ""} style="width:auto"></td></tr>`;
+  });
+  h += `</table>`;
+
+  h += `<h4>Monthly trend</h4><div class="grid2">
+    <label class="f">Chart title ${inp("trend.title", d.trend.title)}</label>
+    <label class="f">Unit ${inp("trend.unit", d.trend.unit)}</label></div>
+    <table class="ed" style="margin-top:8px"><tr><th>Month</th><th>Actual</th><th>Target</th><th></th><th>Month</th><th>Actual</th><th>Target</th></tr>`;
+  const half = Math.ceil(d.trend.months.length / 2);
+  for (let r = 0; r < half; r++) {
+    h += "<tr>";
+    [r, r + half].forEach((i, c) => {
+      const m = d.trend.months[i];
+      if (c === 1) h += "<td style='width:16px'></td>";
+      h += m ? `<td>${inp(`trend.months.${i}.m`, m.m)}</td><td class="num">${inp(`trend.months.${i}.actual`, m.actual, "number")}</td><td class="num">${inp(`trend.months.${i}.target`, m.target, "number")}</td>` : "<td></td><td></td><td></td>";
+    });
+    h += "</tr>";
+  }
+  h += `</table>`;
+
+  h += `<div class="grid2">`;
+  ["mix", "geo"].forEach(key => {
+    const b = d[key];
+    h += `<div><h4>${key === "mix" ? "Breakdown 1" : "Breakdown 2"}</h4>
+      <label class="f">Title ${inp(`${key}.title`, b.title)}</label>
+      <label class="f" style="margin-top:6px">Unit ${inp(`${key}.unit`, b.unit)}</label>
+      <p class="hint" style="margin-top:8px">One per line, as <i>Name, value</i> (e.g. <i>Uganda, 205</i>).</p>
+      <textarea data-list="${key}">${esc(b.items.map(x => `${x.name}, ${x.value}`).join("\n"))}</textarea></div>`;
+  });
+  h += `</div>`;
+
+  h += `<h4>Narrative</h4><p class="hint">One point per line. Keep to 3 each for a 3-minute read.</p><div class="grid3">
+    <label class="f">What went well <textarea data-lines="wins">${esc(d.wins.join("\n"))}</textarea></label>
+    <label class="f">What needs attention <textarea data-lines="risks">${esc(d.risks.join("\n"))}</textarea></label>
+    <label class="f">Decisions needed <textarea data-lines="asks">${esc(d.asks.join("\n"))}</textarea></label></div>`;
+  $("edBody").innerHTML = h;
+}
+function setPath(obj, path, val) {
+  const ks = path.split(".");
+  let o = obj;
+  for (let i = 0; i < ks.length - 1; i++) o = o[ks[i]];
+  o[ks[ks.length - 1]] = val;
+}
+function readEditor() {
+  const d = structuredClone(data);
+  $("edBody").querySelectorAll("[data-path]").forEach(el => {
+    let v = el.type === "checkbox" ? el.checked : el.value;
+    if (el.type === "number") v = Number(v) || 0;
+    setPath(d, el.dataset.path, v);
+  });
+  $("edBody").querySelectorAll("[data-list]").forEach(el => {
+    d[el.dataset.list].items = el.value.split("\n").map(l => l.trim()).filter(Boolean).map(l => {
+      const i = l.lastIndexOf(",");
+      return i < 0 ? { name: l, value: 0 } : { name: l.slice(0, i).trim(), value: Number(l.slice(i + 1).replace(/[^\d.\-]/g, "")) || 0 };
+    });
+  });
+  $("edBody").querySelectorAll("[data-lines]").forEach(el => {
+    d[el.dataset.lines] = el.value.split("\n").map(l => l.trim()).filter(Boolean);
+  });
+  d.isSample = false;
+  return d;
+}
+
+$("btnEdit").onclick = () => { buildEditor(); $("dlg").showModal(); };
+$("btnCancel").onclick = () => $("dlg").close();
+$("edForm").onsubmit = () => { data = readEditor(); save(); render(); };
+$("btnReset").onclick = () => {
+  if (!confirm("Replace everything with the sample figures?")) return;
+  data = structuredClone(SAMPLE);
+  try { localStorage.removeItem(STORE_KEY); } catch (e) {}
+  buildEditor(); render();
+};
+$("btnPrint").onclick = () => window.print();
+$("btnPresent").onclick = () => {
+  const el = document.documentElement;
+  if (!document.fullscreenElement) el.requestFullscreen && el.requestFullscreen();
+  else document.exitFullscreen();
+};
+$("btnTheme").onclick = () => {
+  const root = document.documentElement;
+  const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  root.dataset.theme = dark ? "light" : "dark";
+};
+
+render();
+</script>
+</body>
+</html>
