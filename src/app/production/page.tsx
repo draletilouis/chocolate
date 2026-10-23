@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowRight, Plus } from 'lucide-react';
+import { ArrowRight, Network, Plus } from 'lucide-react';
 import { Badge, Empty, LinkButton, PageHeader, Panel, RowLink } from '@/components/ui';
 import { activeBatches, batchAlerts, batchDisplayName, currentStation, waitingAt, waitingCount } from '@/lib/derive';
 import { useStore } from '@/lib/store';
@@ -14,7 +14,7 @@ export default function ProductionPage() {
   return (
     <>
       <PageHeader eyebrow="Production line" title="Which batch needs attention?" subtitle="Continue a batch, or open your part of the line to record what you weighed."
-        action={<LinkButton href="/production/new"><Plus size={16} /> New batch</LinkButton>} />
+        action={<><LinkButton variant="secondary" href="/production/flow"><Network size={16} /> Floor flow</LinkButton><LinkButton href="/production/new"><Plus size={16} /> New batch</LinkButton></>} />
 
       <Panel title="Active batches" subtitle={`${batches.length} in progress`}>
         {batches.length === 0 && <Empty>No batches in progress. Start one when production begins.</Empty>}

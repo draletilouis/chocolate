@@ -77,7 +77,7 @@ export default function StationPage() {
           })}
         </Panel>
       )}
-      <p className="text-[12px] text-muted">Looking for another station? <Link href="/production" className="font-semibold text-green">Back to the production line</Link>.</p>
+      <p className="text-[12px] text-muted">Looking for another station? <Link href="/production" className="font-semibold text-green">Back to the production line</Link>, or see where this station&apos;s material comes from and goes on the <Link href={`/production/flow?station=${station.id}`} className="font-semibold text-green">floor flow</Link>.</p>
     </>
   );
 }

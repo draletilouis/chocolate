@@ -74,6 +74,7 @@ node interaction-audit.cjs   # clicks through every flow and saves screenshots (
 - `src/components/Shell.tsx` – sidebar (desktop) and bottom navigation (mobile)
 - `src/components/BatchLabel.tsx` – printable batch cards and labels with the batch name and supplier
 - `src/app/work` – My work (each person's waiting batches); `src/app/search` – search
+- `src/lib/flow.ts`, `src/components/FloorMap.tsx`, `src/app/production/flow` – the floor flow map: every move of material between stations (carried on in a batch, or stored and taken out), added up per route and per station, and one batch's chain
 - `src/app/production/**` – production line, station queues, batch steps, one-screen station recording, receive a delivery, mixing, pieces
 - `src/app/dispatch/**`, `src/lib/dispatch.ts` – goods dispatched to customers, each line taken off its lot; delivery notes
 - `src/app/plan` – the production plan

@@ -134,6 +134,16 @@ The five production parts are:
 4. **Chocolate making:** Mixing — the chocolate types are made one after another (see "Make chocolate at mixing").
 5. **Finishing:** Pieces, Completion.
 
+### See the whole floor
+
+**Production line → Floor flow** draws every station on one map, with the routes material takes between them. Each route is as thick as the weight that moved along it, and the number on it is the kg. A solid route is material carried on inside a batch; a dashed one is material stored as a lot first and taken out later, such as liquor kept in store and mixed into chocolate. Orange and red counts on a station are the batches waiting and on hold there now. Under each station's name is how many records it saved and the weight that went in; orange text is material bought in for it (sugar and milk powder at mixing) or goods it sent straight to customers.
+
+- Choose **Today**, **Last 7 days**, **Last 30 days** or **All records** for the period.
+- Tap a station to see where its material came from and went, what left the line there (sale, store, waste), what waits there now, and every batch recorded there with its weights.
+- Tap a route to see each batch and lot that moved along it, and when.
+- Under **Follow a batch**, pick a batch to light up its chain: the stations it went through, the lots it stored and the batches that used them, the pieces made from it and the customers they went to. A batch's own page has an **On the floor** button that opens the same view.
+- On a phone, swipe the map sideways; the **Every station** table below it gives the same numbers.
+
 ### Make chocolate at mixing
 
 Liquor from liquor grinding and cocoa butter from the filter pan go on to **Mixing**. There the chocolate types are made one after another, in **runs**. The mixer keeps some chocolate between types (10 kg to start; set in **Setup → Mixer**), and each run is made on top of it. The screen works out what to add, as in the changeover sheet.

@@ -384,4 +384,40 @@
   .trace-step { padding: 8px 0; }
   .trace-tree.is-root > .trace-step { border-top: 1px solid #f1f5f9; padding: 12px 0; }
   .trace-tree.is-root > .trace-step:first-child { border-top: 0; }
+
+  /* ---------- Floor flow map ---------- */
+  .floor-map-scroll { overflow-x: auto; padding: 8px 12px 4px; scrollbar-width: thin; }
+  .floor-map { display: block; width: 100%; min-width: 900px; height: auto; font-family: var(--font-sans); }
+  .floor-edge { cursor: pointer; transition: opacity .15s; }
+  .floor-edge.is-dim, .floor-node.is-dim { opacity: .28; }
+  .floor-edge:focus, .floor-node:focus { outline: none; }
+  .floor-edge:focus-visible .floor-edge-line { stroke: var(--color-accent); }
+  .floor-edge-hit { fill: none; stroke: transparent; stroke-width: 14; }
+  .floor-edge-line { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+  .floor-edge-line.is-flow { stroke: var(--color-green); stroke-opacity: .55; }
+  .floor-edge-line.is-store { stroke-dasharray: 7 5; stroke-linecap: butt; }
+  .floor-edge-line.is-idle { stroke: var(--color-faint); stroke-dasharray: 3 4; }
+  .floor-edge-line.is-focus { stroke: var(--color-accent); stroke-opacity: 1; }
+  .floor-edge:hover .floor-edge-line.is-flow { stroke-opacity: .8; }
+  .floor-arrow.is-flow { fill: var(--color-green); fill-opacity: .7; }
+  .floor-arrow.is-idle { fill: var(--color-faint); }
+  .floor-arrow.is-focus { fill: var(--color-accent); }
+  .floor-edge-label rect { fill: #fff; stroke: var(--color-line); }
+  .floor-edge-label rect.is-focus { fill: var(--color-cream); stroke: var(--color-accent); }
+  .floor-edge-label text { font-size: 10.5px; letter-spacing: -.1px; font-weight: 700; fill: var(--color-ink); font-variant-numeric: tabular-nums; }
+  .floor-node { cursor: pointer; transition: opacity .15s; }
+  .floor-node-box { fill: #fff; stroke: var(--color-line); stroke-width: 1.25; }
+  .floor-node:hover .floor-node-box, .floor-node:focus-visible .floor-node-box { stroke: var(--color-green); }
+  .floor-node.is-terminal .floor-node-box { fill: var(--color-paper); stroke-dasharray: 4 3; }
+  .floor-node.is-path .floor-node-box { stroke: var(--color-accent); stroke-width: 1.75; }
+  .floor-node.is-selected .floor-node-box { stroke: var(--color-accent); stroke-width: 2.5; fill: var(--color-cream); }
+  .floor-node-stat.is-extra { fill: var(--color-accent-dark); font-size: 10px; font-weight: 600; }
+  .floor-node-name { font-size: 12px; font-weight: 800; fill: var(--color-ink); }
+  .floor-node-stat { font-size: 11px; fill: var(--color-muted); font-variant-numeric: tabular-nums; }
+  .floor-pill text { font-size: 11px; font-weight: 800; fill: #fff; }
+  .floor-pill.is-waiting rect { fill: var(--color-accent); }
+  .floor-pill.is-held rect { fill: var(--color-danger); }
+  .floor-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 10px 22px 16px; font-size: 12px; color: var(--color-muted); }
+  .floor-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .floor-legend svg { flex-shrink: 0; }
 }
