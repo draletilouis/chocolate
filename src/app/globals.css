@@ -378,6 +378,44 @@
   .step-icon.is-hold { border: 2px solid var(--color-danger); color: var(--color-danger); }
   .step-icon.is-later { color: #cbd5e1; }
 
+  /* ---------- Mixing: one flow from the batch's liquor to finished mixing ---------- */
+  .mix-flow { margin: 0 0 20px; padding: 0; list-style: none; }
+  .mix-step { position: relative; display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 14px; padding-bottom: 18px; scroll-margin-top: 16px; }
+  .mix-step::before { content: ''; position: absolute; left: 16px; top: 36px; bottom: 2px; width: 2px; background: var(--color-line); }
+  .mix-step:last-child { padding-bottom: 0; }
+  .mix-step:last-child::before { display: none; }
+  .mix-step.is-done::before { background: var(--color-green); opacity: 0.35; }
+  .mix-step-icon { position: relative; z-index: 1; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 999px; background: #fff; font-size: 14px; font-weight: 800; }
+  .mix-step.is-done .mix-step-icon { background: var(--color-green); color: #fff; }
+  .mix-step.is-current .mix-step-icon { background: var(--color-accent); color: #fff; box-shadow: 0 0 0 4px rgba(247, 148, 29, 0.18); }
+  .mix-step.is-next .mix-step-icon { border: 2px solid var(--color-green); color: var(--color-green); }
+  .mix-step.is-later .mix-step-icon { border: 2px solid var(--color-line); color: var(--color-faint); }
+  .mix-step-card { min-width: 0; overflow: hidden; background: #fff; border: 1px solid #f1f5f9; border-radius: 10px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06); }
+  .mix-step.is-current .mix-step-card { border-color: rgba(247, 148, 29, 0.5); }
+  .mix-step.is-later .mix-step-card { background: transparent; border: 1.5px dashed var(--color-line); box-shadow: none; }
+  .mix-step-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px 12px; padding: 14px 20px; }
+  .mix-step-head h3 { margin: 0; font-size: 16px; font-weight: 700; color: #1e293b; }
+  .mix-step-head p { margin: 2px 0 0; font-size: 13px; color: var(--color-muted); }
+  .mix-step-body { border-top: 1px solid #f1f5f9; }
+  .mix-step-saved { display: flex; align-items: flex-start; gap: 8px; padding: 10px 20px; border-top: 1px solid #bbf7d0; background: #f0fdf4; color: #15803d; font-size: 13px; font-weight: 700; }
+  .mix-sub { padding: 16px 20px; border-top: 1px solid #f1f5f9; }
+  .mix-sub.is-waiting { color: var(--color-faint); }
+  .mix-sub-title { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; font-size: 13px; font-weight: 700; color: #1e293b; }
+  .mix-sub.is-waiting .mix-sub-title { margin-bottom: 0; color: var(--color-faint); }
+  .mix-sub-num { display: grid; place-items: center; width: 22px; height: 22px; flex: 0 0 22px; border-radius: 999px; background: var(--color-moss-dark); color: var(--color-green); font-size: 11px; font-weight: 800; }
+  .mix-sub-num.is-done { background: var(--color-green); color: #fff; }
+  .mix-sub.is-waiting .mix-sub-num { background: transparent; border: 1.5px solid var(--color-line); color: var(--color-faint); }
+  .mix-sub-hint { font-weight: 500; color: var(--color-faint); }
+  .mix-save { padding: 16px 20px; border-top: 1px solid #f1f5f9; background: #fcfdfe; }
+  .mix-save .save-bar { margin-top: 0; }
+  @media (max-width: 640px) {
+    .mix-step { grid-template-columns: 28px minmax(0, 1fr); gap: 10px; }
+    .mix-step::before { left: 13px; top: 30px; }
+    .mix-step-icon { width: 28px; height: 28px; font-size: 12px; }
+    .mix-step-head, .mix-sub, .mix-save { padding-left: 14px; padding-right: 14px; }
+    .mix-step-saved { padding-left: 14px; padding-right: 14px; }
+  }
+
   /* ---------- Batch tracing ---------- */
   .trace-tree { margin: 8px 0 0 6px; padding-left: 14px; border-left: 2px solid var(--color-moss-dark); font-size: 13px; }
   .trace-tree.is-root { margin: 0; padding: 6px 20px 10px; border-left: 0; }
