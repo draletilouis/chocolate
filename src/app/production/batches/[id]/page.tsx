@@ -216,6 +216,8 @@ function Steps({ batch }: { batch: Batch }) {
                         })}
                       </ul>
                       {record.note && <div className="text-muted">Note: {record.note}</div>}
+                      {record.varianceReason && <div className="text-muted">Why the weights do not add up: {record.varianceReason}</div>}
+                      {(record.edits ?? []).map((e) => <div key={e.at} className="flex items-start gap-1 text-muted"><PenLine size={12} className="mt-1 shrink-0" /> <span>Weights changed {dateTime(e.at)} by {userName(store, e.by)} ({e.reason}). Before: input {num(e.inputWeight)} kg · {e.outputs.map((o) => `${o.name} ${num(o.weight)} kg`).join(' · ')}</span></div>)}
                       {fixes.map((c) => <div key={c.id} className="flex items-center gap-1 text-muted"><PenLine size={12} /> Corrected {c.output}: {num(c.previous)} → {num(c.corrected)} kg ({c.reason}) · {userName(store, c.correctedBy)}</div>)}
                       <Link href={`/production/batches/${batch.id}/record/${stationId}`} className="inline-flex min-h-[44px] items-center text-[13px] font-semibold text-green">Open {stationName(stationId).toLowerCase()} record{batch.status !== 'completed' ? ' to edit' : ''}</Link>
                     </div>

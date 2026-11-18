@@ -1,5 +1,5 @@
 import { percentOf, roundKg } from './balance';
-import { allAlerts, batchDisplayName, recordBalance } from './derive';
+import { allAlerts, batchDisplayName, lowStockLimit, recordBalance } from './derive';
 import { outcomeTotals, startWeight } from './outcomes';
 import { piecesKg, piecesLots } from './pieces';
 import type { State } from './seed';
@@ -182,7 +182,7 @@ export function buildSummary(state: State, period: SummaryPeriod, today: string)
     attention.push({ tone: 'warn', title: `${stationName(record.station)} on ${batchDisplayName(batch)}: ${what}.`, detail: `${pctText(Math.abs(balance.variancePct))} of the input, above the ${limit}% limit.`, href: `/production/batches/${batch.id}` });
   }
   for (const alert of allAlerts(state).filter((a) => a.kind === 'stock')) {
-    attention.push({ tone: 'warn', title: alert.message.replace(/: .*$/, '.'), detail: `${alert.message.replace(/^.*?: /, '')}, below the ${state.thresholds.lowStockKg} kg warning.`, href: alert.href });
+    attention.push({ tone: 'warn', title: alert.message.replace(/: .*$/, '.'), detail: `${alert.message.replace(/^.*?: /, '')}, below the ${lowStockLimit(state, alert.id.replace(/-stock$/, ''))} kg warning.`, href: alert.href });
   }
   const corrections = state.batches.flatMap((b) => b.corrections).filter((c) => inPeriod(c.correctedAt, period)).length;
   if (corrections > 0) attention.push({ tone: 'neutral', title: `${plural(corrections, 'weight was', 'weights were')} corrected.`, detail: 'Each with the reason and who changed it.', href: '/reports/corrections' });

@@ -395,6 +395,7 @@ export default function SetupPage() {
           <Panel title="Other limits">
             <div className="grid gap-4 p-5 md:grid-cols-2">
               <Field label="Waste limit at any station (%)"><NumberSetting value={store.thresholds.wastePct} step="0.1" onSave={(v) => store.setThresholds({ wastePct: v })} label="Waste limit" /></Field>
+              <Field label="Days material may wait at a station" hint="A batch with nothing recorded for longer than this is listed under Discrepancies."><NumberSetting value={store.thresholds.staleDays ?? 7} onSave={(v) => store.setThresholds({ staleDays: Math.max(1, Math.round(v)) })} label="Waiting limit in days" /></Field>
               <Field label="Low stock warning for raw materials (kg)" hint="Used for a material that has no limit of its own below."><NumberSetting value={store.thresholds.lowStockKg} onSave={(v) => store.setThresholds({ lowStockKg: v })} label="Low stock limit" /></Field>
             </div>
           </Panel>

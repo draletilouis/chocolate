@@ -600,7 +600,30 @@ Three of the factory's paper forms are made from the records and print on A4 wit
 - **Stock count and weekly stock sheet** (`/store/count`, `/store/sheet`, `src/lib/stock.ts`): `expectedStock()` lists what the records say is in the factory in the sheet's rows: lots in store, material a batch has waiting at a station (roasted beans, nibs, brown butter, unground powder) and chocolate in lots or the mixer as **Machine <type>**. `saveStockCount` (operators too) stores one count per day with the expected figure of each counted row (`state.stockCounts`); the weekly sheet lays the counts out Monday to Sunday with the difference under each. A count does not change the store by itself: a manager sets a lot to what was counted with `adjustLot`, which records the difference and the reason as a `LotUse` with `adjustment`.
 - **Low stock per material.** `thresholds.lowStockByMaterial` holds a material's own limit (Setup → Alert thresholds); `lowStockLimit()` falls back to the general one, and 0 never warns.
 
-## 16. Current scope and limitations
+## 16. The discrepancy register
+
+`findDiscrepancies(state, today)` in `src/lib/discrepancies.ts` works out, from the state alone, everything that does not add up. It replaces the alerts list on the Overview and the count in the menu (serious and to-check items still open); `allAlerts()` remains for the batch page and the production list. Each item has a stable ID, a kind, a severity, the weight in question, the station, batch, lot, person and supplier it is about, and a link. Items do not disappear when a batch is completed.
+
+| Kind | Raised when |
+| --- | --- |
+| `missing` | A station's unaccounted weight is above its limit (serious above twice the limit or from 2 kg). |
+| `surplus` | More was weighed out than went in (over 20 g), whatever the limit. |
+| `unusual` | A station's loss (waste and unweighed weight) is well outside what that station lost over the last 90 days (middle 80% of at least 5 other records, with a margin), in either direction. |
+| `waste` | Waste above the general limit, only while a station has no history yet; winnowing is left out because husks are its nature. |
+| `reweigh` | A station weighed in a different weight than the stations before sent it. |
+| `recipe` | A mixing run's ingredient differs from what the recipe called for by 50 g or 2%. |
+| `overdrawn` | A batch or run took more from a lot than it held (`LotUse.short`, stored when the use is made). |
+| `count` | The latest stock count of a row differs from the records; closes by itself when the records match the count. |
+| `adjustment`, `correction`, `edited` | A lot set to the count, a corrected weight, saved weights changed. Made by a manager they are explained by their own reason; made by an operator they wait for a manager. |
+| `inspection` | A receiving inspection with a finding, a condition or a rejection; closes when the report is signed. |
+| `unsigned`, `stale`, `hold`, `stock` | Things to do: an unsigned sheet, a batch with nothing recorded for longer than `thresholds.staleDays` (7), a hold, low stock. They close by themselves (`closes: 'act'`). |
+
+- **Reasons at the source.** The station form asks why when the weights are outside the limit or more came out than went in (`StationRecord.varianceReason`), and will not save without it. Changing weights that were already saved needs a reason too, which the server enforces; the earlier weights stay on the record (`StationRecord.edits`).
+- **Explaining.** A manager explains an item with `explainDiscrepancy` (`state.discrepancyNotes`, keyed by the item's ID), which moves it to the history; `reopenDiscrepancy` takes that back. A record that is saved again gets a new ID, so an explanation never covers different weights.
+- **Screens.** `/discrepancies` (managers) has Open, Explained, Patterns (by station, kind, person and supplier) and Usual ranges. **Reports → Discrepancies** lists a period and exports all of it, with the patterns, to Excel.
+- **Telling the manager.** `DiscrepancyWatch` shows a system notification for a new serious item while the app is open on a device where a manager turned it on, and **Share today's digest** hands a text summary to the device's share sheet or the clipboard. There is no email and no notification while the app is closed: both need a mail or push service.
+
+## 17. Current scope and limitations
 
 - One installation serves one factory. The whole state is loaded into each signed-in browser, which suits one factory's records but not many factories on one server.
 - Changes from other devices arrive by polling every 5 seconds, not instantly.
