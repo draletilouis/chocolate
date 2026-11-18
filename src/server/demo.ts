@@ -1,4 +1,4 @@
-import { round2 } from '@/lib/balance';
+import { roundKg } from '@/lib/balance';
 import { commandSchema, type Command } from '@/lib/commands';
 import { chocolateWaiting, nextInput, suggestBatchName, waitingAt } from '@/lib/derive';
 import { takeOldestFirst } from '@/lib/dispatch';
@@ -533,7 +533,7 @@ class Factory {
   /** A batch of the nibs for butter kept in store: made into butter and powder that day when `cake` says where the cake goes, else left waiting at pressing */
   storedNibs(lotIds: string[], cake?: Destination) {
     const lotUses = lotIds.map((lotId) => ({ lotId, quantity: this.lot(lotId).available }));
-    const id = this.run<string>({ type: 'createBatch', input: { productId: 'P-LIQUOR', startWeight: round2(lotUses.reduce((sum, u) => sum + u.quantity, 0)), lotUses } }, this.butterTeam, 10);
+    const id = this.run<string>({ type: 'createBatch', input: { productId: 'P-LIQUOR', startWeight: roundKg(lotUses.reduce((sum, u) => sum + u.quantity, 0)), lotUses } }, this.butterTeam, 10);
     if (!cake) return id;
     this.press(id, cake);
     this.sieve(id, 'stock');
@@ -569,17 +569,17 @@ class Factory {
     for (const line of changeover(target, toRun, held ?? undefined).lines) {
       if (line.add <= 0) continue;
       let rest = kg1(line.add + this.between(-0.1, 0.1));
-      const fromBatch = round2(Math.min(rest, own.get(line.name) ?? 0));
+      const fromBatch = roundKg(Math.min(rest, own.get(line.name) ?? 0));
       if (fromBatch > 0) {
         ingredients.push({ name: line.name, actual: fromBatch });
-        rest = round2(rest - fromBatch);
+        rest = roundKg(rest - fromBatch);
       }
       const lots = this.state.lots.filter((l) => l.material === line.name && l.unit === 'kg' && l.available > 0.004).sort((a, b) => a.receivedAt.localeCompare(b.receivedAt) || a.id.localeCompare(b.id));
       for (const lot of lots) {
         if (rest <= 0) break;
-        const take = round2(Math.min(rest, lot.available));
+        const take = roundKg(Math.min(rest, lot.available));
         ingredients.push({ name: line.name, actual: take, lotId: lot.id });
-        rest = round2(rest - take);
+        rest = roundKg(rest - take);
       }
       if (rest > 0.005) throw new Error(`The demo ran out of ${line.name.toLowerCase()} on ${this.now.slice(0, 10)}.`);
     }

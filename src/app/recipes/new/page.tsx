@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { Check } from 'lucide-react';
 import { Back, Button, Field, Input, LinkButton, PageHeader, Panel, UnitInput } from '@/components/ui';
-import { round2 } from '@/lib/balance';
+import { roundKg } from '@/lib/balance';
 import { num } from '@/lib/format';
 import { chocolateIngredients } from '@/lib/seed';
 import { useStore } from '@/lib/store';
@@ -17,7 +17,7 @@ export default function NewChocolateTypePage() {
   const [rows, setRows] = useState(() => chocolateIngredients.map((ingredient) => ({ name: ingredient as string, percent: '', fixed: true })));
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
-  const total = round2(rows.reduce((sum, r) => sum + (Number(r.percent) || 0), 0));
+  const total = roundKg(rows.reduce((sum, r) => sum + (Number(r.percent) || 0), 0));
   const balanced = Math.abs(total - 100) <= 0.01;
   const update = (index: number, patch: Partial<(typeof rows)[number]>) => setRows(rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
 

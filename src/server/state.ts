@@ -92,7 +92,7 @@ async function upgradeInto(q: Query) {
 async function startOver(q: Query) {
   const { state } = await loadAll(q);
   const fresh = startState();
-  const kept: State = { ...state, batches: [], lots: [], dispatches: [], users: fresh.users, idCounters: fresh.idCounters, mixer: fresh.mixer, plan: null };
+  const kept: State = { ...state, batches: [], lots: [], dispatches: [], stockCounts: [], users: fresh.users, idCounters: fresh.idCounters, mixer: fresh.mixer, plan: null };
   for (const table of ['app_items', 'app_credentials', 'app_sessions', 'app_devices', 'app_commands', 'app_meta']) await q(`delete from ${table}`);
   await q("select setval(pg_get_serial_sequence('app_items', 'pos'), 1, false)");
   await storeAll(q, kept);

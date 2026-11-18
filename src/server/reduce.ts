@@ -1,4 +1,4 @@
-import { round2 } from '@/lib/balance';
+import { roundKg } from '@/lib/balance';
 import type { Command } from '@/lib/commands';
 import { batchDisplayName, isReadyAt, issuedNumbers, nextBatchId, nextInput, nextLotId, pendingStations, recordFor, recordStamp, waitingAt } from '@/lib/derive';
 import { kg } from '@/lib/format';
@@ -6,7 +6,8 @@ import { piecesKg } from '@/lib/pieces';
 import { batchMaterialAtMixing, changeover, ingredientsOf, mixerStamp, mixingTotals, runLotIds, sourcesOf, storedAtMixing, versionOf } from '@/lib/mixing';
 import { demoCredentials, placeholderBusinessName, retiredChocolateTypes, seedState, type State } from '@/lib/seed';
 import { stationById, stationName } from '@/lib/stations';
-import type { Batch, Destination, Dispatch, DispatchLine, Lot, LotCategory, LotUse, Mixer, MixingRun, OutputCategory, Recipe, RecipeIngredient, RecordedOutput, RunIngredient, StationId, StationRecord, User } from '@/lib/types';
+import { expectedStock } from '@/lib/stock';
+import type { Batch, Destination, Dispatch, DispatchLine, Inspection, StockCount, Lot, LotCategory, LotUse, Mixer, MixingRun, OutputCategory, Recipe, RecipeIngredient, RecordedOutput, RunIngredient, StationId, StationRecord, User } from '@/lib/types';
 
 /** A command that cannot be applied; the message is shown to the person who tried */
 export class CommandError extends Error {}
@@ -50,7 +51,7 @@ function createBatch(s: State, input: NewBatch, ctx: CommandContext): { state: S
   const batch: Batch = {
     id, name: input.name?.trim() || undefined, productId: product.id, product: product.name, route: route.id, startedAt: stamp, status: 'active',
     nextStation: route.stations[0],
-    startInput: { material: route.startMaterial, weight: round2(input.startWeight), lotIds: input.lotUses.map((u) => u.lotId) },
+    startInput: { material: route.startMaterial, weight: roundKg(input.startWeight), lotIds: input.lotUses.map((u) => u.lotId) },
     supplierId: input.supplierId || undefined,
     recipeId: product.recipeId, recipeVersion: input.recipeVersion, ingredients: input.ingredients?.map((i) => ({ ...i, lotId: i.lotId || undefined })),
     records: [], holds: [], corrections: [], note: input.note || undefined,
@@ -59,7 +60,7 @@ function createBatch(s: State, input: NewBatch, ctx: CommandContext): { state: S
     const use = input.lotUses.find((u) => u.lotId === lot.id && u.quantity > 0);
     if (!use) return lot;
     // The scale weight is recorded as-is; a lot record can only be drawn down to zero.
-    return { ...lot, available: Math.max(0, round2(lot.available - use.quantity)), uses: [...lot.uses, { batchId: id, quantity: use.quantity, station: route.stations[0], at: stamp }] };
+    return { ...lot, available: Math.max(0, roundKg(lot.available - use.quantity)), uses: [...lot.uses, { batchId: id, quantity: use.quantity, station: route.stations[0], at: stamp }] };
   });
   return { state: { ...s, batches: [...s.batches, batch], lots }, id };
 }
@@ -84,8 +85,8 @@ function commitRecord(s: State, batchId: string, draft: StationRecord, advance: 
     const material = isUnits ? `${batch.product} · ${s.packSizes.find((p) => p.id === draft.packaging!.packSizeId)?.name ?? ''}` : o.name;
     const earlier = s.lots.find((l) => fromThisStation(l) && l.id === previous?.outputs.find((e) => e.name === o.name)?.lotId);
     if (earlier) {
-      const used = round2(earlier.received - earlier.available);
-      made.push({ ...earlier, material, category, received: quantity, available: Math.max(0, round2(quantity - used)) });
+      const used = roundKg(earlier.received - earlier.available);
+      made.push({ ...earlier, material, category, received: quantity, available: Math.max(0, roundKg(quantity - used)) });
       return { ...o, lotId: earlier.id };
     }
     // s.lots still holds the lots this save drops, so a new lot cannot take one of their numbers.
@@ -134,12 +135,33 @@ function saveRecord(s: State, cmd: SaveRecord, ctx: CommandContext): State {
   const draft: StationRecord = {
     id: existing?.id ?? `${cmd.station}-${ctx.now}`, station: cmd.station,
     inputMaterial: existing?.inputMaterial ?? cmd.options?.inputMaterial ?? (carried.weight > 0 ? carried.material : station.input),
-    inputWeight: round2(cmd.input.weight),
+    inputWeight: roundKg(cmd.input.weight),
     inputLotIds: existing?.inputLotIds ?? (cmd.options?.inputMaterial ? [] : b.records.length ? [] : b.startInput.lotIds),
-    outputs: outputs.map((o) => ({ name: o.name, kind: o.kind, weight: round2(o.weight), destination: o.destination })),
+    outputs: outputs.map((o) => ({ name: o.name, kind: o.kind, weight: roundKg(o.weight), destination: o.destination })),
     recordedAt: ctx.now, recordedBy: ctx.userId, rev: ctx.newId(), note: cmd.note || undefined, destinationsSaved: true,
   };
   return commitRecord(s, b.id, draft, !early, ctx.now);
+}
+
+type InspectionInput = Extract<Command, { type: 'saveInspection' }>['inspection'];
+
+/**
+ * Puts the receiving inspection on a batch of beans, signed by whoever inspected. A check with a problem
+ * needs its remark, and beans rejected or accepted on a condition need the reason. Once a manager has
+ * signed the report it no longer changes.
+ */
+function withInspection(s: State, batchId: string, input: InspectionInput, ctx: CommandContext): State {
+  const b = findBatch(s, batchId);
+  if (b.route !== 'beans') fail('Only a delivery of beans is inspected.');
+  if (b.approvals?.inspection) fail('The receiving report is signed and can no longer change.');
+  for (const c of input.checks) if (!c.ok && !c.remark?.trim()) fail('Say what was found for every check that is not fine.');
+  if (input.decision !== 'accepted' && !input.reason?.trim()) fail(input.decision === 'rejected' ? 'Say why the beans were rejected.' : 'Say on what condition the beans were accepted.');
+  const inspection: Inspection = {
+    bags: input.bags, supplierBatch: input.supplierBatch?.trim() || undefined,
+    checks: input.checks.map((c) => ({ id: c.id, ok: c.ok, remark: c.remark?.trim() || undefined })),
+    decision: input.decision, reason: input.reason?.trim() || undefined, inspectedBy: ctx.userId, inspectedAt: ctx.now,
+  };
+  return replaceBatch(s, { ...b, inspection });
 }
 
 type SaveMixingRun = Extract<Command, { type: 'saveMixingRun' }>;
@@ -201,8 +223,8 @@ function saveMixingRun(s: State, cmd: SaveMixingRun, ctx: CommandContext): Outco
   }
   const toAdd = new Map(plan.lines.map((l) => [l.name, Math.max(0, l.add)]));
   const ingredients: RunIngredient[] = version.ingredients.map((i) => {
-    const from = cmd.ingredients.filter((g) => g.name === i.name && g.actual > 0).map((g) => ({ lotId: g.lotId || undefined, kg: round2(g.actual) }));
-    const weighed = { name: i.name, expected: toAdd.get(i.name) ?? 0, actual: round2(from.reduce((sum, f) => sum + f.kg, 0)) };
+    const from = cmd.ingredients.filter((g) => g.name === i.name && g.actual > 0).map((g) => ({ lotId: g.lotId || undefined, kg: roundKg(g.actual) }));
+    const weighed = { name: i.name, expected: toAdd.get(i.name) ?? 0, actual: roundKg(from.reduce((sum, f) => sum + f.kg, 0)) };
     return from.length > 1 ? { ...weighed, sources: from } : { ...weighed, lotId: from[0]?.lotId };
   });
   if (!(ingredients.reduce((sum, i) => sum + i.actual, 0) > 0)) fail('Enter the ingredients weighed in.');
@@ -210,13 +232,13 @@ function saveMixingRun(s: State, cmd: SaveMixingRun, ctx: CommandContext): Outco
 
   const runId = `run-${ctx.newId()}`;
   const lotId = nextLotId(s, recipe.name);
-  const run: MixingRun = { id: runId, recipeId: recipe.id, type: recipe.name, recipeVersion: version.version, toRun: round2(cmd.toRun), held, ingredients, made: round2(cmd.made), kept: round2(cmd.kept), lotId, recordedAt: ctx.now, recordedBy: ctx.userId };
+  const run: MixingRun = { id: runId, recipeId: recipe.id, type: recipe.name, recipeVersion: version.version, toRun: roundKg(cmd.toRun), held, ingredients, made: roundKg(cmd.made), kept: roundKg(cmd.kept), lotId, recordedAt: ctx.now, recordedBy: ctx.userId };
   // The scale weight is recorded as-is; a lot record can only be drawn down to zero.
   const lots = s.lots.map((lot) => {
     const drawn = ingredients.flatMap(sourcesOf).filter((x) => x.lotId === lot.id && x.kg > 0);
     if (!drawn.length) return lot;
     const quantity = drawn.reduce((sum, x) => sum + x.kg, 0);
-    return { ...lot, available: Math.max(0, round2(lot.available - quantity)), uses: [...lot.uses, ...drawn.map((x) => ({ batchId: b.id, quantity: x.kg, station: 'mixing' as const, at: ctx.now, runId }))] };
+    return { ...lot, available: Math.max(0, roundKg(lot.available - quantity)), uses: [...lot.uses, ...drawn.map((x) => ({ batchId: b.id, quantity: x.kg, station: 'mixing' as const, at: ctx.now, runId }))] };
   });
   const chocolate: Lot = { id: lotId, material: recipe.name, category: 'Intermediate', received: run.made, available: run.made, unit: 'kg', source: { type: 'batch', batchId: b.id, station: 'mixing' }, receivedAt: ctx.now, uses: [], chocolate: { type: recipe.name, recipeId: recipe.id, recipeVersion: version.version, runId } };
   const mixer: Mixer = { holds: run.kept > 0 ? { kg: run.kept, type: recipe.name, recipeId: recipe.id, recipeVersion: version.version, batchId: b.id, runId, lotId } : null, lastRunId: runId };
@@ -233,7 +255,7 @@ function undoMixingRun(s: State, batchId: string, runId: string, ctx: CommandCon
   if (chocolate && (chocolate.uses.length || chocolate.available !== chocolate.received)) fail(`Lot ${chocolate.id} from this run is already in use.`);
   const lots = s.lots.filter((l) => l.id !== run.lotId).map((lot) => {
     const returned = lot.uses.filter((u) => u.runId === run.id).reduce((sum, u) => sum + u.quantity, 0);
-    return returned ? { ...lot, available: Math.min(lot.received, round2(lot.available + returned)), uses: lot.uses.filter((u) => u.runId !== run.id) } : lot;
+    return returned ? { ...lot, available: Math.min(lot.received, roundKg(lot.available + returned)), uses: lot.uses.filter((u) => u.runId !== run.id) } : lot;
   });
   return withMixingRecord({ ...s, lots, mixer: { holds: run.held ?? null, lastRunId: null } }, b, record!.runs!.filter((r) => r.id !== run.id), ctx, record);
 }
@@ -364,7 +386,7 @@ function dispatchGoods(s: State, cmd: DispatchGoods, ctx: CommandContext): Outco
     const pieces = lot.unit === 'units';
     if (pieces && !Number.isInteger(line.quantity)) fail(`Pieces from lot ${lot.id} go out whole: enter a number of pieces.`);
     if (line.quantity > lot.available + 0.005) fail(`Lot ${lot.id} has only ${pieces ? `${lot.available} pieces` : kg(lot.available)} of ${lot.material} on record.`);
-    return { lotId: lot.id, material: lot.material, quantity: pieces ? line.quantity : round2(line.quantity), unit: lot.unit };
+    return { lotId: lot.id, material: lot.material, quantity: pieces ? line.quantity : roundKg(line.quantity), unit: lot.unit };
   });
   const id = nextDispatchId(s);
   const lots = s.lots.map((lot) => {
@@ -396,7 +418,7 @@ function checkIngredients(ingredients: RecipeIngredient[]) {
     names.add(i.name.toLowerCase());
   }
   const total = ingredients.reduce((sum, i) => sum + i.percent, 0);
-  if (Math.abs(total - 100) > 0.01) fail(`The ingredients add up to ${round2(total)}%. They must add up to 100%.`);
+  if (Math.abs(total - 100) > 0.01) fail(`The ingredients add up to ${roundKg(total)}%. They must add up to 100%.`);
 }
 
 function usedInAudit(s: State, userId: string) {
@@ -431,14 +453,52 @@ function runCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
     case 'receiveDelivery': {
       const { state, id } = createBatch(s, cmd.batch, ctx);
       const withRecord = saveRecord(state, { type: 'saveRecord', batchId: id, station: 'receiving', input: cmd.input, outputs: cmd.outputs, note: cmd.note, expectRecord: null }, ctx);
-      return { state: withRecord, result: id };
+      return { state: cmd.inspection ? withInspection(withRecord, id, cmd.inspection, ctx) : withRecord, result: id };
+    }
+    case 'saveInspection': return { state: withInspection(s, cmd.batchId, cmd.inspection, ctx) };
+    case 'approveDocument': {
+      const b = findBatch(s, cmd.batchId);
+      if (b.route !== 'beans') fail('Only a batch of beans has a receiving report and a bean summary.');
+      if (cmd.document === 'inspection' && !b.inspection) fail(`The inspection of ${batchDisplayName(b)} has not been entered yet.`);
+      if (cmd.document === 'summary' && !(recordFor(b, 'roasting') && recordFor(b, 'winnowing'))) fail(`Roast and winnow ${batchDisplayName(b)} before its bean summary is signed.`);
+      if (b.approvals?.[cmd.document]) fail('That document is already signed.');
+      return { state: replaceBatch(s, { ...b, approvals: { ...b.approvals, [cmd.document]: { by: ctx.userId, at: ctx.now } } }) };
+    }
+    case 'adjustLot': {
+      const lot = s.lots.find((l) => l.id === cmd.lotId) ?? fail('That lot was not found.');
+      const counted = lot.unit === 'units' ? cmd.counted : roundKg(cmd.counted);
+      if (lot.unit === 'units' && !Number.isInteger(counted)) fail('Pieces are counted whole.');
+      const missing = round3(lot.available - counted);
+      if (missing === 0) fail(`Lot ${lot.id} already shows ${counted} ${lot.unit === 'units' ? 'pieces' : 'kg'}.`);
+      // More found than the record showed: the lot holds it, so what it received grows with it.
+      const received = missing < 0 ? round3(lot.received - missing) : lot.received;
+      const use: LotUse = { quantity: missing, at: ctx.now, adjustment: { reason: cmd.reason, by: ctx.userId } };
+      return { state: { ...s, lots: s.lots.map((l) => (l.id === lot.id ? { ...l, received, available: counted, uses: [...l.uses, use] } : l)) } };
+    }
+    case 'saveStockCount': {
+      if (cmd.day > ctx.now.slice(0, 10)) fail('A count cannot be dated in the future.');
+      const expected = new Map(expectedStock(s).map((r) => [r.row, r.expected]));
+      const seen = new Set<string>();
+      const lines = cmd.lines.map((l) => {
+        if (seen.has(l.row)) fail(`${l.row} is listed twice.`);
+        seen.add(l.row);
+        return { row: l.row, expected: expected.get(l.row) ?? 0, counted: roundKg(l.counted) };
+      });
+      const count: StockCount = { id: cmd.day, day: cmd.day, lines, countedBy: ctx.userId, countedAt: ctx.now, note: cmd.note || undefined };
+      return { state: { ...s, stockCounts: [...s.stockCounts.filter((c) => c.id !== count.id), count].sort((a, b) => a.day.localeCompare(b.day)) } };
+    }
+    case 'setMaterialLowStock': {
+      const limits = { ...s.thresholds.lowStockByMaterial };
+      if (cmd.kg === null) delete limits[cmd.material];
+      else limits[cmd.material] = cmd.kg;
+      return { state: { ...s, thresholds: { ...s.thresholds, lowStockByMaterial: limits } } };
     }
     case 'saveRecord': return { state: saveRecord(s, cmd, ctx) };
     case 'saveMixingRun': return saveMixingRun(s, cmd, ctx);
     case 'undoMixingRun': return { state: undoMixingRun(s, cmd.batchId, cmd.runId, ctx) };
     case 'emptyMixer': return emptyMixer(s, cmd.expectMixer, ctx);
     case 'finishMixing': return { state: finishMixing(s, cmd.batchId, cmd.note, ctx) };
-    case 'setMixerKeeps': return { state: { ...s, mixerKeepsKg: round2(cmd.kg) } };
+    case 'setMixerKeeps': return { state: { ...s, mixerKeepsKg: roundKg(cmd.kg) } };
     case 'recordPieces': return recordPieces(s, cmd, ctx);
     case 'setPlan': {
       const seen = new Set<string>();
@@ -460,7 +520,7 @@ function runCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
       if (unfinished.length) fail(`${unfinished.map((r) => stationName(r.station)).join(', ')} was not finished.`);
       const waiting = waitingAt(b).filter((st) => st !== 'completion');
       if (waiting.length) fail(`Material is still waiting at ${waiting.map((st) => stationName(st).toLowerCase()).join(' and ')}.`);
-      return { state: replaceBatch(s, { ...b, status: 'completed', nextStation: null, completedAt: ctx.now, note: cmd.note || b.note }) };
+      return { state: replaceBatch(s, { ...b, status: 'completed', nextStation: null, completedAt: ctx.now, completedBy: ctx.userId, note: cmd.note || b.note }) };
     }
     case 'updateBatchDetails': {
       const b = findBatch(s, cmd.batchId);
@@ -473,7 +533,7 @@ function runCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
       const lots = s.lots.map((lot) => {
         const uses = lot.uses.filter((use) => use.batchId !== b.id);
         const returned = lot.uses.filter((use) => use.batchId === b.id).reduce((sum, use) => sum + use.quantity, 0);
-        return uses.length === lot.uses.length ? lot : { ...lot, available: round2(lot.available + returned), uses };
+        return uses.length === lot.uses.length ? lot : { ...lot, available: roundKg(lot.available + returned), uses };
       });
       return { state: { ...s, batches: s.batches.filter((x) => x.id !== b.id), lots } };
     }
@@ -493,19 +553,19 @@ function runCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
       const target = record.outputs.find((o) => o.name === cmd.output) ?? fail(`${cmd.output} was not found on that record.`);
       if (record.packaging) fail('Packaging counts are corrected by saving packaging again.');
       if (record.runs) fail('Mixing runs are changed by undoing the last run and entering it again, before mixing is finished.');
-      const corrected = round2(cmd.corrected);
-      const delta = round2(corrected - target.weight);
+      const corrected = roundKg(cmd.corrected);
+      const delta = roundKg(corrected - target.weight);
       const records = b.records.map((r) => (r.id === record.id ? { ...r, outputs: r.outputs.map((o) => (o.name === cmd.output ? { ...o, weight: corrected } : o)) } : r));
       const correction = { id: `c-${ctx.newId()}`, recordId: record.id, station: record.station, output: cmd.output, previous: target.weight, corrected, reason: cmd.reason, correctedAt: ctx.now, correctedBy: ctx.userId };
       const next = replaceBatch(s, { ...b, records, corrections: [...b.corrections, correction] });
       if (!target.lotId) return { state: next };
-      return { state: { ...next, lots: next.lots.map((l) => (l.id === target.lotId ? { ...l, received: round2(l.received + delta), available: Math.max(0, round2(l.available + delta)) } : l)) } };
+      return { state: { ...next, lots: next.lots.map((l) => (l.id === target.lotId ? { ...l, received: roundKg(l.received + delta), available: Math.max(0, roundKg(l.available + delta)) } : l)) } };
     }
     case 'receiveLot': {
       if (!s.suppliers.some((x) => x.id === cmd.input.supplierId)) fail('Choose a supplier.');
       if (!(cmd.input.quantity > 0)) fail('Enter the weight you measured on delivery.');
       const id = nextLotId(s, cmd.input.material);
-      const lot: Lot = { id, material: cmd.input.material, category: cmd.input.category, received: round2(cmd.input.quantity), available: round2(cmd.input.quantity), unit: cmd.input.unit, source: { type: 'supplier', supplierId: cmd.input.supplierId, reference: cmd.input.reference || undefined, supplierBatch: cmd.input.supplierBatch?.trim() || undefined }, receivedAt: ctx.now, uses: [] };
+      const lot: Lot = { id, material: cmd.input.material, category: cmd.input.category, received: roundKg(cmd.input.quantity), available: roundKg(cmd.input.quantity), unit: cmd.input.unit, source: { type: 'supplier', supplierId: cmd.input.supplierId, reference: cmd.input.reference || undefined, supplierBatch: cmd.input.supplierBatch?.trim() || undefined }, receivedAt: ctx.now, uses: [] };
       return { state: { ...s, lots: [...s.lots, lot] }, result: id };
     }
     case 'updateLot': {
@@ -680,7 +740,12 @@ export function upgradeConfiguration(saved: State, now: string): State {
     if (nameTaken) return [];
     return [stored && upToDate && stored.name === type.name && stored.versions.length === 1 ? stored : type];
   });
-  return { ...s, ...line, recipes: [...types, ...own], workflowVersion: seed.workflowVersion };
+  // Version 6: the bean summary's winnowing rows the line did not have yet, each after the station's other rows.
+  const rows = (line as { outputCategories?: OutputCategory[] }).outputCategories ?? s.outputCategories;
+  const added = seed.outputCategories.filter((c) => ['winnowing:nibs-for-other', 'winnowing:whole-peeled-beans'].includes(c.id) && !rows.some((r) => r.id === c.id || (r.station === c.station && r.name === c.name)));
+  const after = rows.reduce((last, r, i) => (r.station === 'winnowing' && r.kind !== 'waste' ? i : last), rows.length - 1);
+  const outputCategories = added.length ? [...rows.slice(0, after + 1), ...added, ...rows.slice(after + 1)] : rows;
+  return { ...s, ...line, outputCategories, recipes: [...types, ...own], workflowVersion: seed.workflowVersion };
 }
 
 /**
@@ -725,7 +790,7 @@ export function migrateLegacy(stored: Record<string, unknown>, now: string): { s
     batches: data.batches ?? [], lots: data.lots ?? [], recipes: data.recipes ?? seed.recipes,
     products: [...seed.products, ...(data.products ?? []).filter((p) => !seed.products.some((x) => x.id === p.id))],
     routes: data.routes ?? seed.routes, packSizes: data.packSizes ?? seed.packSizes, suppliers: data.suppliers ?? [], customers: [], dispatches: [], users,
-    outputCategories: storedCategories.length ? storedCategories : seed.outputCategories,
+    outputCategories: storedCategories.length ? storedCategories : seed.outputCategories, stockCounts: [],
     thresholds: { ...seed.thresholds, ...(data.thresholds ?? {}), variancePct: { ...seed.thresholds.variancePct, ...(data.thresholds?.variancePct ?? {}) } },
     business: { ...seed.business, ...(data.business ?? {}) }, idleMinutes: data.idleMinutes ?? seed.idleMinutes, workflowVersion: data.workflowVersion ?? 1,
     // Browsers kept no counters: numbers continue from the highest IDs, and applyCommand() keeps the server's.

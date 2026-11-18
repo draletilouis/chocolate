@@ -6,7 +6,7 @@ import { useState, type FormEvent } from 'react';
 import { Check, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Back, Badge, Button, Empty, Field, Input, LinkButton, Notice, PageHeader, Panel, Table, td, tdNum } from '@/components/ui';
 import { RunSources } from '@/components/MixingScreen';
-import { round2 } from '@/lib/balance';
+import { roundKg } from '@/lib/balance';
 import { batchDisplayName } from '@/lib/derive';
 import { allRuns } from '@/lib/mixing';
 import { dateTime, num } from '@/lib/format';
@@ -31,7 +31,7 @@ export default function RecipePage() {
     ...olderBatches.map((b) => ({ key: b.id, batch: b, when: b.startedAt, version: b.recipeVersion, label: '', ingredients: b.ingredients! })),
   ];
   const canDelete = made.length === 0 && !store.batches.some((b) => b.recipeId === recipe.id) && store.mixer.holds?.recipeId !== recipe.id;
-  const total = round2(draft.reduce((s, d) => s + (Number(d.percent) || 0), 0));
+  const total = roundKg(draft.reduce((s, d) => s + (Number(d.percent) || 0), 0));
 
   function startDraft() {
     const current = recipe!.versions.find((v) => v.version === recipe!.currentVersion)!;
@@ -89,13 +89,13 @@ export default function RecipePage() {
       <Panel title="Expected vs actual" subtitle="What each run actually weighed in, against what its recipe version called for on top of what the mixer held.">
         {made.length === 0 && <Empty>{recipe.name} has not been made yet.</Empty>}
         {made.sort((a, b) => b.when.localeCompare(a.when)).map(({ key, batch: b, version, label, ingredients }) => {
-          const expected = round2(ingredients.reduce((s, i) => s + i.expected, 0));
-          const actual = round2(ingredients.reduce((s, i) => s + i.actual, 0));
+          const expected = roundKg(ingredients.reduce((s, i) => s + i.expected, 0));
+          const actual = roundKg(ingredients.reduce((s, i) => s + i.actual, 0));
           return (
             <div key={key} className="border-b border-line last:border-b-0">
               <div className="flex flex-wrap items-center gap-2 px-5 pt-3 text-[13px]"><Link href={`/production/batches/${b.id}`} className="font-bold text-green">{batchDisplayName(b)}</Link>{b.name && <span className="text-[11px] text-muted">ID {b.id}</span>}<span className="text-muted">{label && `${label} · `}v{version} · expected {num(expected)} kg · actual {num(actual)} kg</span></div>
               <Table head={['Ingredient', 'Expected', 'Actual', 'Difference', 'Lot']}>
-                {ingredients.map((i) => { const diff = round2(i.actual - i.expected); return (
+                {ingredients.map((i) => { const diff = roundKg(i.actual - i.expected); return (
                   <tr key={i.name}><td className={td}>{i.name}</td><td className={tdNum}>{num(i.expected)} kg</td><td className={tdNum}>{num(i.actual)} kg</td><td className={`${tdNum} ${diff !== 0 ? 'text-warn' : 'text-muted'}`}>{diff > 0 ? '+' : ''}{num(diff)} kg</td><td className={td}><RunSources ingredient={i} own="From the batch" /></td></tr>
                 ); })}
               </Table>

@@ -1,4 +1,4 @@
-import { round2 } from './balance';
+import { roundKg } from './balance';
 import { carriedTo, recordFor } from './derive';
 import type { State } from './seed';
 import type { Batch, Mixer, MixingRun, Recipe, RecipeIngredient, RecordedOutput, RunSource } from './types';
@@ -37,14 +37,14 @@ export interface ChangeoverLine { name: string; percent: number; need: number; i
  */
 export function changeover(target: RecipeIngredient[], toRun: number, held?: { kg: number; ingredients: RecipeIngredient[] }) {
   const heldKg = held?.kg ?? 0;
-  const total = round2(toRun + heldKg);
+  const total = roundKg(toRun + heldKg);
   const percentIn = (list: RecipeIngredient[], name: string) => list.find((i) => i.name === name)?.percent ?? 0;
   const names = Array.from(new Set([...target.map((i) => i.name), ...(held?.ingredients ?? []).map((i) => i.name)]));
   const lines: ChangeoverLine[] = names.map((name) => {
     const percent = percentIn(target, name);
-    const inMixer = round2((heldKg * percentIn(held?.ingredients ?? [], name)) / 100);
-    const need = round2((total * percent) / 100);
-    return { name, percent, need, inMixer, add: round2(need - inMixer) };
+    const inMixer = roundKg((heldKg * percentIn(held?.ingredients ?? [], name)) / 100);
+    const need = roundKg((total * percent) / 100);
+    return { name, percent, need, inMixer, add: roundKg(need - inMixer) };
   }).filter((l) => l.percent > 0 || l.inMixer > 0);
   const blocked = lines.filter((l) => l.percent === 0).map((l) => l.name);
   // The run at which the most over-supplied ingredient needs nothing added, rounded up to the next 10 g
@@ -57,10 +57,10 @@ export function changeover(target: RecipeIngredient[], toRun: number, held?: { k
 export function batchMaterialAtMixing(batch: Batch) {
   const runs = recordFor(batch, 'mixing')?.runs ?? [];
   const carried = new Map<string, number>();
-  for (const o of carriedTo(batch, 'mixing')) carried.set(o.name, round2((carried.get(o.name) ?? 0) + o.weight));
+  for (const o of carriedTo(batch, 'mixing')) carried.set(o.name, roundKg((carried.get(o.name) ?? 0) + o.weight));
   return Array.from(carried, ([name, kg]) => {
-    const used = round2(ownUse(runs).filter((u) => u.name === name).reduce((sum, u) => sum + u.kg, 0));
-    return { name, carried: kg, used, left: round2(kg - used) };
+    const used = roundKg(ownUse(runs).filter((u) => u.name === name).reduce((sum, u) => sum + u.kg, 0));
+    return { name, carried: kg, used, left: roundKg(kg - used) };
   });
 }
 
@@ -75,14 +75,14 @@ export function mixingTotals(runs: MixingRun[], stored: RecordedOutput[] = []): 
   const takenUp = new Set(runs.map((r) => r.held?.runId));
   const fresh = runs.reduce((sum, r) => sum + r.ingredients.reduce((s, i) => s + i.actual, 0), 0);
   const heldIn = runs.reduce((sum, r) => sum + (r.held && !ids.has(r.held.runId) ? r.held.kg : 0), 0);
-  const leftInMixer = round2(runs.reduce((sum, r) => sum + (takenUp.has(r.id) || r.takenOut ? 0 : r.kept), 0));
+  const leftInMixer = roundKg(runs.reduce((sum, r) => sum + (takenUp.has(r.id) || r.takenOut ? 0 : r.kept), 0));
   const outputs: RecordedOutput[] = [
     ...runs.map((r, i): RecordedOutput => ({ name: `${r.type} · run ${i + 1}`, kind: 'useful', weight: r.made, destination: 'stock', lotId: r.lotId })),
     ...runs.filter((r) => r.takenOut).map((r): RecordedOutput => ({ name: `${r.type} taken out of the mixer`, kind: 'useful', weight: r.kept, destination: 'stock', lotId: r.takenOut })),
     ...(leftInMixer > 0 ? [{ name: 'Left in the mixer', kind: 'useful' as const, weight: leftInMixer, destination: 'mixer' as const }] : []),
     ...stored,
   ];
-  return { inputWeight: round2(fresh + heldIn + stored.reduce((sum, o) => sum + o.weight, 0)), outputs };
+  return { inputWeight: roundKg(fresh + heldIn + stored.reduce((sum, o) => sum + o.weight, 0)), outputs };
 }
 
 /** Liquor or cocoa butter a finished mixing record kept in store: every stored output that is not a run's chocolate */

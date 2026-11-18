@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown } from 'lucide-react';
 import { UnitInput } from '@/components/ui';
-import { round2 } from '@/lib/balance';
+import { roundKg } from '@/lib/balance';
 import { kg, num, pct } from '@/lib/format';
 import { stationById } from '@/lib/stations';
 import type { Balance, Destination, Station } from '@/lib/types';
@@ -15,7 +15,7 @@ export const emptyWeight: WeightValue = '';
 
 /** The typed reading in kg, 0 when empty */
 export function netWeight(value: WeightValue): number {
-  return round2(Number(value) || 0);
+  return roundKg(Number(value) || 0);
 }
 
 /** Turns a saved weight back into what the operator typed, so an edit starts from it */
@@ -56,7 +56,7 @@ type Tone = 'neutral' | 'ok' | 'warn';
 function verdict(balance: Balance, limit: number, live: boolean): { tone: Tone; headline: string; detail: string } {
   if (balance.input <= 0) return { tone: 'neutral', headline: 'Enter the input weight', detail: '' };
   if (balance.measured <= 0) return { tone: 'neutral', headline: `${kg(balance.input)} to account for`, detail: 'Enter the weights.' };
-  if (balance.measured > balance.input) return { tone: 'warn', headline: `${kg(round2(balance.measured - balance.input))} more than went in`, detail: 'Check the scale.' };
+  if (balance.measured > balance.input) return { tone: 'warn', headline: `${kg(roundKg(balance.measured - balance.input))} more than went in`, detail: 'Check the scale.' };
   if (Math.abs(balance.variancePct) > limit) {
     return live
       ? { tone: 'warn', headline: `${kg(balance.variance)} left to assign (${pct(balance.variancePct)})`, detail: `Weigh anything not entered yet, or check the scale. The limit is ${num(limit)}%.` }

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 import { AlertTriangle, Check, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Button, Empty, Field, Input, Notice, PageHeader, Panel, Select, Stat, Table, UnitInput, td, tdNum } from '@/components/ui';
-import { round2 } from '@/lib/balance';
+import { roundKg } from '@/lib/balance';
 import { userName } from '@/lib/derive';
 import { dateTime, kg } from '@/lib/format';
 import { planProgress } from '@/lib/plan';
@@ -120,7 +120,7 @@ export default function PlanPage() {
 
   const { plan, lines, types, ingredients } = progress;
   const shortfall = ingredients.filter((i) => i.short > 0);
-  const toMix = round2(types.reduce((sum, t) => sum + t.toMix, 0));
+  const toMix = roundKg(types.reduce((sum, t) => sum + t.toMix, 0));
   return (
     <>
       <PageHeader eyebrow="Production plan" title={progress.left ? `${progress.left} pieces left to make` : 'The plan is done'}

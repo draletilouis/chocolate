@@ -1,4 +1,4 @@
-import { percentOf, round2 } from './balance';
+import { percentOf, roundKg } from './balance';
 import { allAlerts, batchDisplayName, recordBalance } from './derive';
 import { outcomeTotals, startWeight } from './outcomes';
 import { piecesKg, piecesLots } from './pieces';
@@ -94,10 +94,10 @@ function lossOf(records: StationRecord[]) {
     else missing += balance.variance;
     for (const o of record.outputs.filter((o) => o.kind === 'waste')) items.set(o.name, (items.get(o.name) ?? 0) + o.weight);
   }
-  const loss = round2(waste + expected + missing);
+  const loss = roundKg(waste + expected + missing);
   return {
-    input: round2(input), waste: round2(waste), expected: round2(expected), missing: round2(missing), loss, lossPct: percentOf(loss, input),
-    wasteItems: [...items].map(([name, weight]) => ({ name, weight: round2(weight) })).sort((a, b) => b.weight - a.weight),
+    input: roundKg(input), waste: roundKg(waste), expected: roundKg(expected), missing: roundKg(missing), loss, lossPct: percentOf(loss, input),
+    wasteItems: [...items].map(([name, weight]) => ({ name, weight: roundKg(weight) })).sort((a, b) => b.weight - a.weight),
   };
 }
 
@@ -111,7 +111,7 @@ function usualRange(batches: Batch[], phase: (typeof summaryPhases)[number], fro
     .map((l) => l.lossPct)
     .sort((a, b) => a - b);
   if (shares.length < USUAL_MIN_BATCHES) return undefined;
-  return { low: round2(percentile(shares, 0.1)), high: round2(percentile(shares, 0.9)), batches: shares.length };
+  return { low: roundKg(percentile(shares, 0.1)), high: roundKg(percentile(shares, 0.9)), batches: shares.length };
 }
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -129,7 +129,7 @@ export function buildSummary(state: State, period: SummaryPeriod, today: string)
   // Beans that came onto the line
   const received = records.filter((r) => r.record.station === 'receiving');
   const beans = {
-    kg: round2(received.reduce((t, r) => t + r.record.inputWeight, 0)),
+    kg: roundKg(received.reduce((t, r) => t + r.record.inputWeight, 0)),
     sacks: received.length,
     suppliers: new Set(received.map((r) => r.batch.supplierId).filter(Boolean)).size,
   };
@@ -144,9 +144,9 @@ export function buildSummary(state: State, period: SummaryPeriod, today: string)
     gonePer100: percentOf(totals.reduce((t, x) => t + x.gone, 0), bagKg),
   };
 
-  const chocolateKg = round2(state.lots.filter((l) => l.chocolate && inPeriod(l.receivedAt, period)).reduce((t, l) => t + l.received, 0));
+  const chocolateKg = roundKg(state.lots.filter((l) => l.chocolate && inPeriod(l.receivedAt, period)).reduce((t, l) => t + l.received, 0));
   const piecesMade = piecesLots(state).filter((l) => inPeriod(l.receivedAt, period));
-  const pieces = { count: piecesMade.reduce((t, l) => t + l.received, 0), kg: round2(piecesMade.reduce((t, l) => t + piecesKg(l.received, l.pieces!.grams), 0)) };
+  const pieces = { count: piecesMade.reduce((t, l) => t + l.received, 0), kg: roundKg(piecesMade.reduce((t, l) => t + piecesKg(l.received, l.pieces!.grams), 0)) };
 
   // Loss at each phase, against the usual range of the days up to the end of the period
   const usualTo = period.to ?? today;
@@ -161,7 +161,7 @@ export function buildSummary(state: State, period: SummaryPeriod, today: string)
     return [{ id: phase.id, name: phase.name, records: own.length, ...loss, expectedLabel, usual, state: standing }];
   });
 
-  const missingKg = round2(phases.reduce((t, p) => t + p.missing, 0));
+  const missingKg = roundKg(phases.reduce((t, p) => t + p.missing, 0));
   const worst = [...phases].sort((a, b) => b.missing - a.missing)[0];
   const missing = { kg: missingKg, worstPhase: worst && worst.missing > 0 ? worst.name : undefined };
 

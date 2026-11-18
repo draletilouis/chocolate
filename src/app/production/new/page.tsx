@@ -4,8 +4,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ArrowRight, Check, X } from 'lucide-react';
 import { Back, Button, Field, Input, LinkButton, Notice, PageHeader, Panel, Select, SupplierOptions, Textarea, UnitInput } from '@/components/ui';
+import { InspectionFields, blankInspection, inspectionInput, inspectionProblem } from '@/components/InspectionFields';
 import { DestinationSelect, LiveBalance, WeightField, emptyWeight, netWeight, type WeightValue } from '@/components/weighing';
-import { calculateBalance, round2 } from '@/lib/balance';
+import { calculateBalance, roundKg } from '@/lib/balance';
 import { defaultDestination, lotOrigin, suggestBatchName, suppliersFor } from '@/lib/derive';
 import { kg } from '@/lib/format';
 import { useStore } from '@/lib/store';
@@ -54,13 +55,13 @@ function NewBatch() {
     return { kg: p.kg, lot, source: lot?.id ?? '', free: stored.filter((l) => l.id === lot?.id || !taken.includes(l.id)) };
   });
   const unused = stored.filter((l) => !lines.some((line) => line.source === l.id));
-  const startWeight = round2(lines.reduce((sum, line) => sum + (Number(line.kg) || 0), 0));
+  const startWeight = roundKg(lines.reduce((sum, line) => sum + (Number(line.kg) || 0), 0));
   const keep = () => lines.map((line): Part => ({ kg: line.kg, source: line.source }));
   const setPart = (index: number, patch: Partial<Part>) => setParts(keep().map((p, j) => (j === index ? { ...p, ...patch } : p)));
   /** The lot does not hold the weight entered: it gives what it has, and the rest comes from the next lot */
   const takeRest = (index: number) => {
     const line = lines[index];
-    const rest = round2((Number(line.kg) || 0) - line.lot!.available);
+    const rest = roundKg((Number(line.kg) || 0) - line.lot!.available);
     setParts([...keep().map((p, j) => (j === index ? { ...p, kg: String(line.lot!.available) } : p)), { kg: String(rest), source: unused[0].id }]);
   };
   async function submit(event: FormEvent) {
@@ -139,7 +140,7 @@ function NewBatch() {
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-warn">
                         <span>{line.lot!.id} has only {kg(line.lot!.available)} on record.</span>
                         {unused.length > 0
-                          ? <button type="button" className="btn-text font-semibold" onClick={() => takeRest(index)}>Take the other {kg(round2(Number(line.kg) - line.lot!.available))} from {unused[0].id}</button>
+                          ? <button type="button" className="btn-text font-semibold" onClick={() => takeRest(index)}>Take the other {kg(roundKg(Number(line.kg) - line.lot!.available))} from {unused[0].id}</button>
                           : <span>No other lot of {route.startMaterial.toLowerCase()} is in store: the batch is saved at the scale weight and the lot goes to zero.</span>}
                       </div>
                     )}
@@ -192,6 +193,7 @@ function ReceiveDelivery({ productId, productField, batchDate, setBatchDate, sta
   const [delivered, setDelivered] = useState<WeightValue>(emptyWeight);
   const [rows, setRows] = useState<Row[]>(() => store.outputCategories.filter((c) => c.station === 'receiving').map((c, i) => ({ name: c.name, kind: c.kind, weight: emptyWeight, destination: defaultDestination('receiving', c.name, c.kind, i) })));
   const [note, setNote] = useState('');
+  const [inspection, setInspection] = useState(blankInspection);
   const [error, setError] = useState('');
   // A double tap on Save must not start a second batch.
   const saving = useRef(false);
@@ -209,10 +211,12 @@ function ReceiveDelivery({ productId, productField, batchDate, setBatchDate, sta
     if (!(input > 0)) return setError('Enter the delivered weight from the scale.');
     const outputs = rows.map((r, i) => ({ name: r.name, kind: r.kind, weight: nets[i], destination: r.destination })).filter((o) => o.weight > 0);
     if (outputs.length === 0) return setError('Enter the accepted beans.');
+    const problem = inspectionProblem(inspection);
+    if (problem) return setError(problem);
     if (saving.current) return;
     saving.current = true;
     setBusy(true);
-    const id = await store.receiveDelivery({ productId, name: batchName, batchDate, startWeight: input, supplierId, note: note || undefined, lotUses: fromLot ? [{ lotId: fromLot.id, quantity: input }] : [] }, { weight: input }, outputs, note || undefined);
+    const id = await store.receiveDelivery({ productId, name: batchName, batchDate, startWeight: input, supplierId, note: note || undefined, lotUses: fromLot ? [{ lotId: fromLot.id, quantity: input }] : [] }, { weight: input }, outputs, note || undefined, inspectionInput(inspection));
     saving.current = false;
     setBusy(false);
     if (id) router.push(`/production/batches/${id}/record/receiving?saved=1`);
@@ -263,6 +267,9 @@ function ReceiveDelivery({ productId, productField, batchDate, setBatchDate, sta
             <WeightField value={row.weight} onChange={(weight) => setRows(rows.map((r, i) => (i === index ? { ...r, weight } : r)))} label={row.name} />
           </div>
         ))}
+      </Panel>
+      <Panel title="Inspection" subtitle="The receiving and inspection report. Everything starts as fine: change only what was not.">
+        <InspectionFields value={inspection} onChange={setInspection} />
       </Panel>
       <Panel title="Note (optional)"><div className="p-5"><Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Delivery note number, condition of the sacks…" aria-label="Note" /></div></Panel>
       <div className="save-bar">

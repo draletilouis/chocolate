@@ -3,11 +3,11 @@
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { ArrowDown, Pencil, Trash2, Truck, Waypoints } from 'lucide-react';
+import { ArrowDown, Pencil, Scale, Trash2, Truck, Waypoints } from 'lucide-react';
 import { Back, Badge, Button, Empty, Field, Input, LinkButton, Notice, PageHeader, Panel, Select, Stat } from '@/components/ui';
 import { BatchLabel } from '@/components/BatchLabel';
 import { PiecesBatchNumber } from '@/components/PiecesBatchNumber';
-import { amountOf, batchById, customerName, lotOrigin, recordBalance, userName } from '@/lib/derive';
+import { amountOf, batchById, customerName, lotOrigin, lowStockLimit, recordBalance, userName } from '@/lib/derive';
 import { piecesFrom, piecesKg } from '@/lib/pieces';
 import { dateTime, kg } from '@/lib/format';
 import { useStore } from '@/lib/store';
@@ -19,6 +19,7 @@ export default function LotPage() {
   const router = useRouter();
   const store = useStore();
   const [editing, setEditing] = useState(false);
+  const [adjusting, setAdjusting] = useState(false);
   const lot = store.lots.find((l) => l.id === id);
   if (!lot) return <Empty>Lot {id} was not found.</Empty>;
 
@@ -44,14 +45,24 @@ export default function LotPage() {
   return (
     <>
       <Back href="/store" label="Store" />
-      <PageHeader eyebrow={lot.category} title={`${lot.id} · ${lot.material}`} subtitle={`${lotOrigin(store, lot)} · received ${dateTime(lot.receivedAt)}`} action={<div className="flex flex-wrap gap-2">{usedInRecipes && <LinkButton href={`/production/new?lot=${lot.id}`}>Mix chocolate from store</LinkButton>}{startsBatch && <LinkButton href={`/production/new?lot=${lot.id}`}>Start a batch from this lot</LinkButton>}{lot.chocolate && lot.available > 0.004 && <LinkButton href={`/production/pieces/${lot.id}`}>Record pieces</LinkButton>}{dispatchable && <LinkButton variant={lot.pieces || lot.category === 'Finished goods' ? 'primary' : 'secondary'} href={`/dispatch/new?lot=${lot.id}`}><Truck size={14} /> Dispatch</LinkButton>}<LinkButton variant="secondary" href={`/trace/${lot.id}`}><Waypoints size={14} /> Trace</LinkButton><Button variant="secondary" onClick={() => setEditing((value) => !value)}><Pencil size={14} /> Edit</Button><Button variant="danger" disabled={!canDelete} title={canDelete ? 'Delete lot' : 'Only unused supplier lots can be deleted.'} onClick={async () => { if (canDelete && window.confirm(`Delete lot ${lot.id}?`) && await store.deleteLot(lot.id)) router.push('/store'); }}><Trash2 size={14} /> Delete</Button></div>} />
+      <PageHeader eyebrow={lot.category} title={`${lot.id} · ${lot.material}`} subtitle={`${lotOrigin(store, lot)} · received ${dateTime(lot.receivedAt)}`} action={<div className="flex flex-wrap gap-2">{usedInRecipes && <LinkButton href={`/production/new?lot=${lot.id}`}>Mix chocolate from store</LinkButton>}{startsBatch && <LinkButton href={`/production/new?lot=${lot.id}`}>Start a batch from this lot</LinkButton>}{lot.chocolate && lot.available > 0.004 && <LinkButton href={`/production/pieces/${lot.id}`}>Record pieces</LinkButton>}{dispatchable && <LinkButton variant={lot.pieces || lot.category === 'Finished goods' ? 'primary' : 'secondary'} href={`/dispatch/new?lot=${lot.id}`}><Truck size={14} /> Dispatch</LinkButton>}<LinkButton variant="secondary" href={`/trace/${lot.id}`}><Waypoints size={14} /> Trace</LinkButton>{store.signedInUser?.access === 'manager' && <Button variant="secondary" onClick={() => setAdjusting((value) => !value)}><Scale size={14} /> Set to counted</Button>}<Button variant="secondary" onClick={() => setEditing((value) => !value)}><Pencil size={14} /> Edit</Button><Button variant="danger" disabled={!canDelete} title={canDelete ? 'Delete lot' : 'Only unused supplier lots can be deleted.'} onClick={async () => { if (canDelete && window.confirm(`Delete lot ${lot.id}?`) && await store.deleteLot(lot.id)) router.push('/store'); }}><Trash2 size={14} /> Delete</Button></div>} />
       <div className="mb-5 grid grid-cols-3 gap-3">
         <Stat label={lot.pieces ? 'Made' : 'Received'} value={`${lot.received} ${unit}`} />
         <Stat label="Used" value={`${Math.round((lot.received - lot.available) * 1000) / 1000} ${unit}`} />
-        <Stat label="Available" value={`${lot.available} ${unit}`} tone={lot.category === 'Raw material' && lot.available < store.thresholds.lowStockKg ? 'warn' : undefined} />
+        <Stat label="Available" value={`${lot.available} ${unit}`} tone={lot.category === 'Raw material' && lot.available < lowStockLimit(store, lot.material) ? 'warn' : undefined} />
       </div>
 
       {lot.source.type === 'batch' && <Notice tone="neutral">This lot was created by production and is part of the traceability record. Its quantity and origin are protected; correct the source batch if needed.</Notice>}
+
+      {adjusting && (
+        <Panel title="Set to what was counted" subtitle={`The records show ${lot.available} ${unit}. Enter what is really there; the difference stays on this lot's record with your reason.`}>
+          <form className="grid gap-4 p-5 md:grid-cols-[200px_1fr_auto] md:items-end" onSubmit={async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); if (await store.adjustLot(lot.id, Number(form.get('counted')), String(form.get('reason')))) setAdjusting(false); }}>
+            <Field label={`Counted (${unit})`}><Input name="counted" type="number" inputMode="decimal" min="0" step={lot.unit === 'units' ? '1' : '0.001'} defaultValue={lot.available} required aria-label="Counted" /></Field>
+            <Field label="Why does it differ?"><Input name="reason" maxLength={300} placeholder="e.g. counted on the stock sheet, spillage, used without recording" required aria-label="Reason" /></Field>
+            <div className="flex gap-2"><Button variant="secondary" onClick={() => setAdjusting(false)}>Cancel</Button><Button type="submit">Save</Button></div>
+          </form>
+        </Panel>
+      )}
 
       {editing && lot.source.type === 'supplier' && (
         <Panel title="Edit lot details" subtitle="Material identity and supplier reference can be corrected. Received quantity and usage history stay locked.">
@@ -105,7 +116,13 @@ export default function LotPage() {
           <li className="py-2">
             <span className="text-[11px] font-bold tracking-wide text-faint uppercase">Used by</span>
             {downstream.length === 0 && <div className="text-muted">Not used yet.</div>}
-            {downstream.map(({ use, batch, dispatch }, i) => use.dispatchId ? (
+            {downstream.map(({ use, batch, dispatch }, i) => use.adjustment ? (
+              <div key={`adjust-${use.at}-${i}`} className="flex flex-wrap items-center gap-2 py-1">
+                <strong>Set to the count</strong>
+                <span>{use.quantity > 0 ? `${amountOf(use.quantity, lot.unit)} less than the records` : `${amountOf(-use.quantity, lot.unit)} more than the records`}</span>
+                <span className="text-muted">{use.adjustment.reason} · {userName(store, use.adjustment.by)} · {dateTime(use.at)}</span>
+              </div>
+            ) : use.dispatchId ? (
               <div key={`${use.dispatchId}-${i}`} className="flex flex-wrap items-center gap-2 py-1">
                 <Link href={`/dispatch/${use.dispatchId}`} className="font-semibold text-green">{use.dispatchId}</Link>
                 <span>Dispatched to {dispatch ? customerName(store, dispatch.customerId) : 'a customer'}</span>

@@ -1,6 +1,7 @@
-export const num = (n: number) => n.toFixed(2);
+/** A weight to the gram, without a trailing zero in the third place: 58.735, 46.00 */
+export const num = (n: number) => { const s = n.toFixed(3); return s.endsWith('0') ? s.slice(0, -1) : s; };
 export const kg = (n: number) => `${num(n)} kg`;
-export const pct = (n: number) => `${num(n)}%`;
+export const pct = (n: number) => `${n.toFixed(2)}%`;
 export const date = (iso: string) => iso.slice(0, 10);
 export const dateTime = (iso: string) => {
   const d = new Date(iso);

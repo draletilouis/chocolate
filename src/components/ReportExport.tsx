@@ -6,12 +6,14 @@ import { Button, Field, Input, Select } from '@/components/ui';
 import { downloadReportCsv, downloadReportXlsx, openPrintableReport, type ReportExportSnapshot } from '@/lib/report-export';
 import type { BusinessDetails } from '@/lib/types';
 
-export type ProductionReportType = 'summary' | 'pieces' | 'dispatched' | 'losses' | 'variance' | 'batches' | 'corrections' | 'holds';
+export type ProductionReportType = 'summary' | 'sacks' | 'stock' | 'pieces' | 'dispatched' | 'losses' | 'variance' | 'batches' | 'corrections' | 'holds';
 export type ReportPeriod = 'all' | 'today' | 'week' | 'month' | 'year' | 'custom';
 export interface ReportRange { from?: string; to?: string; label: string }
 
 const reportOptions: { id: ProductionReportType; label: string }[] = [
   { id: 'summary', label: 'Summary' },
+  { id: 'sacks', label: 'Bean summaries' },
+  { id: 'stock', label: 'Stock counts' },
   { id: 'pieces', label: 'Pieces made' },
   { id: 'dispatched', label: 'Dispatched' },
   { id: 'losses', label: 'Yield by stage' },

@@ -35,7 +35,7 @@ export function takeOldestFirst(lots: Lot[], quantity: number): { lines: { lotId
     if (rest <= 0.0005) break;
     const take = Math.min(rest, lot.available);
     if (take <= 0) continue;
-    lines.push({ lotId: lot.id, quantity: lot.unit === 'units' ? Math.floor(take) : Math.round(take * 100) / 100 });
+    lines.push({ lotId: lot.id, quantity: lot.unit === 'units' ? Math.floor(take) : Math.round(take * 1000) / 1000 });
     rest = Math.round((rest - take) * 1000) / 1000;
   }
   return { lines, short: Math.max(0, rest) };

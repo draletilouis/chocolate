@@ -1,4 +1,5 @@
-import { calculateBalance } from './balance';
+import { calculateBalance, roundKg } from './balance';
+import { num } from './format';
 import { stationById, stationName, stations } from './stations';
 import { routes, type State } from './seed';
 import type { Alert, Batch, Destination, Dispatch, IdCounters, Lot, OutputKind, StationId, StationRecord, Supplier } from './types';
@@ -43,7 +44,7 @@ export function nextInput(batch: Batch, station: StationId | null = batch.nextSt
   if (carried.length === 0) return { material: 'No material carried forward', weight: 0, lotIds: [] };
   return {
     material: Array.from(new Set(carried.map((o) => o.name))).join(' + '),
-    weight: Math.round(carried.reduce((sum, o) => sum + o.weight, 0) * 100) / 100,
+    weight: roundKg(carried.reduce((sum, o) => sum + o.weight, 0)),
     lotIds: [],
   };
 }
@@ -99,6 +100,9 @@ export function batchAlerts(state: State, batch: Batch): Alert[] {
   return alerts;
 }
 
+/** The kg below which a material counts as low: its own limit when it has one (0 = never), else the general one */
+export const lowStockLimit = (state: Pick<State, 'thresholds'>, material: string) => state.thresholds.lowStockByMaterial?.[material] ?? state.thresholds.lowStockKg;
+
 export function allAlerts(state: State): Alert[] {
   const batchLevel = state.batches.filter((b) => b.status !== 'completed').flatMap((b) => batchAlerts(state, b));
   // One alert per raw material whose kg in store (all its lots, as the Store adds them up) is below the limit;
@@ -106,7 +110,7 @@ export function allAlerts(state: State): Alert[] {
   const materials = Array.from(new Set(state.lots.filter((l) => l.category === 'Raw material' && l.unit === 'kg').map((l) => l.material)));
   const stock = materials.flatMap((material): Alert[] => {
     const total = state.lots.filter((l) => l.material === material && l.unit === 'kg').reduce((sum, l) => sum + l.available, 0);
-    return total < state.thresholds.lowStockKg ? [{ id: `${material}-stock`, kind: 'stock', message: `${material} is low: ${total.toFixed(2)} kg in store`, href: '/store' }] : [];
+    return total < lowStockLimit(state, material) ? [{ id: `${material}-stock`, kind: 'stock', message: `${material} is low: ${num(total)} kg in store`, href: '/store' }] : [];
   });
   return [...batchLevel, ...stock];
 }
@@ -118,7 +122,7 @@ export const supplierName = (state: State, id: string) => state.suppliers.find((
 export const customerName = (state: Pick<State, 'customers'>, id: string) => state.customers.find((c) => c.id === id)?.name ?? id;
 
 /** A quantity with its unit: pieces counted, or kg weighed */
-export const amountOf = (quantity: number, unit: Lot['unit']) => (unit === 'units' ? `${quantity} pieces` : `${quantity.toFixed(2)} kg`);
+export const amountOf = (quantity: number, unit: Lot['unit']) => (unit === 'units' ? `${quantity} pieces` : `${num(quantity)} kg`);
 
 /** Suppliers split into those whose "Supplies" names the material (offered first) and the others */
 export function suppliersFor(state: Pick<State, 'suppliers'>, material: string): { usual: Supplier[]; others: Supplier[] } {
@@ -166,7 +170,7 @@ export function nextBatchId(state: State, prefix: string) {
 
 const lotPrefixes: Record<string, string> = {
   'Cocoa beans': 'BEAN', 'Accepted beans': 'BEAN', 'Roasted beans': 'RST', 'Whole roasted beans': 'WRB',
-  Nibs: 'NIB', 'Nibs for liquor': 'NIB', 'Nibs for butter': 'NIB', 'Nibs for sale': 'NIB', 'Whole peeled beans': 'REW', Husks: 'HUSK',
+  Nibs: 'NIB', 'Nibs for liquor': 'NIB', 'Nibs for butter': 'NIB', 'Nibs for sale': 'NIB', 'Nibs for other': 'NIB', 'Whole peeled beans': 'WPB', Husks: 'HUSK',
   'Brown butter': 'BRB', 'Sieved butter': 'BRB', 'Sieved particles': 'PRT', 'Silk butter': 'SILK', 'Butter for sale': 'BUT',
   'Cocoa cake (powder)': 'CAKE', 'Roasted powder': 'PWD', 'Fine cocoa powder': 'PWD',
   Liquor: 'LIQ', Butter: 'BUT', 'Cocoa butter': 'BUT', Powder: 'PWD', 'Cocoa cake': 'CAKE', Sugar: 'SUG', Lecithin: 'LEC', 'Milk powder': 'MLK',

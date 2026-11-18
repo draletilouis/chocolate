@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
-import { AlertTriangle, ArrowRight, Check, ChevronDown, Circle, Pause, PenLine, Pencil, Play, Trash2, Waypoints } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Check, ChevronDown, Circle, FileText, Pause, PenLine, Pencil, Play, Trash2, Waypoints } from 'lucide-react';
 import { Back, Badge, Button, Empty, Field, Input, LinkButton, Notice, PageHeader, Panel, Textarea, UnitInput } from '@/components/ui';
 import { PrintLabelButton } from '@/components/BatchLabel';
 import { WhereItWent } from '@/components/BatchFlow';
@@ -94,6 +94,19 @@ export default function BatchPage() {
               </form>
             )}
           </Panel>
+
+          {batch.route === 'beans' && (
+            <Panel title="Documents" subtitle="The factory's sheets for this sack, ready to print.">
+              <Link href={`/production/batches/${batch.id}/inspection`} className="row-link">
+                <FileText size={16} className="shrink-0 text-green" />
+                <span className="min-w-0 flex-1 text-[13px]"><strong className="block text-[14px]">Receiving and inspection report</strong><span className="text-muted">{!batch.inspection ? 'Inspection not entered yet' : batch.approvals?.inspection ? `Signed by ${userName(store, batch.approvals.inspection.by)}` : 'Waiting for the production manager to sign'}</span></span>
+              </Link>
+              <Link href={`/production/batches/${batch.id}/summary`} className="row-link">
+                <FileText size={16} className="shrink-0 text-green" />
+                <span className="min-w-0 flex-1 text-[13px]"><strong className="block text-[14px]">Bean summary</strong><span className="text-muted">{batch.approvals?.summary ? `Signed by ${userName(store, batch.approvals.summary.by)}` : recordFor(batch, 'winnowing') ? 'Waiting for the production manager to sign' : 'Fills in as the stations are recorded'}</span></span>
+              </Link>
+            </Panel>
+          )}
 
           {batch.ingredients && (
             <Panel title="Recipe: expected vs actual">
@@ -229,7 +242,7 @@ function Steps({ batch }: { batch: Batch }) {
         })}
         <li className="step-row">
           {batch.status === 'completed'
-            ? <><span className="step-icon is-done"><Check size={13} /></span><div className="text-[13px]"><strong className="text-[14px]">Completed</strong> <span className="text-muted">· {batch.completedAt && dateTime(batch.completedAt)}</span>{batch.note && <div className="text-muted">{batch.note}</div>}</div></>
+            ? <><span className="step-icon is-done"><Check size={13} /></span><div className="text-[13px]"><strong className="text-[14px]">Completed</strong> <span className="text-muted">· {batch.completedAt && dateTime(batch.completedAt)}{batch.completedBy ? ` by ${userName(store, batch.completedBy)}` : ''}</span>{batch.note && <div className="text-muted">{batch.note}</div>}</div></>
             : <><span className={`step-icon ${batch.nextStation === 'completion' ? 'is-next' : 'is-later'}`}>{batch.nextStation === 'completion' ? <Play size={11} /> : <Circle size={10} />}</span><div className="flex flex-1 flex-wrap items-center justify-between gap-2 text-[13px]"><span><strong className="text-[14px]">Completion</strong> <span className="text-[12px] text-faint">{batch.nextStation === 'completion' ? 'ready' : 'when nothing is waiting'}</span></span>{batch.status === 'active' && batch.nextStation === 'completion' && <LinkButton href={`/production/batches/${batch.id}/record/completion`}>Review & complete <ArrowRight size={14} /></LinkButton>}</div></>}
         </li>
       </ol>
