@@ -21,11 +21,13 @@ import { piecesByTypeAndSize, piecesKg, piecesLots } from '@/lib/pieces';
 import { beanSummary, sacks } from '@/lib/bean-summary';
 import { decisionLabel } from '@/lib/inspection';
 import { differences } from '@/lib/stock';
+import { findDiscrepancies, isWeighing, kindLabels, patternBy, severityLabels, type Discrepancy } from '@/lib/discrepancies';
 import type { Batch, Lot, RouteId } from '@/lib/types';
 
 
 const sections = [
   { id: 'summary', label: 'Summary', href: '/reports/summary' },
+  { id: 'discrepancies', label: 'Discrepancies', href: '/reports/discrepancies' },
   { id: 'sacks', label: 'Bean summaries', href: '/reports/sacks' },
   { id: 'stock', label: 'Stock counts', href: '/reports/stock' },
   { id: 'pieces', label: 'Pieces made', href: '/reports/pieces' },
@@ -177,7 +179,31 @@ export default function ReportsPage() {
   const countList = countsIn(durationRange, duration === 'all');
   const signedBy = (batch: Batch, doc: 'inspection' | 'summary') => (batch.approvals?.[doc] ? userName(store, batch.approvals[doc]!.by) : '');
 
+  // Discrepancies dated in the period, open and explained
+  const flagsIn = (range: ReportRange, all = false) => findDiscrepancies(store, todayLocal()).filter((d) => all || inReportRange(d.at, range));
+  const flagList = flagsIn(durationRange, duration === 'all');
+  const flagStation = (d: Discrepancy) => (d.station ? stationName(d.station) : d.kind === 'count' ? 'Stock count' : undefined);
+  const flagRow = (d: Discrepancy) => [dateTime(d.at), severityLabels[d.severity], kindLabels[d.kind], d.title, d.detail, d.kg === undefined ? '' : num(d.kg), flagStation(d) ?? '', d.batchName ?? '', d.batchId ?? '', d.lotId ?? '', d.userId ? userName(store, d.userId) : '', d.supplier ?? '', d.operatorReason ?? '', d.resolution ? 'Explained' : d.closes === 'act' ? 'Open, to deal with' : 'Open', d.resolution?.note ?? '', d.resolution?.by ? userName(store, d.resolution.by) : '', d.resolution?.at ? dateTime(d.resolution.at) : ''];
+
   const buildExportSnapshot = (type: ProductionReportType, range: ReportRange): ReportExportSnapshot => {
+    if (type === 'discrepancies') {
+      const list = flagsIn(range);
+      const weighing = list.filter(isWeighing);
+      const pattern = (of: (d: Discrepancy) => string | undefined) => patternBy(weighing, of).map((p) => [p.name, p.open + p.explained, p.open, p.explained, num(p.kg)]);
+      const patternHead = (first: string) => [first, 'Items', 'Still open', 'Explained', 'Weight in question (kg)'];
+      return {
+        title: 'Discrepancies',
+        periodLabel: range.label,
+        sections: [
+          { title: 'Summary', headers: ['Measure', 'Count'], rows: [['Open', list.filter((d) => !d.resolution).length], ['Open and serious', list.filter((d) => !d.resolution && d.severity === 'high').length], ['Explained', list.filter((d) => d.resolution).length]] },
+          { title: 'Every discrepancy', headers: ['When', 'Severity', 'Kind', 'What', 'Detail', 'Weight (kg)', 'Station', 'Batch', 'Batch ID', 'Lot', 'Recorded by', 'Supplier', 'Reason given when saved', 'State', 'Explanation', 'Explained by', 'Explained'], rows: list.map(flagRow) },
+          { title: 'By station', headers: patternHead('Station'), rows: pattern(flagStation) },
+          { title: 'By kind', headers: patternHead('Kind'), rows: pattern((d) => kindLabels[d.kind]) },
+          { title: 'By person', headers: patternHead('Recorded by'), rows: pattern((d) => (d.userId ? userName(store, d.userId) : undefined)) },
+          { title: 'By supplier', headers: patternHead('Supplier'), rows: pattern((d) => d.supplier) },
+        ],
+      };
+    }
     if (type === 'sacks') {
       const list = sacksIn(range);
       const usage = (s: ReturnType<typeof beanSummary>, label: string) => num(s.usage.find((u) => u.label === label)?.weight ?? 0);
@@ -529,6 +555,33 @@ export default function ReportsPage() {
             })}
           </Table>
         </Panel>
+      )}
+
+      {current.id === 'discrepancies' && (
+        <>
+          <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <Stat label="In this period" value={flagList.length} />
+            <Stat label="Still open" value={flagList.filter((d) => !d.resolution).length} tone={flagList.some((d) => !d.resolution) ? 'warn' : undefined} />
+            <Stat label="Open and serious" value={flagList.filter((d) => !d.resolution && d.severity === 'high').length} tone={flagList.some((d) => !d.resolution && d.severity === 'high') ? 'danger' : undefined} />
+            <Stat label="Explained" value={flagList.filter((d) => d.resolution).length} />
+          </div>
+          <Panel title="Discrepancies" subtitle="Everything that did not add up in this period, with its explanation where there is one. Work on them in the register." action={<Link href="/discrepancies" className="font-semibold text-green">Open the register</Link>}>
+            {flagList.length === 0 ? <Empty>Nothing was flagged in this period.</Empty> : (
+              <Table head={['When', 'Severity', 'What', 'Weight', 'State', 'Explanation']}>
+                {flagList.map((d) => (
+                  <tr key={d.id}>
+                    <td className={`${td} whitespace-nowrap`}>{dateTime(d.at)}</td>
+                    <td className={td}><Badge tone={d.severity === 'high' ? 'danger' : d.severity === 'medium' ? 'warn' : 'neutral'}>{severityLabels[d.severity]}</Badge></td>
+                    <td className={td}><Link href={d.href} className="font-semibold text-green">{d.title}</Link><span className="block text-[11px] text-muted">{kindLabels[d.kind]} · {d.detail}</span></td>
+                    <td className={tdNum}>{d.kg === undefined ? '—' : num(d.kg)}</td>
+                    <td className={td}>{d.resolution ? <Badge tone="green">Explained</Badge> : <Badge tone="warn">Open</Badge>}</td>
+                    <td className={td}>{d.resolution ? <>{d.resolution.note}<span className="block text-[11px] text-muted">{d.resolution.by ? userName(store, d.resolution.by) : 'From the records'}</span></> : d.operatorReason ? <span className="text-muted">Given when saved: {d.operatorReason}</span> : '—'}</td>
+                  </tr>
+                ))}
+              </Table>
+            )}
+          </Panel>
+        </>
       )}
 
       {current.id === 'sacks' && (

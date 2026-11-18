@@ -6,7 +6,8 @@ import { Empty, LinkButton, PageHeader, Panel, RowLink, Stat } from '@/component
 import { percentOf, roundKg } from '@/lib/balance';
 import { startName, startWeight } from '@/lib/outcomes';
 import type { Balance, Batch, StationRecord } from '@/lib/types';
-import { activeBatches, allAlerts, batchDisplayName, recordBalance } from '@/lib/derive';
+import { activeBatches, batchDisplayName, recordBalance } from '@/lib/derive';
+import { openDiscrepancies, severityLabels } from '@/lib/discrepancies';
 import { kg, pct } from '@/lib/format';
 import { planProgress } from '@/lib/plan';
 import { useStore } from '@/lib/store';
@@ -25,9 +26,9 @@ function recentLine(batch: Batch, record: StationRecord, balance: Balance) {
 
 export default function OverviewPage() {
   const store = useStore();
-  const alerts = allAlerts(store);
-  const active = activeBatches(store);
   const today = new Date().toISOString().slice(0, 10);
+  const alerts = openDiscrepancies(store, today);
+  const active = activeBatches(store);
   const completedToday = store.batches.filter((b) => b.status === 'completed' && b.completedAt?.startsWith(today)).length;
   const records = store.batches.flatMap((b) => b.records.map((r) => ({ batch: b, record: r, balance: recordBalance(r) })));
   const totals = records.reduce((t, r) => ({ input: t.input + r.balance.input, waste: t.waste + r.balance.waste, variance: t.variance + r.balance.variance }), { input: 0, waste: 0, variance: 0 });
@@ -39,7 +40,7 @@ export default function OverviewPage() {
       <PageHeader eyebrow="Overview" title="How production is doing" subtitle="Live totals from every recorded station." action={<LinkButton href="/production">Open production line <ArrowRight size={15} /></LinkButton>} />
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Active batches" value={active.length} hint={`${active.filter((b) => b.status === 'hold').length} on hold`} />
-        <Stat label="Alerts" value={alerts.length} tone={alerts.length ? 'warn' : undefined} hint="Variance, waste, holds, stock" />
+        <Stat label="Open discrepancies" value={alerts.length} tone={alerts.some((a) => a.severity === 'high') ? 'danger' : alerts.length ? 'warn' : undefined} hint={`${alerts.filter((a) => a.severity === 'high').length} serious · ${alerts.filter((a) => a.severity === 'medium').length} to check`} />
         <Stat label="Completed today" value={completedToday} hint={`${store.batches.filter((b) => b.status === 'completed').length} completed in total`} />
         <Stat label="Unaccounted variance" value={kg(roundKg(totals.variance))} hint={`${pct(totals.input ? roundKg((totals.variance / totals.input) * 100) : 0)} of all station input`} />
       </div>
@@ -56,12 +57,12 @@ export default function OverviewPage() {
         )}
       </Panel>
 
-      <Panel title="Alerts" subtitle="Anything that needs a second look.">
-        {alerts.length === 0 && <Empty>No alerts right now.</Empty>}
-        {alerts.map((a) => (
-          <RowLink key={a.id} href={a.href}>
-            <AlertTriangle size={16} className={a.kind === 'hold' ? 'text-danger' : 'text-warn'} />
-            <span className="text-[13px]">{a.message}</span>
+      <Panel title="Discrepancies" subtitle="What does not add up and is still open, the most serious first." action={<LinkButton variant="secondary" href="/discrepancies">Open the register{alerts.length > 6 ? ` (${alerts.length})` : ''}</LinkButton>}>
+        {alerts.length === 0 && <Empty>Nothing is open. Everything adds up or is explained.</Empty>}
+        {alerts.slice(0, 6).map((a) => (
+          <RowLink key={a.id} href="/discrepancies">
+            <AlertTriangle size={16} className={a.severity === 'high' ? 'text-danger' : a.severity === 'medium' ? 'text-warn' : 'text-faint'} />
+            <span className="text-[13px]"><strong>{a.title}</strong><span className="block text-muted">{severityLabels[a.severity]} · {a.detail}</span></span>
           </RowLink>
         ))}
       </Panel>

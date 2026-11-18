@@ -58,7 +58,9 @@ export const commandSchema = z.discriminatedUnion('type', [
   // A manager signs the receiving report or the bean summary of a batch (the production manager's line on the paper).
   z.object({ type: z.literal('approveDocument'), batchId: id, document: z.enum(['inspection', 'summary']) }),
   // expectRecord: recordStamp() of the record the form was opened on (null for a new one), so two people cannot overwrite each other unseen.
-  z.object({ type: z.literal('saveRecord'), batchId: id, station, input: z.object({ weight: qty }), outputs: z.array(output).max(30), note: text(1000).optional(), options, expectRecord: z.string().max(200).nullable().optional() }),
+  z.object({ type: z.literal('saveRecord'), batchId: id, station, input: z.object({ weight: qty }), outputs: z.array(output).max(30), note: text(1000).optional(), options, expectRecord: z.string().max(200).nullable().optional(),
+    // reason: why the weights are outside the station's limit. editReason: why saved weights are being changed (needed when they change).
+    reason: text(300).optional(), editReason: text(300).optional() }),
   // Mixing: one chocolate type per run, made on top of what the mixer holds (expectMixer: mixerStamp() the form was opened on).
   z.object({ type: z.literal('saveMixingRun'), batchId: id, recipeId: id, toRun: qty, ingredients: z.array(z.object({ name: text(80).min(1), actual: qty, lotId: text(80).optional() })).min(1).max(60), made: qty, kept: qty, expectMixer: z.string().max(200) }),
   z.object({ type: z.literal('undoMixingRun'), batchId: id, runId: id }),
@@ -111,7 +113,10 @@ export const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('updateRoute'), routeId: id, route: z.object({ name: text(120).min(1), startMaterial: text(120).min(1), note: text(500) }) }),
   z.object({ type: z.literal('deleteRoute'), routeId: id }),
   z.object({ type: z.literal('setBusinessDetails'), business: z.object({ name: text(100).min(1), address: text(160), phone: text(40), email: text(120) }) }),
-  z.object({ type: z.literal('setThresholds'), wastePct: z.number().finite().min(0).max(100).optional(), lowStockKg: qty.optional() }),
+  z.object({ type: z.literal('setThresholds'), wastePct: z.number().finite().min(0).max(100).optional(), lowStockKg: qty.optional(), staleDays: z.number().int().min(1).max(365).optional() }),
+  // A manager explains a discrepancy, which moves it to the history; reopening removes the explanation.
+  z.object({ type: z.literal('explainDiscrepancy'), id: z.string().trim().min(1).max(300), note: text(500).min(1, 'Say what explains it.') }),
+  z.object({ type: z.literal('reopenDiscrepancy'), id: z.string().trim().min(1).max(300) }),
   // A material's own low-stock limit in kg; null goes back to the general limit.
   z.object({ type: z.literal('setMaterialLowStock'), material: text(80).min(1), kg: qty.nullable() }),
   z.object({ type: z.literal('setStationVariance'), station, value: z.number().finite().min(0).max(100) }),

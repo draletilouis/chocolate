@@ -1,7 +1,7 @@
 import { brand } from './brand';
 import { stations } from './stations';
 import type {
-  Batch, Customer, Dispatch, IdCounters, Lot, Mixer, ProductionPlan, OutputCategory, PackSize, Product, Recipe, Route, StockCount, Supplier, Thresholds, User, BusinessDetails,
+  Batch, Customer, DiscrepancyNote, Dispatch, IdCounters, Lot, Mixer, ProductionPlan, OutputCategory, PackSize, Product, Recipe, Route, StockCount, Supplier, Thresholds, User, BusinessDetails,
 } from './types';
 
 export interface State {
@@ -21,6 +21,8 @@ export interface State {
   outputCategories: OutputCategory[];
   /** The daily physical stock counts, one per day */
   stockCounts: StockCount[];
+  /** Managers' explanations of discrepancies, one per discrepancy */
+  discrepancyNotes: DiscrepancyNote[];
   business: BusinessDetails;
   /** Minutes without activity before a shared device returns to the sign-in screen (0 = never) */
   idleMinutes: number;
@@ -163,7 +165,7 @@ const business: BusinessDetails = {
 export function seedState(): State {
   return structuredClone({
     batches: [], lots: [], recipes, products, routes, packSizes, suppliers, customers, dispatches: [], users,
-    thresholds, outputCategories, stockCounts: [], business, idleMinutes: 10, workflowVersion: WORKFLOW_VERSION,
+    thresholds, outputCategories, stockCounts: [], discrepancyNotes: [], business, idleMinutes: 10, workflowVersion: WORKFLOW_VERSION,
     idCounters: { batches: {}, lots: {} },
     mixer: { holds: null, lastRunId: null },
     mixerKeepsKg: 10,

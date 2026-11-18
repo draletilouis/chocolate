@@ -64,7 +64,10 @@ interface Actions {
   saveStockCount: (day: string, lines: { row: string; counted: number }[], note?: string) => Promise<boolean>;
   setMaterialLowStock: (material: string, kg: number | null) => Promise<boolean>;
   /** Saves a station's input, weights and destinations at once. expectRecord is recordStamp() of the record the form started from. */
-  saveRecord: (batchId: string, station: StationId, input: { weight: number }, outputs: OutputEntry[], note: string | undefined, options: RecordOptions | undefined, expectRecord: string | null) => Promise<boolean>;
+  saveRecord: (batchId: string, station: StationId, input: { weight: number }, outputs: OutputEntry[], note: string | undefined, options: RecordOptions | undefined, expectRecord: string | null, reasons?: { reason?: string; editReason?: string }) => Promise<boolean>;
+  /** A manager explains a discrepancy (it moves to the history), or takes the explanation back */
+  explainDiscrepancy: (id: string, note: string) => Promise<boolean>;
+  reopenDiscrepancy: (id: string) => Promise<boolean>;
   /** One chocolate type made at mixing; answers the chocolate lot's ID. expectMixer is mixerStamp() of the mixer the form was opened on. */
   saveMixingRun: (run: { batchId: string; recipeId: string; toRun: number; ingredients: { name: string; actual: number; lotId?: string }[]; made: number; kept: number; expectMixer: string }) => Promise<string | undefined>;
   undoMixingRun: (batchId: string, runId: string) => Promise<boolean>;
@@ -113,7 +116,7 @@ interface Actions {
   updateRoute: (routeId: string, patch: Pick<Route, 'name' | 'startMaterial' | 'note'>) => Promise<boolean>;
   deleteRoute: (routeId: string) => Promise<boolean>;
   setBusinessDetails: (business: BusinessDetails) => Promise<boolean>;
-  setThresholds: (patch: { wastePct?: number; lowStockKg?: number }) => Promise<boolean>;
+  setThresholds: (patch: { wastePct?: number; lowStockKg?: number; staleDays?: number }) => Promise<boolean>;
   setStationVariance: (station: StationId, value: number) => Promise<boolean>;
   addOutputCategory: (station: StationId, name: string, kind: OutputKind) => Promise<boolean>;
   updateOutputCategory: (categoryId: string, patch: { station: StationId; name: string; kind: OutputKind }) => Promise<boolean>;
@@ -310,7 +313,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       adjustLot: (lotId, counted, reason) => done({ type: 'adjustLot', lotId, counted, reason }),
       saveStockCount: (day, lines, note) => done({ type: 'saveStockCount', day, lines, note }),
       setMaterialLowStock: (material, kg) => done({ type: 'setMaterialLowStock', material, kg }),
-      saveRecord: (batchId, station, input, outputs, note, options, expectRecord) => done({ type: 'saveRecord', batchId, station, input, outputs, note, options, expectRecord }),
+      saveRecord: (batchId, station, input, outputs, note, options, expectRecord, reasons) => done({ type: 'saveRecord', batchId, station, input, outputs, note, options, expectRecord, ...reasons }),
+      explainDiscrepancy: (id, note) => done({ type: 'explainDiscrepancy', id, note }),
+      reopenDiscrepancy: (id) => done({ type: 'reopenDiscrepancy', id }),
       saveMixingRun: (run) => value<string>({ type: 'saveMixingRun', ...run }),
       undoMixingRun: (batchId, runId) => done({ type: 'undoMixingRun', batchId, runId }),
       emptyMixer: (expectMixer) => value<string>({ type: 'emptyMixer', expectMixer }),

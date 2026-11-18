@@ -2,9 +2,11 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { AlertTriangle, BarChart3, ChevronDown, ClipboardCheck, ClipboardList, FlaskConical, LayoutDashboard, LogOut, Search, Settings2, Target, Truck, Warehouse, Waypoints, WifiOff, X, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, BarChart3, ShieldAlert, ChevronDown, ClipboardCheck, ClipboardList, FlaskConical, LayoutDashboard, LogOut, Search, Settings2, Target, Truck, Warehouse, Waypoints, WifiOff, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { activeBatches, allAlerts, waitingCount } from '@/lib/derive';
+import { activeBatches, waitingCount } from '@/lib/derive';
+import { openDiscrepancies } from '@/lib/discrepancies';
+import { DiscrepancyWatch } from './DiscrepancyWatch';
 import { useStore } from '@/lib/store';
 import { groupBySlug, lineStations, stationById, stationGroups } from '@/lib/stations';
 import { LoginScreen } from './LoginScreen';
@@ -16,7 +18,9 @@ interface NavItem { href: string; label: string; short?: string; icon: LucideIco
 
 const navItems: NavItem[] = [
   { href: '/work', label: 'My work', icon: ClipboardCheck, count: 'work' },
-  { href: '/overview', label: 'Overview', icon: LayoutDashboard, count: 'alerts', managers: true },
+  { href: '/overview', label: 'Overview', icon: LayoutDashboard, managers: true },
+  // What does not add up; the count is the serious and to-check items still open. Off the phone bar so it fits; Overview links to it.
+  { href: '/discrepancies', label: 'Discrepancies', icon: ShieldAlert, count: 'alerts', managers: true, phone: false },
   { href: '/production', label: 'Production line', short: 'Production', icon: ClipboardList, count: 'batches' },
   // Kept off the phone bar so it fits; Overview and My work link to the plan.
   { href: '/plan', label: 'Production plan', short: 'Plan', icon: Target, managers: true, phone: false },
@@ -32,7 +36,7 @@ const navItems: NavItem[] = [
 ];
 
 /** Pages operators do not need; they stay one tap away for managers */
-const managerOnly = ['/overview', '/recipes', '/reports', '/setup', '/dispatch'];
+const managerOnly = ['/overview', '/recipes', '/reports', '/setup', '/dispatch', '/discrepancies'];
 
 export function Shell({ children }: { children: ReactNode }) {
   const store = useStore();
@@ -46,7 +50,7 @@ export function Shell({ children }: { children: ReactNode }) {
   // Operators get My work and the production line; managers get everything, plus My work when they have stations.
   const items = navItems.filter((item) => (item.href === '/work' ? !isManager || myStations.length > 0 : !item.managers || isManager));
   const counts = {
-    alerts: allAlerts(store).length,
+    alerts: isManager && store.sessionUserId ? openDiscrepancies(store, new Date().toISOString().slice(0, 10)).filter((d) => d.severity !== 'low').length : 0,
     batches: activeBatches(store).length,
     work: myStations.filter((s) => !stationById[s]?.retired).reduce((n, s) => n + waitingCount(store, s), 0),
   };
@@ -189,6 +193,7 @@ export function Shell({ children }: { children: ReactNode }) {
         </span>
       </header>
 
+      {isManager && <DiscrepancyWatch />}
       <main className="main-content md:ml-[260px] md:pt-[68px] pb-24 md:pb-0">
         <div className="tab-content">
           {!store.online && <div className="notice notice-warn" role="status"><WifiOff size={16} className="mt-0.5 shrink-0" /><div>Offline: trying to reach the server. Changes cannot be saved until it is back.</div></div>}

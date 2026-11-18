@@ -115,6 +115,8 @@ function StationForm({ batch, station, record, independent, onSaved, onShowSaved
   });
   const [note, setNote] = useState(record?.note ?? '');
   const [showNote, setShowNote] = useState(Boolean(record?.note));
+  const [reason, setReason] = useState(record?.varianceReason ?? '');
+  const [editReason, setEditReason] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -123,6 +125,12 @@ function StationForm({ batch, station, record, independent, onSaved, onShowSaved
   const balance = calculateBalance(inputNet, rows.map((r, i) => ({ kind: r.kind, weight: nets[i] })));
   const limit = store.thresholds.variancePct[station.id] ?? 0;
   const update = (index: number, patch: Partial<Row>) => setRows(rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+  // Outside the limit, or more weighed out than went in: whoever saves says why, so the discrepancy comes with its reason
+  const offBalance = inputNet > 0 && balance.measured > 0 && (Math.abs(balance.variancePct) > limit || balance.variance < -0.02);
+  // Weights that were already saved keep their earlier values on the record; changing them needs a reason
+  const saved = record?.destinationsSaved ? record : undefined;
+  const entered = rows.map((r, i) => ({ name: r.name.trim() || 'Other output', weight: nets[i] })).filter((o) => o.weight > 0);
+  const changesSaved = Boolean(saved) && (inputNet !== saved!.inputWeight || entered.length !== saved!.outputs.length || entered.some((o) => saved!.outputs.find((e) => e.name === o.name)?.weight !== o.weight));
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -132,11 +140,13 @@ function StationForm({ batch, station, record, independent, onSaved, onShowSaved
     const options = independent ? { advanceWorkflow: false, inputMaterial: station.input } : undefined;
     const outputs = rows.map((r, i) => ({ name: r.name.trim() || 'Other output', kind: r.kind, weight: nets[i], destination: r.destination })).filter((o) => o.weight > 0);
     if (outputs.length === 0) return setError('Enter at least one weight.');
+    if (offBalance && !reason.trim()) return setError('Say why the weights do not add up, or check them again.');
+    if (changesSaved && !editReason.trim()) return setError('Say why the saved weights are being changed.');
     setSaving(true);
-    const saved = await store.saveRecord(batch.id, station.id, { weight: inputNet }, outputs, note || undefined, options, startedFrom);
+    const ok = await store.saveRecord(batch.id, station.id, { weight: inputNet }, outputs, note || undefined, options, startedFrom, { reason: offBalance ? reason.trim() : undefined, editReason: changesSaved ? editReason.trim() : undefined });
     setSaving(false);
     // On failure the weights stay on screen; the reason is shown at the top.
-    if (saved) onSaved();
+    if (ok) onSaved();
     else window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -191,6 +201,17 @@ function StationForm({ batch, station, record, independent, onSaved, onShowSaved
       {showNote
         ? <Panel title="Note"><div className="p-5"><input className={inputClass} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Anything unusual at this station?" aria-label="Note" autoFocus={!record?.note} /></div></Panel>
         : <button type="button" className="add-note" onClick={() => setShowNote(true)}><Plus size={15} /> Add a note</button>}
+
+      {offBalance && (
+        <Panel title="Why do the weights not add up?" subtitle={balance.variance < 0 ? 'More was weighed out than went in. Check the scale first; if the weights are right, say what explains it.' : `${kg(balance.variance)} is not accounted for, above this station's ${limit}% limit. Weigh anything missed first; if the weights are right, say what explains it.`}>
+          <div className="p-5"><input className={inputClass} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={300} placeholder="e.g. spilled at the winnower, scale re-zeroed, wet beans" aria-label="Why the weights do not add up" required /></div>
+        </Panel>
+      )}
+      {changesSaved && (
+        <Panel title="Why are the saved weights being changed?" subtitle="The weights saved before stay on the record next to the new ones.">
+          <div className="p-5"><input className={inputClass} value={editReason} onChange={(e) => setEditReason(e.target.value)} maxLength={300} placeholder="e.g. typed the husks in the wrong row" aria-label="Why the saved weights are being changed" required /></div>
+        </Panel>
+      )}
 
       <div className="save-bar">
         <LiveBalance balance={balance} limit={limit} wasteLimit={store.thresholds.wastePct} />
@@ -258,6 +279,8 @@ function SavedView({ batch, station, record, independent, justSaved, onEdit }: {
           </div>
         ))}
         {record.note && <div className="border-t border-line px-5 py-3 text-[13px] text-muted">Note: {record.note}</div>}
+        {record.varianceReason && <div className="border-t border-line px-5 py-3 text-[13px] text-muted">Why the weights do not add up: {record.varianceReason}</div>}
+        {(record.edits ?? []).map((e) => <div key={e.at} className="border-t border-line px-5 py-3 text-[13px] text-muted">Changed {dateTime(e.at)} by {userName(store, e.by)}: {e.reason}. Before: input {kg(e.inputWeight)} · {e.outputs.map((o) => `${o.name} ${kg(o.weight)}`).join(' · ')}</div>)}
       </Panel>
 
       {station.id === 'grinding' && record.outputs.filter((o) => o.name === 'Liquor').map((o) => (

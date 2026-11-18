@@ -94,7 +94,14 @@ export interface StationRecord {
   rev?: string;
   note?: string;
   destinationsSaved: boolean;
+  /** Why the weights do not add up, given by whoever saved a station that was outside its limit */
+  varianceReason?: string;
+  /** The weights as they stood before each later "Edit weights", oldest first, so an edit never hides what was first recorded */
+  edits?: RecordEdit[];
 }
+
+/** One earlier state of a station record that "Edit weights" replaced */
+export interface RecordEdit { at: string; by: string; reason: string; inputWeight: number; outputs: { name: string; weight: number }[] }
 
 export type BatchStatus = 'active' | 'hold' | 'completed';
 
@@ -178,6 +185,8 @@ export interface LotUse {
    * found than the record showed). No batch or dispatch took it.
    */
   adjustment?: { reason: string; by: string };
+  /** Kg asked of the lot beyond what its record held: the scale weight was used, the lot went to zero, and this much has no source */
+  short?: number;
 }
 
 /** Someone the factory sells or sends goods to */
@@ -316,6 +325,8 @@ export interface Thresholds {
   lowStockKg: number;
   /** A material's own limit in kg, by material name; 0 means never flag it */
   lowStockByMaterial?: Record<string, number>;
+  /** Days material may wait at a station before it is flagged; 7 when not set */
+  staleDays?: number;
 }
 
 /**
@@ -361,3 +372,6 @@ export interface StockCountLine { row: string; expected: number; counted: number
 
 /** The physical count of one day, one per day; counting again on the same day replaces it */
 export interface StockCount { id: string; day: string; lines: StockCountLine[]; countedBy: string; countedAt: string; note?: string }
+
+/** A manager's explanation of one discrepancy; id is the discrepancy's own ID (see src/lib/discrepancies.ts) */
+export interface DiscrepancyNote { id: string; note: string; by: string; at: string }

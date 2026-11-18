@@ -7,6 +7,7 @@ import { batchMaterialAtMixing, changeover, ingredientsOf, mixerStamp, mixingTot
 import { demoCredentials, placeholderBusinessName, retiredChocolateTypes, seedState, type State } from '@/lib/seed';
 import { stationById, stationName } from '@/lib/stations';
 import { expectedStock } from '@/lib/stock';
+import { findDiscrepancies } from '@/lib/discrepancies';
 import type { Batch, Destination, Dispatch, DispatchLine, Inspection, StockCount, Lot, LotCategory, LotUse, Mixer, MixingRun, OutputCategory, Recipe, RecipeIngredient, RecordedOutput, RunIngredient, StationId, StationRecord, User } from '@/lib/types';
 
 /** A command that cannot be applied; the message is shown to the person who tried */
@@ -39,6 +40,9 @@ const replaceBatch = (s: State, next: Batch): State => ({ ...s, batches: s.batch
 
 type NewBatch = Extract<Command, { type: 'createBatch' }>['input'];
 
+/** What a use asked of a lot beyond what its record held, kept on the use so the shortfall is not lost */
+const shortOf = (available: number, quantity: number) => (quantity > available + 0.005 ? { short: roundKg(quantity - available) } : {});
+
 function createBatch(s: State, input: NewBatch, ctx: CommandContext): { state: State; id: string } {
   const product = s.products.find((p) => p.id === input.productId) ?? fail('That product no longer exists.');
   const route = s.routes.find((r) => r.id === product.route) ?? fail('This product has no route. Check it in Setup → Products.');
@@ -60,7 +64,7 @@ function createBatch(s: State, input: NewBatch, ctx: CommandContext): { state: S
     const use = input.lotUses.find((u) => u.lotId === lot.id && u.quantity > 0);
     if (!use) return lot;
     // The scale weight is recorded as-is; a lot record can only be drawn down to zero.
-    return { ...lot, available: Math.max(0, roundKg(lot.available - use.quantity)), uses: [...lot.uses, { batchId: id, quantity: use.quantity, station: route.stations[0], at: stamp }] };
+    return { ...lot, available: Math.max(0, roundKg(lot.available - use.quantity)), uses: [...lot.uses, { batchId: id, quantity: use.quantity, station: route.stations[0], at: stamp, ...shortOf(lot.available, use.quantity) }] };
   });
   return { state: { ...s, batches: [...s.batches, batch], lots }, id };
 }
@@ -132,6 +136,11 @@ function saveRecord(s: State, cmd: SaveRecord, ctx: CommandContext): State {
     }
   }
   const carried = nextInput(b, cmd.station);
+  // Changing weights that were already saved keeps the earlier ones on the record, with the reason for the change
+  const was = existing?.destinationsSaved ? existing : undefined;
+  const changed = was && (roundKg(cmd.input.weight) !== was.inputWeight || outputs.length !== was.outputs.length || outputs.some((o) => was.outputs.find((e) => e.name === o.name)?.weight !== roundKg(o.weight)));
+  if (changed && !cmd.editReason?.trim()) fail('Say why the saved weights are being changed.');
+  const edits = changed ? [...(was.edits ?? []), { at: ctx.now, by: ctx.userId, reason: cmd.editReason!.trim(), inputWeight: was.inputWeight, outputs: was.outputs.map((o) => ({ name: o.name, weight: o.weight })) }] : existing?.edits;
   const draft: StationRecord = {
     id: existing?.id ?? `${cmd.station}-${ctx.now}`, station: cmd.station,
     inputMaterial: existing?.inputMaterial ?? cmd.options?.inputMaterial ?? (carried.weight > 0 ? carried.material : station.input),
@@ -139,6 +148,7 @@ function saveRecord(s: State, cmd: SaveRecord, ctx: CommandContext): State {
     inputLotIds: existing?.inputLotIds ?? (cmd.options?.inputMaterial ? [] : b.records.length ? [] : b.startInput.lotIds),
     outputs: outputs.map((o) => ({ name: o.name, kind: o.kind, weight: roundKg(o.weight), destination: o.destination })),
     recordedAt: ctx.now, recordedBy: ctx.userId, rev: ctx.newId(), note: cmd.note || undefined, destinationsSaved: true,
+    varianceReason: cmd.reason?.trim() || undefined, edits,
   };
   return commitRecord(s, b.id, draft, !early, ctx.now);
 }
@@ -238,7 +248,9 @@ function saveMixingRun(s: State, cmd: SaveMixingRun, ctx: CommandContext): Outco
     const drawn = ingredients.flatMap(sourcesOf).filter((x) => x.lotId === lot.id && x.kg > 0);
     if (!drawn.length) return lot;
     const quantity = drawn.reduce((sum, x) => sum + x.kg, 0);
-    return { ...lot, available: Math.max(0, roundKg(lot.available - quantity)), uses: [...lot.uses, ...drawn.map((x) => ({ batchId: b.id, quantity: x.kg, station: 'mixing' as const, at: ctx.now, runId }))] };
+    // When the run asks more of the lot than it holds, the shortfall is kept on the last use taken from it
+    const short = shortOf(lot.available, quantity);
+    return { ...lot, available: Math.max(0, roundKg(lot.available - quantity)), uses: [...lot.uses, ...drawn.map((x, i) => ({ batchId: b.id, quantity: x.kg, station: 'mixing' as const, at: ctx.now, runId, ...(i === drawn.length - 1 ? short : {}) }))] };
   });
   const chocolate: Lot = { id: lotId, material: recipe.name, category: 'Intermediate', received: run.made, available: run.made, unit: 'kg', source: { type: 'batch', batchId: b.id, station: 'mixing' }, receivedAt: ctx.now, uses: [], chocolate: { type: recipe.name, recipeId: recipe.id, recipeVersion: version.version, runId } };
   const mixer: Mixer = { holds: run.kept > 0 ? { kg: run.kept, type: recipe.name, recipeId: recipe.id, recipeVersion: version.version, batchId: b.id, runId, lotId } : null, lastRunId: runId };
@@ -678,7 +690,17 @@ function runCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
     case 'setBusinessDetails':
       return { state: { ...s, business: cmd.business } };
     case 'setThresholds':
-      return { state: { ...s, thresholds: { ...s.thresholds, ...(cmd.wastePct !== undefined ? { wastePct: cmd.wastePct } : {}), ...(cmd.lowStockKg !== undefined ? { lowStockKg: cmd.lowStockKg } : {}) } } };
+      return { state: { ...s, thresholds: { ...s.thresholds, ...(cmd.wastePct !== undefined ? { wastePct: cmd.wastePct } : {}), ...(cmd.lowStockKg !== undefined ? { lowStockKg: cmd.lowStockKg } : {}), ...(cmd.staleDays !== undefined ? { staleDays: cmd.staleDays } : {}) } } };
+    case 'explainDiscrepancy': {
+      const found = findDiscrepancies(s, ctx.now.slice(0, 10)).find((d) => d.id === cmd.id) ?? fail('That discrepancy is no longer there. It may have been corrected.');
+      if (found.closes === 'act') fail('This one closes by itself once it is dealt with.');
+      if (found.resolution && !s.discrepancyNotes.some((n) => n.id === cmd.id)) fail('This one is already explained on its own record.');
+      const note = { id: cmd.id, note: cmd.note, by: ctx.userId, at: ctx.now };
+      return { state: { ...s, discrepancyNotes: [...s.discrepancyNotes.filter((n) => n.id !== cmd.id), note] } };
+    }
+    case 'reopenDiscrepancy':
+      if (!s.discrepancyNotes.some((n) => n.id === cmd.id)) fail('That explanation was not found.');
+      return { state: { ...s, discrepancyNotes: s.discrepancyNotes.filter((n) => n.id !== cmd.id) } };
     case 'setStationVariance':
       return { state: { ...s, thresholds: { ...s.thresholds, variancePct: { ...s.thresholds.variancePct, [cmd.station]: cmd.value } } } };
     case 'addOutputCategory': {
@@ -790,7 +812,7 @@ export function migrateLegacy(stored: Record<string, unknown>, now: string): { s
     batches: data.batches ?? [], lots: data.lots ?? [], recipes: data.recipes ?? seed.recipes,
     products: [...seed.products, ...(data.products ?? []).filter((p) => !seed.products.some((x) => x.id === p.id))],
     routes: data.routes ?? seed.routes, packSizes: data.packSizes ?? seed.packSizes, suppliers: data.suppliers ?? [], customers: [], dispatches: [], users,
-    outputCategories: storedCategories.length ? storedCategories : seed.outputCategories, stockCounts: [],
+    outputCategories: storedCategories.length ? storedCategories : seed.outputCategories, stockCounts: [], discrepancyNotes: [],
     thresholds: { ...seed.thresholds, ...(data.thresholds ?? {}), variancePct: { ...seed.thresholds.variancePct, ...(data.thresholds?.variancePct ?? {}) } },
     business: { ...seed.business, ...(data.business ?? {}) }, idleMinutes: data.idleMinutes ?? seed.idleMinutes, workflowVersion: data.workflowVersion ?? 1,
     // Browsers kept no counters: numbers continue from the highest IDs, and applyCommand() keeps the server's.
