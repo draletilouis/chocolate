@@ -122,6 +122,12 @@ export function MixingScreen({ batch, station, record }: { batch: Batch; station
         <div className="saved-banner" role="status">
           <div className="flex items-start gap-2"><CheckCircle2 size={18} className="mt-0.5 shrink-0" /><div><strong>Mixing finished.</strong> {runs.length} run{runs.length === 1 ? '' : 's'} made. {next === 'completion' ? 'Nothing else is waiting. Complete the batch.' : ''}</div></div>
           {nextLink && <div className="mt-3 flex flex-wrap gap-2">{nextLink}</div>}
+          {runs.some((r) => (store.lots.find((l) => l.id === r.lotId)?.available ?? 0) > 0.004) && (
+            <div className="mt-3 border-t border-[#bbf7d0] pt-3 text-ink">
+              <div className="text-[13px] font-semibold">Next for the chocolate: make it into pieces</div>
+              <div className="mt-2 flex flex-wrap gap-2">{runs.map((r) => store.lots.find((l) => l.id === r.lotId)).filter((l) => l && l.available > 0.004).map((l) => <LinkButton key={l!.id} variant="secondary" href={`/production/pieces/${l!.id}`}>{l!.chocolate?.type} · {kg(l!.available)} · record pieces</LinkButton>)}</div>
+            </div>
+          )}
         </div>
       )}
       {undone && <Notice tone="neutral" icon={Undo2}>{undone}</Notice>}

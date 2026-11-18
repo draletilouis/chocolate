@@ -74,6 +74,12 @@ export default function OverviewPage() {
           </RowLink>
         ))}
       </Panel>
+      {/* Pages that are not on the phone's bottom bar */}
+      <div className="md:hidden">
+        <Panel title="More pages">
+          {[['/plan', 'Production plan'], ['/dispatch', 'Dispatch'], ['/trace', 'Batch tracing'], ['/recipes', 'Chocolate types'], ['/work', 'My work'], ['/setup', 'Setup']].map(([href, label]) => <RowLink key={href} href={href}><span className="text-[14px] font-semibold">{label}</span></RowLink>)}
+        </Panel>
+      </div>
       <p className="text-[12px] text-muted">Need the full picture? See <Link href="/reports" className="font-semibold text-green">Reports</Link>.</p>
     </>
   );

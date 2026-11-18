@@ -19,20 +19,21 @@ interface NavItem { href: string; label: string; short?: string; icon: LucideIco
 const navItems: NavItem[] = [
   { href: '/work', label: 'My work', icon: ClipboardCheck, count: 'work' },
   { href: '/overview', label: 'Overview', icon: LayoutDashboard, managers: true },
-  // What does not add up; the count is the serious and to-check items still open. Off the phone bar so it fits; Overview links to it.
-  { href: '/discrepancies', label: 'Discrepancies', icon: ShieldAlert, count: 'alerts', managers: true, phone: false },
+  // What does not add up; the count is the serious and to-check items still open. On the phone bar; Chocolate types and Setup moved off it and are listed on Overview.
+  { href: '/discrepancies', label: 'Discrepancies', short: 'Flags', icon: ShieldAlert, count: 'alerts', managers: true },
   { href: '/production', label: 'Production line', short: 'Production', icon: ClipboardList, count: 'batches' },
   // Kept off the phone bar so it fits; Overview and My work link to the plan.
   { href: '/plan', label: 'Production plan', short: 'Plan', icon: Target, managers: true, phone: false },
   // Lot records and receiving live under /materials and belong to the Store.
-  { href: '/store', label: 'Store', icon: Warehouse, managers: true, also: '/materials' },
+  // Operators see the Store too, to check what is there before mixing; receiving and dispatching stay with managers.
+  { href: '/store', label: 'Store', icon: Warehouse, also: '/materials' },
   // Goods out to customers; off the phone bar, the Store links to it.
   { href: '/dispatch', label: 'Dispatch', icon: Truck, managers: true, phone: false },
   // Off the phone bar too; the Store links to it.
   { href: '/trace', label: 'Batch tracing', short: 'Trace', icon: Waypoints, managers: true, phone: false },
-  { href: '/recipes', label: 'Chocolate types', short: 'Chocolate', icon: FlaskConical, managers: true },
+  { href: '/recipes', label: 'Chocolate types', short: 'Chocolate', icon: FlaskConical, managers: true, phone: false },
   { href: '/reports', label: 'Reports', icon: BarChart3, managers: true },
-  { href: '/setup', label: 'Setup', icon: Settings2, managers: true },
+  { href: '/setup', label: 'Setup', icon: Settings2, managers: true, phone: false },
 ];
 
 /** Pages operators do not need; they stay one tap away for managers */

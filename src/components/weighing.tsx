@@ -44,9 +44,12 @@ export function destinationOptions(station: Station, current?: Destination): { v
 export function DestinationSelect({ station, value, onChange, label }: { station: Station; value: Destination; onChange: (value: Destination) => void; label: string }) {
   const tone = value === 'waste' ? 'is-waste' : value === 'sale' ? 'is-sale' : value.startsWith('continue:') ? 'is-next' : 'is-store';
   return (
-    <select className={`dest-chip ${tone}`} value={value} onChange={(e) => onChange(e.target.value as Destination)} aria-label={`${label} destination`}>
-      {destinationOptions(station, value).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-    </select>
+    <label className="dest-choice">
+      <span>Goes to</span>
+      <select className={`dest-chip ${tone}`} value={value} onChange={(e) => onChange(e.target.value as Destination)} aria-label={`${label} destination`}>
+        {destinationOptions(station, value).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </label>
   );
 }
 

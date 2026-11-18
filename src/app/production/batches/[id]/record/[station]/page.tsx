@@ -311,6 +311,8 @@ function CompletionScreen({ batch }: { batch: Batch }) {
   const packaging = batch.records.find((r) => r.packaging)?.packaging;
   const lots = store.lots.filter((l) => l.source.type === 'batch' && l.source.batchId === batch.id);
   const pending = batch.records.filter((r) => !r.destinationsSaved);
+  // Chocolate this batch mixed that is not made into pieces yet: the batch can be closed, the chocolate stays in the Pieces queue
+  const chocolateLeft = lots.filter((l) => l.chocolate && l.available > 0.004);
   const totals = outcomeTotals(batch);
   const of = startName(batch);
   // Chocolate made at mixing, added up by type
@@ -323,6 +325,12 @@ function CompletionScreen({ batch }: { batch: Batch }) {
       <PageHeader eyebrow={`Batch ${batch.id}`} title={batch.status === 'completed' ? `${batchDisplayName(batch)} is completed` : 'Review and complete the batch'} subtitle={<>{batch.product} · ID {batch.id}</>} />
       {batch.status === 'completed' && <Notice tone="green" icon={CheckCircle2}>Completed {batch.completedAt?.replace('T', ' ').slice(0, 16)}. The record is closed; corrections stay available on the batch page.</Notice>}
       {pending.length > 0 && <Notice tone="warn" icon={AlertTriangle}>{pending.map((r) => stationName(r.station)).join(', ')} was not finished. Open it and save before completing the batch.</Notice>}
+      {chocolateLeft.length > 0 && (
+        <Notice tone="neutral">
+          <strong>Chocolate still to make into pieces:</strong> {chocolateLeft.map((l) => `${kg(l.available)} of ${l.chocolate!.type}`).join(', ')}. {batch.status === 'completed' ? 'It' : 'The batch can be completed now; the chocolate'} stays in the Pieces queue until it is moulded.
+          <span className="mt-2 flex flex-wrap gap-2">{chocolateLeft.map((l) => <LinkButton key={l.id} variant="secondary" href={`/production/pieces/${l.id}`}>Record pieces · {l.id}</LinkButton>)}</span>
+        </Notice>
+      )}
       <Panel title="Stations recorded">
         <div className="overflow-x-auto">
           <table className="w-full text-[13px]">

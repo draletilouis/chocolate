@@ -6,7 +6,7 @@ import { useState, type FormEvent } from 'react';
 import { ArrowRight, Check, CheckCircle2, Undo2 } from 'lucide-react';
 import { Back, Button, Empty, LinkButton, Notice, PageHeader, Panel, UnitInput } from '@/components/ui';
 import { PiecesBatchNumber } from '@/components/PiecesBatchNumber';
-import { batchById, batchDisplayName, userName } from '@/lib/derive';
+import { batchById, batchDisplayName, chocolateWaiting, userName } from '@/lib/derive';
 import { dateTime, kg } from '@/lib/format';
 import { piecesFrom, piecesKg } from '@/lib/pieces';
 import { planProgress } from '@/lib/plan';
@@ -25,6 +25,8 @@ export default function PiecesPage() {
   if (!lot.chocolate || lot.source.type !== 'batch') return <><Back href="/production/stations/packaging" label="Pieces queue" /><Notice tone="neutral">Lot {lot.id} is {lot.material.toLowerCase()}, not chocolate made at mixing. Pieces are made from chocolate lots.</Notice></>;
 
   const batch = batchById(store, lot.source.batchId);
+  // The next chocolate waiting for pieces, oldest first
+  const nextLot = chocolateWaiting(store).find((l) => l.id !== lot.id);
   const made = piecesFrom(store, lot.id);
   const entries = store.packSizes.map((p) => ({ pack: p, count: Math.max(0, Math.floor(Number(counts[p.id]) || 0)) }));
   const usedKg = Math.round(entries.reduce((sum, e) => sum + piecesKg(e.count, e.pack.grams), 0) * 1000) / 1000;
@@ -46,7 +48,7 @@ export default function PiecesPage() {
 
   return (
     <>
-      <Back href="/production/stations/packaging" label="Pieces queue" />
+      <Back href="/production" label="Production line" />
       <PageHeader eyebrow={`Finishing · ${lot.chocolate.type}`} title={`Pieces · ${lot.id}`}
         subtitle={<>{lot.chocolate.type} made at mixing by {batch ? <Link href={`/production/batches/${batch.id}`} className="font-semibold text-green">{batchDisplayName(batch)}</Link> : lot.source.batchId} · {dateTime(lot.receivedAt)}</>} />
       {saved && (
@@ -64,7 +66,11 @@ export default function PiecesPage() {
               );
             })}
           </div>
-          <div className="mt-2 flex flex-wrap gap-2"><LinkButton variant="secondary" href="/production/stations/packaging">Pieces queue <ArrowRight size={15} /></LinkButton></div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {nextLot && <LinkButton href={`/production/pieces/${nextLot.id}`}>Next: {nextLot.chocolate!.type} · {kg(nextLot.available)} <ArrowRight size={15} /></LinkButton>}
+            {store.signedInUser?.access === 'manager' && <LinkButton variant="secondary" href="/dispatch/new">Dispatch goods <ArrowRight size={15} /></LinkButton>}
+            <LinkButton variant="secondary" href="/production">Back to the line</LinkButton>
+          </div>
         </div>
       )}
 
