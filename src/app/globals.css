@@ -416,10 +416,58 @@
     .mix-step-saved { padding-left: 14px; padding-right: 14px; }
   }
 
+  /* ---------- Paper sheets: the factory's forms, on screen and printed on A4 ---------- */
+  .paper-sheet { max-width: 800px; margin: 0 auto 20px; padding: 28px 32px; background: #fff; border: 1px solid var(--color-line); color: #0f172a; font-size: 13px; }
+  .paper-sheet.is-wide { max-width: 1120px; }
+  .paper-head { display: flex; align-items: center; gap: 14px; padding-bottom: 12px; border-bottom: 2px solid #0f172a; }
+  .paper-head img { width: 44px; height: 44px; object-fit: contain; }
+  .paper-brand { font-size: 20px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; line-height: 1.1; }
+  .paper-contact { font-size: 11px; color: #475569; }
+  .paper-doc { margin-left: auto; text-align: right; font-size: 11px; color: #475569; white-space: nowrap; }
+  .paper-doc strong { display: block; color: #0f172a; font-size: 12px; }
+  .paper-title { margin: 16px 0 4px; text-align: center; font-size: 17px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+  .paper-subtitle { margin: 0 0 14px; text-align: center; font-size: 12px; color: #475569; }
+  .paper-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 28px; margin-bottom: 14px; }
+  .paper-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .paper-line > span:first-child { flex: 0 0 auto; color: #334155; }
+  .paper-line > .paper-fill { flex: 1 1 auto; min-width: 24px; border-bottom: 1px dotted #94a3b8; transform: translateY(-3px); }
+  .paper-line > strong { flex: 0 0 auto; font-variant-numeric: tabular-nums; text-align: right; }
+  .paper-line.is-sub > span:first-child { color: #64748b; padding-left: 14px; font-size: 12px; }
+  .paper-line.is-sub > strong { font-weight: 600; color: #475569; font-size: 12px; }
+  .paper-section { margin: 16px 0 8px; padding-bottom: 3px; border-bottom: 1px solid #0f172a; font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+  .paper-rows { display: grid; gap: 7px; }
+  .paper-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .paper-table th, .paper-table td { border: 1px solid #334155; padding: 5px 8px; text-align: left; vertical-align: top; }
+  .paper-table th { background: #f1f5f9; font-weight: 700; }
+  .paper-table td.is-num, .paper-table th.is-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .paper-table .is-off { color: #b45309; font-size: 10px; display: block; }
+  .paper-note { margin-top: 12px; font-size: 12px; color: #475569; }
+  .paper-signs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 32px; margin-top: 30px; }
+  .paper-sign { font-size: 12px; }
+  .paper-sign-line { min-height: 26px; border-bottom: 1px solid #0f172a; padding: 2px 2px 3px; font-weight: 700; font-size: 13px; }
+  .paper-sign-role { margin-top: 3px; color: #475569; }
+  .paper-foot { margin-top: 22px; padding-top: 8px; border-top: 1px solid var(--color-line); font-size: 10px; color: #64748b; display: flex; justify-content: space-between; gap: 12px; }
+  @media (max-width: 640px) {
+    .paper-sheet { padding: 18px 14px; }
+    .paper-meta, .paper-signs { grid-template-columns: 1fr; }
+    .paper-doc { display: none; }
+  }
+
   /* ---------- Batch tracing ---------- */
   .trace-tree { margin: 8px 0 0 6px; padding-left: 14px; border-left: 2px solid var(--color-moss-dark); font-size: 13px; }
   .trace-tree.is-root { margin: 0; padding: 6px 20px 10px; border-left: 0; }
   .trace-step { padding: 8px 0; }
   .trace-tree.is-root > .trace-step { border-top: 1px solid #f1f5f9; padding: 12px 0; }
   .trace-tree.is-root > .trace-step:first-child { border-top: 0; }
+}
+
+/* Printing a paper sheet: only the sheet goes on the page, without the app around it */
+@media print {
+  @page { size: A4; margin: 12mm; }
+  html, body { background: #fff !important; }
+  .sidebar, .app-topbar, .mobile-header, .bottom-nav, .no-print, .notice, .back-link { display: none !important; }
+  .main-content { margin: 0 !important; padding: 0 !important; }
+  .tab-content { padding: 0 !important; max-width: none !important; }
+  .paper-sheet { max-width: none !important; margin: 0; padding: 0; border: 0; }
+  .paper-sheet.is-wide { font-size: 11px; }
 }

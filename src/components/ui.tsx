@@ -107,7 +107,7 @@ export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement
 export function UnitInput({ unit, ...props }: React.InputHTMLAttributes<HTMLInputElement> & { unit: string }) {
   return (
     <span className="unit-input">
-      <input type="number" inputMode="decimal" step="0.01" min="0" placeholder="0.00" {...props} className={props.className ?? ''} />
+      <input type="number" inputMode="decimal" step="0.001" min="0" placeholder="0.00" {...props} className={props.className ?? ''} />
       <span>{unit}</span>
     </span>
   );

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { AlertTriangle, ArrowRight, Target } from 'lucide-react';
 import { Empty, LinkButton, PageHeader, Panel, RowLink, Stat } from '@/components/ui';
-import { percentOf, round2 } from '@/lib/balance';
+import { percentOf, roundKg } from '@/lib/balance';
 import { startName, startWeight } from '@/lib/outcomes';
 import type { Balance, Batch, StationRecord } from '@/lib/types';
 import { activeBatches, allAlerts, batchDisplayName, recordBalance } from '@/lib/derive';
@@ -41,7 +41,7 @@ export default function OverviewPage() {
         <Stat label="Active batches" value={active.length} hint={`${active.filter((b) => b.status === 'hold').length} on hold`} />
         <Stat label="Alerts" value={alerts.length} tone={alerts.length ? 'warn' : undefined} hint="Variance, waste, holds, stock" />
         <Stat label="Completed today" value={completedToday} hint={`${store.batches.filter((b) => b.status === 'completed').length} completed in total`} />
-        <Stat label="Unaccounted variance" value={kg(round2(totals.variance))} hint={`${pct(totals.input ? round2((totals.variance / totals.input) * 100) : 0)} of all station input`} />
+        <Stat label="Unaccounted variance" value={kg(roundKg(totals.variance))} hint={`${pct(totals.input ? roundKg((totals.variance / totals.input) * 100) : 0)} of all station input`} />
       </div>
 
       <Panel title="Production plan" subtitle={plan ? `Pieces made from ${plan.plan.from}${plan.plan.note ? ` · ${plan.plan.note}` : ''}` : 'How many pieces of each chocolate type and size to make.'}

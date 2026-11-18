@@ -1,4 +1,4 @@
-import { round2 } from './balance';
+import { roundKg } from './balance';
 import { chocolateWaiting } from './derive';
 import { batchMaterialAtMixing, versionOf } from './mixing';
 import { piecesKg, piecesLots } from './pieces';
@@ -25,9 +25,9 @@ export function planProgress(state: State) {
 
   const waiting = chocolateWaiting(state);
   const types = Array.from(new Set(lines.map((l) => l.recipeId))).map((recipeId) => {
-    const leftKg = round2(lines.filter((l) => l.recipeId === recipeId).reduce((sum, l) => sum + l.leftKg, 0));
-    const inLots = round2(waiting.filter((l) => l.chocolate!.recipeId === recipeId).reduce((sum, l) => sum + l.available, 0));
-    return { recipeId, type: lines.find((l) => l.recipeId === recipeId)!.type, leftKg, inLots, toMix: round2(Math.max(0, leftKg - inLots)) };
+    const leftKg = roundKg(lines.filter((l) => l.recipeId === recipeId).reduce((sum, l) => sum + l.leftKg, 0));
+    const inLots = roundKg(waiting.filter((l) => l.chocolate!.recipeId === recipeId).reduce((sum, l) => sum + l.available, 0));
+    return { recipeId, type: lines.find((l) => l.recipeId === recipeId)!.type, leftKg, inLots, toMix: roundKg(Math.max(0, leftKg - inLots)) };
   });
 
   const need = new Map<string, number>();
@@ -37,9 +37,9 @@ export function planProgress(state: State) {
   }
   const atMixing = state.batches.filter((b) => b.status !== 'completed').flatMap(batchMaterialAtMixing);
   const ingredients = Array.from(need, ([name, kg]) => {
-    const inStore = round2(state.lots.filter((l) => l.material === name && l.unit === 'kg').reduce((sum, l) => sum + l.available, 0));
-    const waitingAtMixing = round2(atMixing.filter((m) => m.name === name).reduce((sum, m) => sum + m.left, 0));
-    return { name, need: round2(kg), inStore, atMixing: waitingAtMixing, short: round2(Math.max(0, kg - inStore - waitingAtMixing)) };
+    const inStore = roundKg(state.lots.filter((l) => l.material === name && l.unit === 'kg').reduce((sum, l) => sum + l.available, 0));
+    const waitingAtMixing = roundKg(atMixing.filter((m) => m.name === name).reduce((sum, m) => sum + m.left, 0));
+    return { name, need: roundKg(kg), inStore, atMixing: waitingAtMixing, short: roundKg(Math.max(0, kg - inStore - waitingAtMixing)) };
   });
 
   const planned = lines.reduce((n, l) => n + l.pieces, 0);

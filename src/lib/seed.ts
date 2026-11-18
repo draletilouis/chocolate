@@ -1,7 +1,7 @@
 import { brand } from './brand';
 import { stations } from './stations';
 import type {
-  Batch, Customer, Dispatch, IdCounters, Lot, Mixer, ProductionPlan, OutputCategory, PackSize, Product, Recipe, Route, Supplier, Thresholds, User, BusinessDetails,
+  Batch, Customer, Dispatch, IdCounters, Lot, Mixer, ProductionPlan, OutputCategory, PackSize, Product, Recipe, Route, StockCount, Supplier, Thresholds, User, BusinessDetails,
 } from './types';
 
 export interface State {
@@ -19,6 +19,8 @@ export interface State {
   users: User[];
   thresholds: Thresholds;
   outputCategories: OutputCategory[];
+  /** The daily physical stock counts, one per day */
+  stockCounts: StockCount[];
   business: BusinessDetails;
   /** Minutes without activity before a shared device returns to the sign-in screen (0 = never) */
   idleMinutes: number;
@@ -37,9 +39,10 @@ export interface State {
 /**
  * 2: sorting, butter & powder and liquor as separate parts of the line. 3: chocolate made in mixing runs.
  * 4: the chocolate types of the regular recipes table. 5: no sorting (accepted beans go straight to
- * roasting) and no containers. Data from an older version is brought up to date by upgradeConfiguration().
+ * roasting) and no containers. 6: the bean summary's winnowing rows (nibs for other, whole peeled beans).
+ * Data from an older version is brought up to date by upgradeConfiguration().
  */
-const WORKFLOW_VERSION = 5;
+const WORKFLOW_VERSION = 6;
 
 const at = (day: string, time: string) => `${day}T${time}:00`;
 
@@ -51,6 +54,9 @@ export const routes: Route[] = [
 
 /** What chocolate is made from; each is the material name of the lots weighed in */
 export const chocolateIngredients = ['Liquor', 'Cocoa butter', 'Sugar', 'Milk powder'] as const;
+
+/** Bought and kept in store, though no recipe of the regular table uses it */
+export const otherIngredients = ['Lecithin'] as const;
 
 /**
  * The chocolate types and their recipes, as in the factory's "Regular recipes" table: percentages
@@ -157,7 +163,7 @@ const business: BusinessDetails = {
 export function seedState(): State {
   return structuredClone({
     batches: [], lots: [], recipes, products, routes, packSizes, suppliers, customers, dispatches: [], users,
-    thresholds, outputCategories, business, idleMinutes: 10, workflowVersion: WORKFLOW_VERSION,
+    thresholds, outputCategories, stockCounts: [], business, idleMinutes: 10, workflowVersion: WORKFLOW_VERSION,
     idCounters: { batches: {}, lots: {} },
     mixer: { holds: null, lastRunId: null },
     mixerKeepsKg: 10,

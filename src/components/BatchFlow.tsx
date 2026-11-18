@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { Fragment } from 'react';
 import { Empty, Table, td, tdNum } from '@/components/ui';
-import { percentOf, round2 } from '@/lib/balance';
+import { percentOf, roundKg } from '@/lib/balance';
 import { dateTime, destinationLabel, kg, kindLabel, pct } from '@/lib/format';
 import { batchOutcomes, batchStages, lotFate, outcomeTotals, startName, startWeight, type OutcomeGroup } from '@/lib/outcomes';
 import { useStore } from '@/lib/store';
@@ -58,7 +58,7 @@ export function WhereItWent({ batch }: { batch: Batch }) {
   const outcomes = batchOutcomes(batch);
   const totals = outcomeTotals(batch, outcomes);
   const of = startName(batch);
-  const accounted = round2(outcomes.reduce((t, o) => t + o.weight, 0));
+  const accounted = roundKg(outcomes.reduce((t, o) => t + o.weight, 0));
   const runs = batch.records.find((r) => r.station === 'mixing')?.runs ?? [];
   const firstIntoChocolate = outcomes.find((o) => o.intoChocolate);
   const sub = `${td} pl-16 text-[13px] text-muted`;

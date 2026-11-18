@@ -21,11 +21,13 @@ export const stations: Station[] = [
     rows: [
       { name: 'Nibs for liquor', kind: 'useful', to: 'continue:grinding' },
       { name: 'Nibs for butter', kind: 'useful', to: 'continue:pressing' },
+      { name: 'Nibs for other', kind: 'useful', to: 'stock' },
       { name: 'Nibs for sale', kind: 'useful', to: 'sale' },
+      { name: 'Whole peeled beans', kind: 'useful', to: 'sale' },
       { name: 'Husks', kind: 'waste', to: 'waste' },
     ],
     next: ['pressing', 'grinding'], form: 'weights',
-    help: 'Weigh the crushed nibs in portions: for liquor, for butter and for sale. Husks are waste.',
+    help: 'Weigh the crushed nibs in portions: for liquor, for butter, for other use and for sale, and any whole peeled beans. Husks are waste. Say what “other” is for in the note.',
   },
   {
     id: 'pressing', name: 'Pressing', group: 'Butter & powder',

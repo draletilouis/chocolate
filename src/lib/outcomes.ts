@@ -1,4 +1,4 @@
-import { percentOf, round2 } from './balance';
+import { percentOf, roundKg } from './balance';
 import { batchById, batchDisplayName, customerName, lotById, recordBalance } from './derive';
 import { ownUse, storedAtMixing } from './mixing';
 import { routes, type State } from './seed';
@@ -29,7 +29,7 @@ function startStation(batch: Batch): StationId | undefined {
 
 /** Everything this batch's records sent on to a station */
 const carriedInto = (batch: Batch, station: StationId) =>
-  round2(batch.records.flatMap((r) => r.outputs).filter((o) => o.destination === `continue:${station}`).reduce((t, o) => t + o.weight, 0));
+  roundKg(batch.records.flatMap((r) => r.outputs).filter((o) => o.destination === `continue:${station}`).reduce((t, o) => t + o.weight, 0));
 
 /**
  * Mixing takes in sugar, milk powder and other lots from store, and chocolate the mixer held from another
@@ -71,9 +71,9 @@ export function batchOutcomes(batch: Batch): Outcome[] {
   const first = startStation(batch);
   const outcomes: Outcome[] = [];
   const add = (o: Omit<Outcome, 'ofStartPct'>) => {
-    if (Math.abs(o.weight) >= 0.005) outcomes.push({ ...o, weight: round2(o.weight), ofStartPct: percentOf(o.weight, start) });
+    if (Math.abs(o.weight) >= 0.0005) outcomes.push({ ...o, weight: roundKg(o.weight), ofStartPct: percentOf(o.weight, start) });
   };
-  const expected = (station: StationId) => round2(carriedInto(batch, station) + (station === first ? start : 0));
+  const expected = (station: StationId) => roundKg(carriedInto(batch, station) + (station === first ? start : 0));
 
   for (const record of [...batch.records].sort(byLineOrder)) {
     const station = record.station;
@@ -106,11 +106,11 @@ export function batchOutcomes(batch: Batch): Outcome[] {
 
 /** Outcome weights added up by group, each also as a share of the batch's starting weight */
 export function outcomeTotals(batch: Batch, outcomes = batchOutcomes(batch)) {
-  const sum = (group: OutcomeGroup) => round2(outcomes.filter((o) => o.group === group).reduce((t, o) => t + o.weight, 0));
+  const sum = (group: OutcomeGroup) => roundKg(outcomes.filter((o) => o.group === group).reduce((t, o) => t + o.weight, 0));
   const totals = { product: sum('product'), byproduct: sum('byproduct'), waste: sum('waste'), lost: sum('lost'), process: sum('process') };
   const start = startWeight(batch);
   const shares = Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, percentOf(v, start)])) as Record<OutcomeGroup, number>;
-  const gone = round2(totals.waste + totals.lost);
+  const gone = roundKg(totals.waste + totals.lost);
   return { ...totals, gone, pct: { ...shares, gone: percentOf(gone, start) } };
 }
 
@@ -127,18 +127,18 @@ export function lotFate(state: State, lotId: string | undefined) {
   const rows = lot.uses.flatMap((use) => {
     if (use.dispatchId) {
       const dispatch = state.dispatches.find((d) => d.id === use.dispatchId);
-      return [{ label: 'Dispatched', where: `${use.dispatchId}${dispatch ? ` to ${customerName(state, dispatch.customerId)}` : ''}`, href: `/dispatch/${use.dispatchId}`, weight: round2(use.quantity) }];
+      return [{ label: 'Dispatched', where: `${use.dispatchId}${dispatch ? ` to ${customerName(state, dispatch.customerId)}` : ''}`, href: `/dispatch/${use.dispatchId}`, weight: roundKg(use.quantity) }];
     }
     const batch = use.batchId ? batchById(state, use.batchId) : undefined;
     if (!batch) return [];
     if (!batch.startInput.lotIds.includes(lot.id) || !(batch.startInput.weight > 0)) {
-      if (use.madeLot) return [{ label: 'Made into pieces', where: `${use.madeLot} · ${lotById(state, use.madeLot)?.material ?? batchDisplayName(batch)}`, href: `/materials/${use.madeLot}`, weight: round2(use.quantity) }];
+      if (use.madeLot) return [{ label: 'Made into pieces', where: `${use.madeLot} · ${lotById(state, use.madeLot)?.material ?? batchDisplayName(batch)}`, href: `/materials/${use.madeLot}`, weight: roundKg(use.quantity) }];
       const label = use.station === 'mixing' ? 'Made into chocolate' : `Used at ${stationName(use.station).toLowerCase()}`;
-      return [{ label, where: `${stationName(use.station)} in ${batchDisplayName(batch)}`, href: batchHref(batch.id), weight: round2(use.quantity) }];
+      return [{ label, where: `${stationName(use.station)} in ${batchDisplayName(batch)}`, href: batchHref(batch.id), weight: roundKg(use.quantity) }];
     }
     const share = Math.min(1, use.quantity / batch.startInput.weight);
     return batchOutcomes(batch).filter((o) => o.group === 'product' || o.group === 'process')
-      .map((o) => ({ label: o.label, where: `${o.station ? `${stationName(o.station)} in ` : ''}${batchDisplayName(batch)}`, href: batchHref(batch.id), weight: round2(o.weight * share) }));
+      .map((o) => ({ label: o.label, where: `${o.station ? `${stationName(o.station)} in ` : ''}${batchDisplayName(batch)}`, href: batchHref(batch.id), weight: roundKg(o.weight * share) }));
   });
-  return lot.available > 0.004 ? [...rows, { label: 'Still in store', where: lot.id, href: `/materials/${lot.id}`, weight: round2(lot.available) }] : rows;
+  return lot.available > 0.004 ? [...rows, { label: 'Still in store', where: lot.id, href: `/materials/${lot.id}`, weight: roundKg(lot.available) }] : rows;
 }

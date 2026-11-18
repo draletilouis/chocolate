@@ -36,6 +36,15 @@ const newBatch = z.object({
   note: text(1000).optional(),
 });
 
+const inspection = z.object({
+  bags: z.number().int().min(0).max(100_000).optional(),
+  supplierBatch: text(80).optional(),
+  checks: z.array(z.object({ id: text(40).min(1), ok: z.boolean(), remark: text(200).optional() })).max(30),
+  decision: z.enum(['accepted', 'conditional', 'rejected']),
+  reason: text(500).optional(),
+});
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
 const recipeIngredients = z.array(z.object({ name: text(80).min(1), percent: z.number().finite().min(0).max(100) })).min(1).max(30);
 
 const product = z.object({ name: text(80).min(1), prefix: text(3).min(1).transform((p) => p.toUpperCase()), route: z.enum(['beans', 'pressing', 'chocolate']), recipeId: text(80).optional() });
@@ -43,7 +52,11 @@ const userFields = { name: text(80).min(1), role: text(80).min(1), email, access
 
 export const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('createBatch'), input: newBatch }),
-  z.object({ type: z.literal('receiveDelivery'), batch: newBatch, input: z.object({ weight: qty }), outputs: z.array(output).min(1).max(30), note: text(1000).optional() }),
+  z.object({ type: z.literal('receiveDelivery'), batch: newBatch, input: z.object({ weight: qty }), outputs: z.array(output).min(1).max(30), note: text(1000).optional(), inspection: inspection.optional() }),
+  // The receiving inspection of a bean delivery, entered or changed after the delivery was saved; locked once a manager signs it.
+  z.object({ type: z.literal('saveInspection'), batchId: id, inspection }),
+  // A manager signs the receiving report or the bean summary of a batch (the production manager's line on the paper).
+  z.object({ type: z.literal('approveDocument'), batchId: id, document: z.enum(['inspection', 'summary']) }),
   // expectRecord: recordStamp() of the record the form was opened on (null for a new one), so two people cannot overwrite each other unseen.
   z.object({ type: z.literal('saveRecord'), batchId: id, station, input: z.object({ weight: qty }), outputs: z.array(output).max(30), note: text(1000).optional(), options, expectRecord: z.string().max(200).nullable().optional() }),
   // Mixing: one chocolate type per run, made on top of what the mixer holds (expectMixer: mixerStamp() the form was opened on).
@@ -68,6 +81,10 @@ export const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('receiveLot'), input: z.object({ material: text(80).min(1), category: lotCategory, quantity: qty, unit: z.enum(['kg', 'units']), supplierId: id, reference: text(120).optional(), supplierBatch: text(80).optional() }) }),
   z.object({ type: z.literal('updateLot'), lotId: id, material: text(80).min(1), category: lotCategory, supplierId: text(80).optional(), reference: text(120).optional(), supplierBatch: text(80).optional() }),
   z.object({ type: z.literal('deleteLot'), lotId: id }),
+  // Sets a lot to what was counted in store; the difference stays on the lot's record with the reason. Managers only.
+  z.object({ type: z.literal('adjustLot'), lotId: id, counted: qty, reason: text(300).min(1, 'Say why the lot is being adjusted.') }),
+  // The day's physical stock count: the kg counted for each row of the stock sheet. One per day; saving again replaces it.
+  z.object({ type: z.literal('saveStockCount'), day, lines: z.array(z.object({ row: text(80).min(1), counted: qty })).min(1).max(200), note: text(500).optional() }),
   z.object({ type: z.literal('addRecipeVersion'), recipeId: id, ingredients: recipeIngredients, note: text(500) }),
   // A new chocolate type: its product and the first version of its recipe, made together.
   z.object({ type: z.literal('addChocolateType'), name: text(80).min(1), ingredients: recipeIngredients, note: text(500).optional() }),
@@ -95,6 +112,8 @@ export const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('deleteRoute'), routeId: id }),
   z.object({ type: z.literal('setBusinessDetails'), business: z.object({ name: text(100).min(1), address: text(160), phone: text(40), email: text(120) }) }),
   z.object({ type: z.literal('setThresholds'), wastePct: z.number().finite().min(0).max(100).optional(), lowStockKg: qty.optional() }),
+  // A material's own low-stock limit in kg; null goes back to the general limit.
+  z.object({ type: z.literal('setMaterialLowStock'), material: text(80).min(1), kg: qty.nullable() }),
   z.object({ type: z.literal('setStationVariance'), station, value: z.number().finite().min(0).max(100) }),
   z.object({ type: z.literal('addOutputCategory'), station, name: text(80).min(1), kind }),
   z.object({ type: z.literal('updateOutputCategory'), categoryId: id, station, name: text(80).min(1), kind }),
@@ -109,7 +128,7 @@ export type CommandType = Command['type'];
 
 /** Commands an operator may run. Everything else needs manager access. */
 export const operatorCommands = new Set<CommandType>([
-  'createBatch', 'receiveDelivery', 'saveRecord', 'saveMixingRun', 'undoMixingRun', 'emptyMixer', 'finishMixing', 'recordPieces', 'removePieces', 'setPiecesBatchNumber', 'completeBatch', 'updateBatchDetails', 'deleteBatch', 'placeHold', 'addCorrection',
+  'createBatch', 'receiveDelivery', 'saveRecord', 'saveMixingRun', 'undoMixingRun', 'emptyMixer', 'finishMixing', 'recordPieces', 'removePieces', 'setPiecesBatchNumber', 'completeBatch', 'updateBatchDetails', 'deleteBatch', 'placeHold', 'addCorrection', 'saveInspection', 'saveStockCount',
 ]);
 
 export const signInSchema = z.discriminatedUnion('method', [

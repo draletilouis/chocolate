@@ -1,11 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Truck } from 'lucide-react';
+import { ClipboardList, Plus, Truck } from 'lucide-react';
 import { Badge, Empty, LinkButton, PageHeader, Panel, RowLink, Stat } from '@/components/ui';
-import { batchDisplayName, lotOrigin, supplierName, waitingAt } from '@/lib/derive';
+import { batchDisplayName, lotOrigin, lowStockLimit, supplierName, waitingAt } from '@/lib/derive';
 import { date, kg } from '@/lib/format';
-import { chocolateIngredients } from '@/lib/seed';
+import { chocolateIngredients, otherIngredients } from '@/lib/seed';
 import { useStore } from '@/lib/store';
 import { stationName } from '@/lib/stations';
 import { batchDelivery } from '@/lib/trace';
@@ -36,7 +36,7 @@ export default function StorePage() {
   const [showUsedUp, setShowUsedUp] = useState(false);
 
   // Ingredients: beans, what the recipes are made from, and anything else a supplier delivered.
-  const known: string[] = [beans, ...chocolateIngredients];
+  const known: string[] = [beans, ...chocolateIngredients, ...otherIngredients];
   const bought = store.lots.filter((l) => l.source.type === 'supplier' && !l.pieces && !l.chocolate).map((l) => l.material);
   const ingredientNames = new Set([...known, ...bought]);
   const sectionOf = (lot: Lot): Section => (lot.pieces ? 'Finished pieces' : lot.chocolate ? 'Chocolate' : ingredientNames.has(lot.material) ? 'Ingredients' : 'Other stored products');
@@ -50,7 +50,7 @@ export default function StorePage() {
     const unit = lots[0]?.unit ?? 'kg';
     return { section: s.name, name, unit, lots, inStore: lots.filter((l) => l.available > 0), total: Math.round(lots.reduce((sum, l) => sum + l.available, 0) * 1000) / 1000 };
   }));
-  const low = (i: (typeof items)[number]) => i.section === 'Ingredients' && i.total < store.thresholds.lowStockKg;
+  const low = (i: (typeof items)[number]) => i.section === 'Ingredients' && i.total < lowStockLimit(store, i.name);
   // Beans received on the production line start a batch at once; the batch is their batch number.
   const beanBatches = store.batches.filter((b) => b.route === 'beans' && batchDelivery(b)).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   const usedUp = items.reduce((n, i) => n + i.lots.length - i.inStore.length, 0);
@@ -58,7 +58,7 @@ export default function StorePage() {
   return (
     <>
       <PageHeader eyebrow="Store" title="Store" subtitle="Everything in store by batch number: the ingredients, the chocolate, the finished pieces and every other product the line kept. Each use is taken off its lot automatically."
-        action={<><LinkButton variant="secondary" href="/trace">Trace a batch</LinkButton><LinkButton variant="secondary" href="/dispatch/new"><Truck size={16} /> Dispatch goods</LinkButton><LinkButton href="/materials/receive"><Plus size={16} /> Receive ingredient</LinkButton></>} />
+        action={<><LinkButton variant="secondary" href="/store/count"><ClipboardList size={16} /> Count the stock</LinkButton><LinkButton variant="secondary" href="/store/sheet">Weekly sheet</LinkButton><LinkButton variant="secondary" href="/trace">Trace a batch</LinkButton><LinkButton variant="secondary" href="/dispatch/new"><Truck size={16} /> Dispatch goods</LinkButton><LinkButton href="/materials/receive"><Plus size={16} /> Receive ingredient</LinkButton></>} />
 
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         {items.filter((i) => i.section === 'Ingredients').map((i) => <Stat key={i.name} label={i.name} value={kg(i.total)} hint={i.inStore.length ? `${i.inStore.length} batch${i.inStore.length === 1 ? '' : 'es'} in store` : 'None in store'} tone={low(i) ? 'warn' : undefined} />)}
@@ -78,7 +78,7 @@ export default function StorePage() {
             {visible.map((i) => {
               const lots = showUsedUp ? i.lots : i.inStore;
               return (
-                <Panel key={i.name} title={i.name} subtitle={`${amount(i.total, i.unit)} in store`} action={low(i) ? <Badge tone="warn">Below {store.thresholds.lowStockKg} kg</Badge> : undefined}>
+                <Panel key={i.name} title={i.name} subtitle={`${amount(i.total, i.unit)} in store`} action={low(i) ? <Badge tone="warn">Below {lowStockLimit(store, i.name)} kg</Badge> : undefined}>
                   {lots.length === 0 && <Empty>{i.lots.length ? 'Every batch is used up.' : 'Nothing received yet.'}</Empty>}
                   {lots.map((lot) => (
                     <RowLink key={lot.id} href={`/trace/${lot.id}`}>

@@ -145,7 +145,13 @@ export interface Batch {
   holds: Hold[];
   corrections: Correction[];
   completedAt?: string;
+  /** Who closed the batch */
+  completedBy?: string;
   note?: string;
+  /** Bean deliveries: the receiving inspection */
+  inspection?: Inspection;
+  /** Managers' signatures on the batch's documents */
+  approvals?: Partial<Record<BatchDocument, SignOff>>;
 }
 
 export type LotSource =
@@ -167,6 +173,11 @@ export interface LotUse {
   madeLot?: string;
   /** The dispatch it left the factory in */
   dispatchId?: string;
+  /**
+   * The lot was set to what was counted in store: quantity is what was missing (negative when more was
+   * found than the record showed). No batch or dispatch took it.
+   */
+  adjustment?: { reason: string; by: string };
 }
 
 /** Someone the factory sells or sends goods to */
@@ -301,8 +312,10 @@ export interface Thresholds {
   variancePct: Record<StationId, number>;
   /** Allowed recorded waste (not by-products) at any station, in percent of input */
   wastePct: number;
-  /** Minimum available kg before a raw-material lot is flagged */
+  /** Minimum kg in store before a raw material is flagged, where it has no limit of its own */
   lowStockKg: number;
+  /** A material's own limit in kg, by material name; 0 means never flag it */
+  lowStockByMaterial?: Record<string, number>;
 }
 
 /**
@@ -317,3 +330,34 @@ export interface Alert {
   message: string;
   href: string;
 }
+
+/** One check of the cocoa bean receiving and inspection report: fine as it stands, or a problem with a remark */
+export interface InspectionCheck { id: string; ok: boolean; remark?: string }
+
+export type InspectionDecision = 'accepted' | 'conditional' | 'rejected';
+
+/** The receiving inspection of one delivery of beans, as on the factory's report ECL/SOP/PRO/RM */
+export interface Inspection {
+  bags?: number;
+  /** The supplier's own batch number, as on the bag or the delivery note */
+  supplierBatch?: string;
+  checks: InspectionCheck[];
+  decision: InspectionDecision;
+  /** Why the beans were rejected, or the condition they were accepted on */
+  reason?: string;
+  /** The quality controller who inspected the beans */
+  inspectedBy: string;
+  inspectedAt: string;
+}
+
+/** A manager's signature on a document */
+export interface SignOff { by: string; at: string }
+
+/** The documents of a batch a manager signs: the receiving inspection report and the bean summary */
+export type BatchDocument = 'inspection' | 'summary';
+
+/** One row of a stock count: what the app expected and what was counted, in kg */
+export interface StockCountLine { row: string; expected: number; counted: number }
+
+/** The physical count of one day, one per day; counting again on the same day replaces it */
+export interface StockCount { id: string; day: string; lines: StockCountLine[]; countedBy: string; countedAt: string; note?: string }

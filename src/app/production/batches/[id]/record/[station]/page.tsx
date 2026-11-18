@@ -11,7 +11,7 @@ import { WhereItWent } from '@/components/BatchFlow';
 import { batchStages, outcomeTotals, startName, startWeight } from '@/lib/outcomes';
 import { piecesByTypeAndSize } from '@/lib/pieces';
 import { BalanceVerdict, DestinationSelect, LiveBalance, WeightField, emptyWeight, netWeight, weightFrom, type WeightValue } from '@/components/weighing';
-import { calculateBalance, percentOf, round2 } from '@/lib/balance';
+import { calculateBalance, percentOf, roundKg } from '@/lib/balance';
 import { batchById, batchDisplayName, defaultDestination, isReadyAt, nextInput, recordBalance, recordFor, recordStamp, userName, waitingAt } from '@/lib/derive';
 import { dateTime, destinationLabel, kg, pct } from '@/lib/format';
 import { useStore } from '@/lib/store';
@@ -263,6 +263,10 @@ function SavedView({ batch, station, record, independent, justSaved, onEdit }: {
       {station.id === 'grinding' && record.outputs.filter((o) => o.name === 'Liquor').map((o) => (
         <BatchLabel key={o.name} title="Liquor label" batch={fresh} material="Cocoa liquor" quantity={kg(o.weight)} madeAt={record.recordedAt} lotId={o.lotId} />
       ))}
+      {station.id === 'receiving' && fresh.route === 'beans' && (
+        <Panel title="Receiving and inspection report" subtitle={fresh.inspection ? `${fresh.inspection.decision === 'accepted' ? 'Accepted' : fresh.inspection.decision === 'conditional' ? 'Conditionally accepted' : 'Rejected'} · inspected by ${userName(store, fresh.inspection.inspectedBy)}${fresh.approvals?.inspection ? ` · signed by ${userName(store, fresh.approvals.inspection.by)}` : ' · not signed by a manager yet'}` : 'The inspection of this delivery has not been entered.'}
+          action={<LinkButton variant="secondary" href={`/production/batches/${fresh.id}/inspection`}>{fresh.inspection ? 'Open and print the report' : 'Enter the inspection'}</LinkButton>}>{null}</Panel>
+      )}
       {station.id === 'receiving' && <BatchLabel title="Batch card" batch={fresh} material={fresh.product} quantity={kg(fresh.startInput.weight)} madeAt={fresh.startedAt} />}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -288,7 +292,7 @@ function CompletionScreen({ batch }: { batch: Batch }) {
   const of = startName(batch);
   // Chocolate made at mixing, added up by type
   const madeByType = new Map<string, number>();
-  for (const run of recordFor(batch, 'mixing')?.runs ?? []) madeByType.set(run.type, round2((madeByType.get(run.type) ?? 0) + run.made));
+  for (const run of recordFor(batch, 'mixing')?.runs ?? []) madeByType.set(run.type, roundKg((madeByType.get(run.type) ?? 0) + run.made));
 
   return (
     <>

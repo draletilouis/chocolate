@@ -46,7 +46,7 @@ export default function WorkPage() {
         eyebrow={everything ? 'Everything waiting' : `My work · ${user?.name ?? ''}`}
         title={total ? `${total} ${total === 1 ? 'thing is' : 'things are'} waiting` : 'Nothing is waiting right now'}
         subtitle={everything ? 'All stations. Give people their stations in Setup → Users and each person sees only their own.' : `Your stations: ${mine.map((s) => stationName(s)).join(', ')}`}
-        action={receives ? <LinkButton href="/production/new"><Truck size={16} /> Receive a delivery</LinkButton> : undefined} />
+        action={<><LinkButton variant="secondary" href="/store/count">Count the stock</LinkButton>{receives && <LinkButton href="/production/new"><Truck size={16} /> Receive a delivery</LinkButton>}</>} />
 
       <form className="search-form mb-5" onSubmit={search} role="search">
         <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a batch or lot: name, ID or supplier" aria-label="Find a batch or lot" />

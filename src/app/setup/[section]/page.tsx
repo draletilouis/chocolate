@@ -395,8 +395,24 @@ export default function SetupPage() {
           <Panel title="Other limits">
             <div className="grid gap-4 p-5 md:grid-cols-2">
               <Field label="Waste limit at any station (%)"><NumberSetting value={store.thresholds.wastePct} step="0.1" onSave={(v) => store.setThresholds({ wastePct: v })} label="Waste limit" /></Field>
-              <Field label="Low stock warning for raw materials (kg)"><NumberSetting value={store.thresholds.lowStockKg} onSave={(v) => store.setThresholds({ lowStockKg: v })} label="Low stock limit" /></Field>
+              <Field label="Low stock warning for raw materials (kg)" hint="Used for a material that has no limit of its own below."><NumberSetting value={store.thresholds.lowStockKg} onSave={(v) => store.setThresholds({ lowStockKg: v })} label="Low stock limit" /></Field>
             </div>
+          </Panel>
+          <Panel title="Low stock limit per material" subtitle="A warning shows when a material's total in store is below its limit. Set 0 to never warn about a material.">
+            <Table head={['Material', 'In store', 'Warn below', '']}>
+              {Array.from(new Set(['Cocoa beans', 'Liquor', 'Cocoa butter', 'Sugar', 'Milk powder', 'Lecithin', ...store.lots.filter((l) => l.category === 'Raw material' && l.unit === 'kg').map((l) => l.material)])).map((material) => {
+                const own = store.thresholds.lowStockByMaterial?.[material];
+                const total = store.lots.filter((l) => l.material === material && l.unit === 'kg').reduce((sum, l) => sum + l.available, 0);
+                return (
+                  <tr key={material}>
+                    <td className={td}>{material}</td>
+                    <td className={td}>{total.toFixed(2)} kg</td>
+                    <td className={td}><span className="flex items-center gap-2"><NumberSetting key={`${material}-${own ?? 'general'}`} value={own ?? store.thresholds.lowStockKg} onSave={(v) => store.setMaterialLowStock(material, v)} label={`${material} low stock limit`} /><span className="text-muted">kg{own === undefined ? ' · general limit' : ''}</span></span></td>
+                    <td className={td}>{own !== undefined && <Button variant="ghost" onClick={() => store.setMaterialLowStock(material, null)}>Use the general limit</Button>}</td>
+                  </tr>
+                );
+              })}
+            </Table>
           </Panel>
         </>
       )}

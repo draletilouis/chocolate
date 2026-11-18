@@ -5,7 +5,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { AlertTriangle, ArrowRight, Check, CheckCircle2, Flag, PackageOpen, Undo2, X } from 'lucide-react';
 import { Back, Button, Field, LinkButton, Notice, PageHeader, Select, UnitInput, inputClass } from '@/components/ui';
 import { BalanceVerdict, LiveBalance } from '@/components/weighing';
-import { calculateBalance, round2 } from '@/lib/balance';
+import { calculateBalance, roundKg } from '@/lib/balance';
 import { batchById, batchDisplayName, recordBalance, userName } from '@/lib/derive';
 import { dateTime, kg, num } from '@/lib/format';
 import { batchMaterialAtMixing, changeover, ingredientsOf, mixerStamp, sourcesOf, versionOf } from '@/lib/mixing';
@@ -254,13 +254,13 @@ function RunForm({ batch, n, onSaved, onRestart }: { batch: Batch; n: number; on
       return { source, kg: p.kg ?? (index === 0 && add ? String(add) : ''), has: has(source), free: places.filter((s) => s === source || !given.some((x, j) => j !== index && (x.source ?? places[0] ?? '') === s)) };
     });
     const unused = places.filter((s) => !parts.some((p) => p.source === s));
-    return { name: i.name, percent: i.percent, inMixer: line?.inMixer ?? 0, add, actual: round2(parts.reduce((sum, p) => sum + (Number(p.kg) || 0), 0)), parts, unused, has, lots, fromBatch };
+    return { name: i.name, percent: i.percent, inMixer: line?.inMixer ?? 0, add, actual: roundKg(parts.reduce((sum, p) => sum + (Number(p.kg) || 0), 0)), parts, unused, has, lots, fromBatch };
   });
-  const freshKg = round2(rows.reduce((sum, r) => sum + r.actual, 0));
+  const freshKg = roundKg(rows.reduce((sum, r) => sum + r.actual, 0));
   const heldKg = held?.kg ?? 0;
   const keptKg = Number(kept) || 0;
-  const madeKg = made === undefined ? Math.max(0, round2(freshKg + heldKg - keptKg)) : Number(made) || 0;
-  const balance = calculateBalance(round2(freshKg + heldKg), [{ kind: 'useful', weight: madeKg }, { kind: 'useful', weight: keptKg }]);
+  const madeKg = made === undefined ? Math.max(0, roundKg(freshKg + heldKg - keptKg)) : Number(made) || 0;
+  const balance = calculateBalance(roundKg(freshKg + heldKg), [{ kind: 'useful', weight: madeKg }, { kind: 'useful', weight: keptKg }]);
   const blocked = held && plan && plan.blocked.length > 0;
   const tooSmall = held && plan && !blocked && plan.lines.some((l) => l.add < -0.005);
   const ready = plan && !blocked;
@@ -270,7 +270,7 @@ function RunForm({ batch, n, onSaved, onRestart }: { batch: Batch; n: number; on
   /** The lot does not hold the weight entered: it gives what it has, and the rest comes from the next place */
   const takeRest = (row: (typeof rows)[number], index: number) => {
     const part = row.parts[index];
-    const rest = round2((Number(part.kg) || 0) - part.has);
+    const rest = roundKg((Number(part.kg) || 0) - part.has);
     setParts(row.name, [...row.parts.map((p, j) => ({ kg: j === index ? String(part.has) : p.kg, source: p.source })), { kg: String(rest), source: row.unused[0] }]);
   };
 
@@ -397,7 +397,7 @@ function RunForm({ batch, n, onSaved, onRestart }: { batch: Batch; n: number; on
                         <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12px] text-warn">
                           <span>{p.source || 'This batch'} has only {kg(p.has)}.</span>
                           {r.unused.length > 0
-                            ? <button type="button" className="btn-text font-semibold" onClick={() => takeRest(r, index)}>Take the other {kg(round2((Number(p.kg) || 0) - p.has))} from {r.unused[0] || 'this batch'}</button>
+                            ? <button type="button" className="btn-text font-semibold" onClick={() => takeRest(r, index)}>Take the other {kg(roundKg((Number(p.kg) || 0) - p.has))} from {r.unused[0] || 'this batch'}</button>
                             : <span>{p.source ? `No other lot of ${r.name.toLowerCase()} is in store: the lot is saved as used up.` : `No lot of ${r.name.toLowerCase()} is in store.`}</span>}
                         </div>
                       )}

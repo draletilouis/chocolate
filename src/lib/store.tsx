@@ -5,7 +5,7 @@ import type { Command } from './commands';
 import type { State } from './seed';
 import { applyItems, emptyState, type SyncPayload } from './sync';
 import type {
-  Access, BusinessDetails, Customer, Destination, Ingredient, LotCategory, OutputKind, PackSize, PlanLine, Product,
+  Access, BatchDocument, BusinessDetails, Customer, Destination, Ingredient, InspectionCheck, InspectionDecision, LotCategory, OutputKind, PackSize, PlanLine, Product,
   RecipeIngredient, Route, StationId, Supplier, User,
 } from './types';
 
@@ -34,6 +34,9 @@ export interface NewBatchInput {
   note?: string;
 }
 
+/** What the quality controller enters on the receiving inspection; who and when are added by the server */
+export interface InspectionInput { bags?: number; supplierBatch?: string; checks: InspectionCheck[]; decision: InspectionDecision; reason?: string }
+
 export interface NewLotInput { material: string; category: LotCategory; quantity: number; unit: 'kg' | 'units'; supplierId: string; reference?: string; supplierBatch?: string }
 
 /** Staff fields edited in Setup; password and PIN travel to the server once and are stored there as hashes */
@@ -50,7 +53,16 @@ export type SignInResult = { ok: true; notice?: string } | { ok: false; error: s
 interface Actions {
   createBatch: (input: NewBatchInput) => Promise<string | undefined>;
   /** Bean deliveries: the batch and its receiving record in one save */
-  receiveDelivery: (batch: NewBatchInput, input: { weight: number }, outputs: OutputEntry[], note?: string) => Promise<string | undefined>;
+  receiveDelivery: (batch: NewBatchInput, input: { weight: number }, outputs: OutputEntry[], note?: string, inspection?: InspectionInput) => Promise<string | undefined>;
+  /** The receiving inspection of a bean delivery, entered or changed until a manager signs the report */
+  saveInspection: (batchId: string, inspection: InspectionInput) => Promise<boolean>;
+  /** A manager signs a batch's receiving report or bean summary */
+  approveDocument: (batchId: string, document: BatchDocument) => Promise<boolean>;
+  /** Sets a lot to what was counted in store, with the reason */
+  adjustLot: (lotId: string, counted: number, reason: string) => Promise<boolean>;
+  /** The physical stock count of one day */
+  saveStockCount: (day: string, lines: { row: string; counted: number }[], note?: string) => Promise<boolean>;
+  setMaterialLowStock: (material: string, kg: number | null) => Promise<boolean>;
   /** Saves a station's input, weights and destinations at once. expectRecord is recordStamp() of the record the form started from. */
   saveRecord: (batchId: string, station: StationId, input: { weight: number }, outputs: OutputEntry[], note: string | undefined, options: RecordOptions | undefined, expectRecord: string | null) => Promise<boolean>;
   /** One chocolate type made at mixing; answers the chocolate lot's ID. expectMixer is mixerStamp() of the mixer the form was opened on. */
@@ -292,7 +304,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const value = <T,>(command: Command) => send<T>(command).then((r) => (r.ok ? r.result : undefined));
     return {
       createBatch: (input) => value<string>({ type: 'createBatch', input }),
-      receiveDelivery: (batch, input, outputs, note) => value<string>({ type: 'receiveDelivery', batch, input, outputs, note }),
+      receiveDelivery: (batch, input, outputs, note, inspection) => value<string>({ type: 'receiveDelivery', batch, input, outputs, note, inspection }),
+      saveInspection: (batchId, inspection) => done({ type: 'saveInspection', batchId, inspection }),
+      approveDocument: (batchId, document) => done({ type: 'approveDocument', batchId, document }),
+      adjustLot: (lotId, counted, reason) => done({ type: 'adjustLot', lotId, counted, reason }),
+      saveStockCount: (day, lines, note) => done({ type: 'saveStockCount', day, lines, note }),
+      setMaterialLowStock: (material, kg) => done({ type: 'setMaterialLowStock', material, kg }),
       saveRecord: (batchId, station, input, outputs, note, options, expectRecord) => done({ type: 'saveRecord', batchId, station, input, outputs, note, options, expectRecord }),
       saveMixingRun: (run) => value<string>({ type: 'saveMixingRun', ...run }),
       undoMixingRun: (batchId, runId) => done({ type: 'undoMixingRun', batchId, runId }),

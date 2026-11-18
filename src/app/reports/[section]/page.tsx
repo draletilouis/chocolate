@@ -8,7 +8,7 @@ import { OutcomeBar, StageTable, WhereItWent } from '@/components/BatchFlow';
 import { ReportSummary } from '@/components/ReportSummary';
 import { Badge, Button, Empty, Input, PageHeader, Panel, Select, Stat, SubNav, Table, UnitInput, td, tdNum } from '@/components/ui';
 import { getReportRange, ReportExport, type ProductionReportType, type ReportPeriod, type ReportRange } from '@/components/ReportExport';
-import { percentOf, round2 } from '@/lib/balance';
+import { percentOf, roundKg } from '@/lib/balance';
 import { amountOf, batchById, batchDisplayName, customerName, recordBalance, userName } from '@/lib/derive';
 import { dispatchedByProduct, dispatchSummary } from '@/lib/dispatch';
 import { dateTime, kg, num, pct } from '@/lib/format';
@@ -18,11 +18,16 @@ import { useStore } from '@/lib/store';
 import { buildSummary, type SummaryPeriod } from '@/lib/summary';
 import { isWeighed, stationName, stations } from '@/lib/stations';
 import { piecesByTypeAndSize, piecesKg, piecesLots } from '@/lib/pieces';
+import { beanSummary, sacks } from '@/lib/bean-summary';
+import { decisionLabel } from '@/lib/inspection';
+import { differences } from '@/lib/stock';
 import type { Batch, Lot, RouteId } from '@/lib/types';
 
 
 const sections = [
   { id: 'summary', label: 'Summary', href: '/reports/summary' },
+  { id: 'sacks', label: 'Bean summaries', href: '/reports/sacks' },
+  { id: 'stock', label: 'Stock counts', href: '/reports/stock' },
   { id: 'pieces', label: 'Pieces made', href: '/reports/pieces' },
   { id: 'dispatched', label: 'Dispatched', href: '/reports/dispatched' },
   { id: 'losses', label: 'Yield by stage', href: '/reports/losses' },
@@ -128,8 +133,8 @@ export default function ReportsPage() {
   // Loss at each process, added up over every batch that passed through it. Lost is what was binned or never weighed.
   const byStation = stations.filter(isWeighed).map((station) => {
     const balances = reportBatches.flatMap((b) => b.records.filter((r) => r.station === station.id).map(recordBalance));
-    const sum = (key: 'input' | 'useful' | 'byproduct' | 'waste' | 'variance') => round2(balances.reduce((t, b) => t + b[key], 0));
-    const input = sum('input'), lost = round2(sum('waste') + sum('variance'));
+    const sum = (key: 'input' | 'useful' | 'byproduct' | 'waste' | 'variance') => roundKg(balances.reduce((t, b) => t + b[key], 0));
+    const input = sum('input'), lost = roundKg(sum('waste') + sum('variance'));
     return { station, batches: balances.length, input, useful: sum('useful'), byproduct: sum('byproduct'), waste: sum('waste'), variance: sum('variance'), lost, lostPct: percentOf(lost, input) };
   }).filter((r) => r.batches > 0);
 
@@ -161,11 +166,47 @@ export default function ReportsPage() {
   const dispatches = dispatchedIn(durationRange, duration === 'all');
   const byCustomer = (list: typeof dispatches) => Array.from(new Set(list.map((d) => d.customerId))).map((customerId) => {
     const lines = list.filter((d) => d.customerId === customerId).flatMap((d) => d.lines);
-    return { customerId, name: customerName(store, customerId), dispatches: list.filter((d) => d.customerId === customerId).length, pieces: lines.filter((l) => l.unit === 'units').reduce((n, l) => n + l.quantity, 0), kg: round2(lines.filter((l) => l.unit === 'kg').reduce((n, l) => n + l.quantity, 0)) };
+    return { customerId, name: customerName(store, customerId), dispatches: list.filter((d) => d.customerId === customerId).length, pieces: lines.filter((l) => l.unit === 'units').reduce((n, l) => n + l.quantity, 0), kg: roundKg(lines.filter((l) => l.unit === 'kg').reduce((n, l) => n + l.quantity, 0)) };
   }).sort((a, b) => b.pieces - a.pieces || b.kg - a.kg);
   const pieceRow = (l: Lot) => [dateTime(l.receivedAt), l.id, l.pieces!.type, l.pieces!.size, l.received, num(piecesKg(l.received, l.pieces!.grams)), l.pieces!.fromLotId, l.source.type === 'batch' ? l.source.batchId : '', userName(store, l.pieces!.recordedBy)];
 
+  // Sacks received in the period, each with the figures of its bean summary
+  const sacksIn = (range: ReportRange, all = false) => sacks(store).filter((b) => all || inReportRange(b.startedAt, range)).map((batch) => ({ batch, s: beanSummary(store, batch) }));
+  const sackList = sacksIn(durationRange, duration === 'all');
+  const countsIn = (range: ReportRange, all = false) => store.stockCounts.filter((c) => all || inReportRange(c.day, range)).sort((a, b) => b.day.localeCompare(a.day));
+  const countList = countsIn(durationRange, duration === 'all');
+  const signedBy = (batch: Batch, doc: 'inspection' | 'summary') => (batch.approvals?.[doc] ? userName(store, batch.approvals[doc]!.by) : '');
+
   const buildExportSnapshot = (type: ProductionReportType, range: ReportRange): ReportExportSnapshot => {
+    if (type === 'sacks') {
+      const list = sacksIn(range);
+      const usage = (s: ReturnType<typeof beanSummary>, label: string) => num(s.usage.find((u) => u.label === label)?.weight ?? 0);
+      return {
+        title: 'Bean summaries',
+        periodLabel: range.label,
+        sections: [
+          { title: 'One line per sack', headers: ['Date', 'Batch', 'Batch ID', 'Supplier', 'Bag weight (kg)', 'After roasting (kg)', 'Unusable beans (kg)', 'Husks and rubbish (kg)', 'Nibs for liquor (kg)', 'Nibs for butter (kg)', 'Nibs for other (kg)', 'Nibs for inclusion and sale (kg)', 'Whole peeled beans (kg)', 'Total usage (kg)', 'Yield from bag %', 'Yield of winnower %', 'Liquor (kg)', 'Butter (kg)', 'Powder (kg)', 'Butter yield %', 'Lost in the roaster (kg)', 'Not accounted for at winnowing (kg)', 'By', 'Signed by'], rows: list.map(({ batch, s }) => [
+            s.date, batchDisplayName(batch), batch.id, s.suppliers.join(', '), num(s.bagWeight), s.afterRoasting === undefined ? '' : num(s.afterRoasting), num(s.unusable), num(s.husks),
+            usage(s, 'Crushed nibs for liquor'), usage(s, 'Crushed nibs for butter'), usage(s, 'Crushed nibs for other'), usage(s, 'Nibs for inclusion and sale'), usage(s, 'Whole peeled beans'),
+            num(s.usageTotal), pct(s.yieldOfBag), pct(s.yieldOfWinnower), num(s.liquor), num(s.butter), num(s.powder), pct(s.butterYield), num(s.roastingLoss), num(s.winnowingMissing), s.by.map((u) => userName(store, u)).join(', '), signedBy(batch, 'summary'),
+          ]) },
+          { title: 'Receiving inspections', headers: ['Date', 'Batch', 'Batch ID', 'Supplier', 'Supplier batch No', 'Bags', 'Received (kg)', 'Decision', 'Reason or condition', 'Problems found', 'Quality controller', 'Signed by'], rows: list.filter(({ batch }) => batch.inspection).map(({ batch, s }) => {
+            const i = batch.inspection!;
+            return [s.date, batchDisplayName(batch), batch.id, s.suppliers.join(', '), i.supplierBatch ?? '', i.bags ?? '', num(s.bagWeight), decisionLabel[i.decision], i.reason ?? '', i.checks.filter((c) => !c.ok).map((c) => `${c.id}: ${c.remark ?? ''}`).join('; '), userName(store, i.inspectedBy), signedBy(batch, 'inspection')];
+          }) },
+        ],
+      };
+    }
+    if (type === 'stock') {
+      const list = countsIn(range);
+      return {
+        title: 'Stock counts',
+        periodLabel: range.label,
+        sections: [
+          { title: 'Counts', headers: ['Day', 'Item', 'Counted (kg)', 'Records (kg)', 'Difference (kg)', 'Counted by', 'Note'], rows: list.flatMap((c) => c.lines.map((l) => [c.day, l.row, num(l.counted), num(l.expected), num(roundKg(l.counted - l.expected)), userName(store, c.countedBy), c.note ?? ''])) },
+        ],
+      };
+    }
     if (type === 'summary') {
       const s = buildSummary(store, { from: range.from, to: range.to, label: range.label }, todayLocal());
       const states = { normal: 'Usual', high: 'Higher than usual', low: 'Lower than usual', unknown: 'Not enough history' };
@@ -229,9 +270,9 @@ export default function ReportsPage() {
     if (type === 'losses') {
       const processRows = stations.filter(isWeighed).map((station) => {
         const balances = filteredRecords.filter(({ record }) => record.station === station.id).map(({ balance }) => balance);
-        const sum = (key: 'input' | 'useful' | 'byproduct' | 'waste' | 'variance') => round2(balances.reduce((total, balance) => total + balance[key], 0));
+        const sum = (key: 'input' | 'useful' | 'byproduct' | 'waste' | 'variance') => roundKg(balances.reduce((total, balance) => total + balance[key], 0));
         const input = sum('input');
-        const lost = round2(sum('waste') + sum('variance'));
+        const lost = roundKg(sum('waste') + sum('variance'));
         return [station.name, balances.length, num(input), num(sum('useful')), num(sum('byproduct')), num(sum('waste')), num(sum('variance')), num(lost), pct(percentOf(lost, input))];
       }).filter((row) => row[1] !== 0);
 
@@ -270,7 +311,7 @@ export default function ReportsPage() {
         title: 'Waste & variance',
         periodLabel: range.label,
         sections: [
-          { title: 'Summary', headers: ['Measure', 'Amount (kg)', 'Share of input'], rows: [['Station input', num(round2(exportTotals.input)), '100%'], ['Useful output', num(round2(exportTotals.useful)), pct(exportTotals.input ? round2((exportTotals.useful / exportTotals.input) * 100) : 0)], ['Recorded waste', num(round2(exportTotals.waste)), pct(exportTotals.input ? round2((exportTotals.waste / exportTotals.input) * 100) : 0)], ['By-products', num(round2(exportTotals.byproduct)), pct(exportTotals.input ? round2((exportTotals.byproduct / exportTotals.input) * 100) : 0)], ['Unaccounted variance', num(round2(exportTotals.variance)), pct(exportTotals.input ? round2((exportTotals.variance / exportTotals.input) * 100) : 0)]], },
+          { title: 'Summary', headers: ['Measure', 'Amount (kg)', 'Share of input'], rows: [['Station input', num(roundKg(exportTotals.input)), '100%'], ['Useful output', num(roundKg(exportTotals.useful)), pct(exportTotals.input ? roundKg((exportTotals.useful / exportTotals.input) * 100) : 0)], ['Recorded waste', num(roundKg(exportTotals.waste)), pct(exportTotals.input ? roundKg((exportTotals.waste / exportTotals.input) * 100) : 0)], ['By-products', num(roundKg(exportTotals.byproduct)), pct(exportTotals.input ? roundKg((exportTotals.byproduct / exportTotals.input) * 100) : 0)], ['Unaccounted variance', num(roundKg(exportTotals.variance)), pct(exportTotals.input ? roundKg((exportTotals.variance / exportTotals.input) * 100) : 0)]], },
           { title: 'By station and batch', headers: ['Batch', 'Station', 'Recorded', 'Input (kg)', 'Useful (kg)', 'Waste (kg)', 'By-product (kg)', 'Variance (kg)', 'Variance %', 'Limit'], rows: varianceRows },
         ],
       };
@@ -416,7 +457,7 @@ export default function ReportsPage() {
                     <td className={`${td} text-muted`}>{r.station}</td>
                     <td className={`${tdNum} font-semibold`}>{pct(r.avgPct)}</td>
                     <td className={`${tdNum} text-muted`}>{pct(r.minPct)} – {pct(r.maxPct)}</td>
-                    <td className={tdNum}>{kg(round2((plan * r.avgPct) / 100))}</td>
+                    <td className={tdNum}>{kg(roundKg((plan * r.avgPct) / 100))}</td>
                   </tr>
                 ))}
               </Table>
@@ -445,10 +486,10 @@ export default function ReportsPage() {
       {current.id === 'variance' && (
         <>
           <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-            <Stat label="Station input" value={kg(round2(totals.input))} />
-            <Stat label="Recorded waste" value={kg(round2(totals.waste))} hint={pct(totals.input ? round2((totals.waste / totals.input) * 100) : 0)} />
-            <Stat label="By-products" value={kg(round2(totals.byproduct))} />
-            <Stat label="Unaccounted variance" value={kg(round2(totals.variance))} hint={pct(totals.input ? round2((totals.variance / totals.input) * 100) : 0)} tone={totals.variance > 0 ? 'warn' : undefined} />
+            <Stat label="Station input" value={kg(roundKg(totals.input))} />
+            <Stat label="Recorded waste" value={kg(roundKg(totals.waste))} hint={pct(totals.input ? roundKg((totals.waste / totals.input) * 100) : 0)} />
+            <Stat label="By-products" value={kg(roundKg(totals.byproduct))} />
+            <Stat label="Unaccounted variance" value={kg(roundKg(totals.variance))} hint={pct(totals.input ? roundKg((totals.variance / totals.input) * 100) : 0)} tone={totals.variance > 0 ? 'warn' : undefined} />
           </div>
           <Panel title="By station and batch" subtitle="Variance is what the scale could not explain. It is never counted as waste." action={<Select value={stationFilter} onChange={(e) => setStationFilter(e.target.value)} aria-label="Station filter" className="w-auto"><option value="all">All stations</option>{gridStations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select>}>
             {rows.length === 0 ? <Empty>Nothing recorded yet.</Empty> : (
@@ -490,6 +531,49 @@ export default function ReportsPage() {
         </Panel>
       )}
 
+      {current.id === 'sacks' && (
+        <Panel title="Bean summaries" subtitle="One line per sack received in this period, as on the paper bean summary. Open a sack for the sheet to print.">
+          {sackList.length === 0 ? <Empty>No sacks were received in this period.</Empty> : (
+            <Table head={['Sack', 'Bag', 'After roasting', 'Unusable', 'Husks', 'Usage', 'Yield from bag', 'Winnower', 'Liquor', 'Butter', 'Powder', 'Signed']}>
+              {sackList.map(({ batch, s }) => (
+                <tr key={batch.id}>
+                  <td className={td}><Link href={`/production/batches/${batch.id}/summary`} className="font-semibold text-green">{batchDisplayName(batch)}</Link><span className="block text-[11px] text-muted">{s.date} · {s.suppliers.join(', ') || 'no supplier'}</span></td>
+                  <td className={tdNum}>{num(s.bagWeight)}</td>
+                  <td className={tdNum}>{s.afterRoasting === undefined ? '—' : num(s.afterRoasting)}</td>
+                  <td className={tdNum}>{num(s.unusable)}</td><td className={tdNum}>{num(s.husks)}</td>
+                  <td className={tdNum}>{num(s.usageTotal)}</td>
+                  <td className={`${tdNum} font-semibold`}>{s.complete ? pct(s.yieldOfBag) : '—'}</td>
+                  <td className={tdNum}>{s.yieldOfWinnower ? pct(s.yieldOfWinnower) : '—'}</td>
+                  <td className={tdNum}>{num(s.liquor)}</td><td className={tdNum}>{num(s.butter)}</td><td className={tdNum}>{num(s.powder)}</td>
+                  <td className={td}>{batch.approvals?.summary ? <Badge tone="green">{signedBy(batch, 'summary')}</Badge> : s.complete ? <Badge tone="warn">Not signed</Badge> : <Badge>In progress</Badge>}</td>
+                </tr>
+              ))}
+            </Table>
+          )}
+          <p className="px-5 py-3 text-[12px] text-muted">Weights in kg. Usage is every kind of nibs, whole peeled beans and roasted beans taken. The yields are worked out from the weights.</p>
+        </Panel>
+      )}
+
+      {current.id === 'stock' && (
+        <Panel title="Stock counts" subtitle="Each day's count, with the rows where it differed from the records." action={<Link href="/store/sheet" className="font-semibold text-green">Weekly stock sheet</Link>}>
+          {countList.length === 0 ? <Empty>No stock was counted in this period.</Empty> : (
+            <Table head={['Day', 'Rows counted', 'Differences', 'Counted by']}>
+              {countList.map((c) => {
+                const off = differences(c);
+                return (
+                  <tr key={c.id}>
+                    <td className={td}><Link href={`/store/sheet?day=${c.day}`} className="font-semibold text-green">{c.day}</Link>{c.note && <span className="block text-[11px] text-muted">{c.note}</span>}</td>
+                    <td className={tdNum}>{c.lines.length}</td>
+                    <td className={td}>{off.length === 0 ? <span className="text-muted">Matches the records</span> : off.map((l) => `${l.row} ${l.difference > 0 ? '+' : '−'}${num(Math.abs(l.difference))} kg`).join(' · ')}</td>
+                    <td className={td}>{userName(store, c.countedBy)}</td>
+                  </tr>
+                );
+              })}
+            </Table>
+          )}
+        </Panel>
+      )}
+
       {current.id === 'pieces' && (
         <>
           <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3">
@@ -519,7 +603,7 @@ export default function ReportsPage() {
           <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
             <Stat label="Dispatch notes" value={dispatches.length} />
             <Stat label="Pieces sent out" value={dispatches.flatMap((d) => d.lines).filter((l) => l.unit === 'units').reduce((n, l) => n + l.quantity, 0)} />
-            <Stat label="Sold by weight" value={kg(round2(dispatches.flatMap((d) => d.lines).filter((l) => l.unit === 'kg').reduce((n, l) => n + l.quantity, 0)))} />
+            <Stat label="Sold by weight" value={kg(roundKg(dispatches.flatMap((d) => d.lines).filter((l) => l.unit === 'kg').reduce((n, l) => n + l.quantity, 0)))} />
             <Stat label="Customers" value={new Set(dispatches.map((d) => d.customerId)).size} />
           </div>
           <Panel title="By product" subtitle="What left the factory in this period. Cancelled dispatches went back to store and are not counted.">
