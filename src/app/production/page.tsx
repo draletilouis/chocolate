@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowRight, Check, Pause, Plus } from 'lucide-react';
 import { Badge, Empty, LinkButton, PageHeader, Panel } from '@/components/ui';
 import { activeBatches, batchDisplayName, currentStation, waitingAt } from '@/lib/derive';
@@ -12,6 +12,8 @@ import { stationName } from '@/lib/stations';
 
 /** How many waiting items a stage lists before the rest fold behind "Show all" */
 const SHOWN = 3;
+/** Remembers on this device that someone asked to see every stage, also the ones with nothing waiting */
+const ALL_KEY = 'line-show-all';
 
 /**
  * The production line as one flow, from delivery to dispatch. Every stage is listed in the order the
@@ -25,25 +27,48 @@ export default function ProductionPage() {
   const waiting = stages.filter((s) => s.id !== 'dispatch').reduce((n, s) => n + s.items.length, 0);
   const batches = activeBatches(store).sort((a, b) => (a.status === 'hold' ? 1 : 0) - (b.status === 'hold' ? 1 : 0) || a.startedAt.localeCompare(b.startedAt));
   const flags = openDiscrepancies(store, new Date().toISOString().slice(0, 10));
-  let step = 0;
+  // Stages with nothing waiting fold into one line per part, so the work stands out; the choice is kept on this device
+  const [showAll, setShowAll] = useState(false);
+  useEffect(() => { try { setShowAll(window.localStorage.getItem(ALL_KEY) === '1'); } catch { /* no storage here */ } }, []);
+  const toggleAll = () => { const next = !showAll; setShowAll(next); try { window.localStorage.setItem(ALL_KEY, next ? '1' : '0'); } catch { /* no storage here */ } };
+  const numberOf = new Map(stages.map((s, i) => [s.id, i + 1]));
+  const quiet = stages.filter((s) => s.items.length === 0).length;
 
   return (
     <>
       <PageHeader eyebrow="Production line" title={waiting ? `${waiting} ${waiting === 1 ? 'thing is' : 'things are'} waiting on the line` : 'Nothing is waiting on the line'} subtitle="The whole line from delivery to dispatch, in the order the work happens. Each stage shows what is waiting there and the button to record it."
         action={<LinkButton href="/production/new"><Plus size={16} /> Receive a delivery</LinkButton>} />
 
+      {quiet > 0 && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-[13px] text-muted">
+          <span>{showAll ? `All ${stages.length} stages of the line.` : `${stages.length - quiet} of ${stages.length} stages have work waiting. The others are listed under each part.`}</span>
+          <button type="button" className="btn btn-secondary" onClick={toggleAll} aria-pressed={showAll}>{showAll ? 'Show only stages with work' : `Show all ${stages.length} stages`}</button>
+        </div>
+      )}
+
       {lineGroups.map((group) => {
         const own = stages.filter((s) => s.group === group.name);
         if (own.length === 0) return null;
+        const cards = showAll ? own : own.filter((s) => s.items.length > 0);
+        const folded = showAll ? [] : own.filter((s) => s.items.length === 0);
         return (
-          <section key={group.name} className="mb-2" aria-label={group.name}>
+          <section key={group.name} className="mb-4" aria-label={group.name}>
             <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
               <h2 className="text-[13px] font-extrabold tracking-wide text-muted uppercase">{group.name}</h2>
               <Link href={group.href} className="text-[12px] font-semibold text-green">Open this part</Link>
             </div>
-            <ol className="mix-flow">
-              {own.map((stage) => { step += 1; return <Stage key={stage.id} stage={stage} number={step} manager={manager} />; })}
-            </ol>
+            {cards.length > 0 && (
+              <ol className="mix-flow" style={{ marginBottom: folded.length ? 8 : undefined }}>
+                {cards.map((stage) => <Stage key={stage.id} stage={stage} number={numberOf.get(stage.id)!} manager={manager} />)}
+              </ol>
+            )}
+            {folded.length > 0 && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-dashed border-line bg-white px-4 py-2.5 text-[13px] text-muted">
+                <span className="inline-flex items-center gap-1"><Check size={13} /> Nothing waiting at</span>
+                {folded.map((stage) => <Link key={stage.id} href={stage.href} className="font-semibold text-ink hover:underline"><span className="text-faint">{numberOf.get(stage.id)}</span> {stage.name}</Link>)}
+                {folded.flatMap((stage) => (stage.also && (manager || !stage.also.managers) ? [stage.also] : [])).map((also) => <LinkButton key={also.href} variant="secondary" href={also.href}><Plus size={14} /> {also.label}</LinkButton>)}
+              </div>
+            )}
           </section>
         );
       })}
