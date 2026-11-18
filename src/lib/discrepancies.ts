@@ -4,7 +4,7 @@ import { num } from './format';
 import { checkRemark, inspectionChecks } from './inspection';
 import { allRuns } from './mixing';
 import { routes, type State } from './seed';
-import { expectedStock } from './stock';
+import { amountText, differenceText, expectedStock } from './stock';
 import { stationById, stationName } from './stations';
 import type { Batch, RecordEdit, StationId, StationRecord } from './types';
 
@@ -271,12 +271,15 @@ export function findDiscrepancies(state: State, today: string): Discrepancy[] {
       if (seenRows.has(line.row)) continue;
       seenRows.add(line.row);
       const diff = roundKg(line.counted - line.expected);
-      if (Math.abs(diff) < Math.max(0.05, line.expected * 0.01)) continue;
+      // Finished products are counted in pieces: a single piece out is a difference
+      const pieces = line.unit === 'units';
+      if (Math.abs(diff) < (pieces ? 1 : Math.max(0.05, line.expected * 0.01))) continue;
       const now = expected.get(line.row) ?? 0;
-      const matchesNow = Math.abs(now - line.counted) < Math.max(0.05, line.counted * 0.01);
-      items.push({ id: `count:${count.day}:${line.row}`, kind: 'count', severity: Math.abs(diff) >= Math.max(1, line.expected * 0.05) ? 'medium' : 'low', kg: Math.abs(diff), userId: count.countedBy, at: count.countedAt, closes: 'explain', href: '/store/count',
-        title: `${line.row}: counted ${kgText(Math.abs(diff))} ${diff < 0 ? 'less' : 'more'} than the records`, detail: `Counted ${kgText(line.counted)} on ${count.day}; the records expected ${kgText(line.expected)}.`,
-        resolution: matchesNow ? { note: `The records now show ${kgText(now)}, which matches the count.`, own: true } : undefined });
+      const matchesNow = Math.abs(now - line.counted) < (pieces ? 1 : Math.max(0.05, line.counted * 0.01));
+      const serious = pieces ? Math.abs(diff) >= Math.max(5, line.expected * 0.05) : Math.abs(diff) >= Math.max(1, line.expected * 0.05);
+      items.push({ id: `count:${count.day}:${line.row}`, kind: 'count', severity: serious ? 'medium' : 'low', kg: pieces ? undefined : Math.abs(diff), userId: count.countedBy, at: count.countedAt, closes: 'explain', href: '/store/count',
+        title: `${line.row}: counted ${differenceText(diff, line.unit)} than the records`, detail: `Counted ${amountText(line.counted, line.unit)} on ${count.day}; the records expected ${amountText(line.expected, line.unit)}.`,
+        resolution: matchesNow ? { note: `The records now show ${amountText(now, line.unit)}, which matches the count.`, own: true } : undefined });
     }
   }
 

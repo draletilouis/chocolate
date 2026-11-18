@@ -20,7 +20,7 @@ import { isWeighed, stationName, stations } from '@/lib/stations';
 import { piecesByTypeAndSize, piecesKg, piecesLots } from '@/lib/pieces';
 import { beanSummary, sacks } from '@/lib/bean-summary';
 import { decisionLabel } from '@/lib/inspection';
-import { differences } from '@/lib/stock';
+import { amountText, differences } from '@/lib/stock';
 import { findDiscrepancies, isWeighing, kindLabels, patternBy, severityLabels, type Discrepancy } from '@/lib/discrepancies';
 import type { Batch, Lot, RouteId } from '@/lib/types';
 
@@ -229,7 +229,7 @@ export default function ReportsPage() {
         title: 'Stock counts',
         periodLabel: range.label,
         sections: [
-          { title: 'Counts', headers: ['Day', 'Item', 'Counted (kg)', 'Records (kg)', 'Difference (kg)', 'Counted by', 'Note'], rows: list.flatMap((c) => c.lines.map((l) => [c.day, l.row, num(l.counted), num(l.expected), num(roundKg(l.counted - l.expected)), userName(store, c.countedBy), c.note ?? ''])) },
+          { title: 'Counts', headers: ['Day', 'Item', 'Unit', 'Counted', 'Records', 'Difference', 'Counted by', 'Note'], rows: list.flatMap((c) => c.lines.map((l) => (l.unit === 'units' ? [c.day, l.row, 'pieces', l.counted, l.expected, l.counted - l.expected, userName(store, c.countedBy), c.note ?? ''] : [c.day, l.row, 'kg', num(l.counted), num(l.expected), num(roundKg(l.counted - l.expected)), userName(store, c.countedBy), c.note ?? '']))) },
         ],
       };
     }
@@ -617,7 +617,7 @@ export default function ReportsPage() {
                   <tr key={c.id}>
                     <td className={td}><Link href={`/store/sheet?day=${c.day}`} className="font-semibold text-green">{c.day}</Link>{c.note && <span className="block text-[11px] text-muted">{c.note}</span>}</td>
                     <td className={tdNum}>{c.lines.length}</td>
-                    <td className={td}>{off.length === 0 ? <span className="text-muted">Matches the records</span> : off.map((l) => `${l.row} ${l.difference > 0 ? '+' : '−'}${num(Math.abs(l.difference))} kg`).join(' · ')}</td>
+                    <td className={td}>{off.length === 0 ? <span className="text-muted">Matches the records</span> : off.map((l) => `${l.row} ${l.difference > 0 ? '+' : '−'}${amountText(Math.abs(l.difference), l.unit)}`).join(' · ')}</td>
                     <td className={td}>{userName(store, c.countedBy)}</td>
                   </tr>
                 );
