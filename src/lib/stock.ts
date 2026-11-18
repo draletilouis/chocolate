@@ -1,4 +1,5 @@
 import { roundKg } from './balance';
+import { num } from './format';
 import { batchDisplayName, carriedTo, pendingStations } from './derive';
 import { batchMaterialAtMixing } from './mixing';
 import { routes, type State } from './seed';
@@ -35,14 +36,19 @@ export function rowOf(material: string): string {
   return material;
 }
 
-/** Where part of a row's weight is: a lot in store, material waiting at a station, or the mixer */
+/** Where part of a row is: a lot in store, material waiting at a station, or the mixer. `kg` is pieces for a row of finished products. */
 export interface StockPart { label: string; kg: number; href: string }
-export interface StockRow { row: string; expected: number; parts: StockPart[] }
+/** `unit` is 'units' for a finished product, counted in pieces */
+export interface StockRow { row: string; expected: number; parts: StockPart[]; unit: 'kg' | 'units' }
+
+/** A quantity of a count row in words: kg to the gram, or whole pieces */
+export const amountText = (n: number, unit: 'kg' | 'units' | undefined) => (unit === 'units' ? `${n} ${n === 1 ? 'piece' : 'pieces'}` : `${num(n)} kg`);
 
 /**
  * What the records say is in the factory now, row by row as the stock sheet lists it: lots in store,
  * material a batch has waiting at a station (roasted beans before winnowing, cake before crushing),
- * and chocolate in the mixer. Finished pieces are counted on their own list, not here.
+ * and chocolate in the mixer. After them come the finished products, one row per chocolate type and size,
+ * counted in pieces: every lot of pieces in store, with the batch number it carries.
  */
 export function expectedStock(state: State): StockRow[] {
   const rows = new Map<string, StockPart[]>();
@@ -72,10 +78,20 @@ export function expectedStock(state: State): StockRow[] {
 
   const order = [...sheetRows, ...state.recipes.map((r) => machineRow(r.name))];
   const names = [...order, ...[...rows.keys()].filter((r) => !order.includes(r)).sort()];
-  return names.map((row) => {
+  const weighed: StockRow[] = names.map((row) => {
     const parts = rows.get(row) ?? [];
-    return { row, expected: roundKg(parts.reduce((t, p) => t + p.kg, 0)), parts };
+    return { row, unit: 'kg', expected: roundKg(parts.reduce((t, p) => t + p.kg, 0)), parts };
   });
+
+  // Finished products: every product ever made keeps its row, so pieces found on the shelf that the records no longer show can be counted too
+  const pieces = state.lots.filter((l) => l.pieces);
+  const products = Array.from(new Set(pieces.map((l) => l.material))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const finished: StockRow[] = products.map((row) => {
+    const parts = pieces.filter((l) => l.material === row && l.available > 0).sort((a, b) => a.receivedAt.localeCompare(b.receivedAt))
+      .map((l) => ({ label: `${l.id} · ${l.pieces!.batchNumber ? `batch ${l.pieces!.batchNumber}` : 'no batch number'}`, kg: l.available, href: `/materials/${l.id}` }));
+    return { row, unit: 'units', expected: parts.reduce((t, p) => t + p.kg, 0), parts };
+  });
+  return [...weighed, ...finished];
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -96,14 +112,22 @@ export const shiftDay = (day: string, days: number) => { const d = new Date(`${d
  */
 export function weekSheet(state: State, days: string[]) {
   const counts = days.map((day) => state.stockCounts.find((c) => c.day === day));
-  const counted = new Set(counts.flatMap((c) => c?.lines.map((l) => l.row) ?? []));
+  const lines = counts.flatMap((c) => c?.lines ?? []);
+  const inPieces = new Set(lines.filter((l) => l.unit === 'units').map((l) => l.row));
+  const counted = new Set(lines.filter((l) => l.unit !== 'units').map((l) => l.row));
   const order = [...sheetRows, ...state.recipes.map((r) => machineRow(r.name))];
   const names = [...order, ...[...counted].filter((r) => !order.includes(r)).sort()];
+  const cellsOf = (row: string) => ({ row, cells: counts.map((c) => c?.lines.find((l) => l.row === row)) });
   return {
     counts,
-    rows: names.map((row) => ({ row, cells: counts.map((c) => c?.lines.find((l) => l.row === row)) })),
+    rows: names.map(cellsOf),
+    // Finished products counted that week, in pieces: the sheet's second table
+    pieceRows: [...inPieces].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).map(cellsOf),
   };
 }
 
 /** Lines of a count where what was counted differs from what the records expected */
 export const differences = (count: StockCount) => count.lines.map((l) => ({ ...l, difference: roundKg(l.counted - l.expected) })).filter((l) => Math.abs(l.difference) >= 0.001);
+
+/** A difference in words: "0.30 kg less", "6 pieces more" */
+export const differenceText = (difference: number, unit: 'kg' | 'units' | undefined) => `${amountText(Math.abs(difference), unit)} ${difference < 0 ? 'less' : 'more'}`;

@@ -367,8 +367,9 @@ export interface SignOff { by: string; at: string }
 /** The documents of a batch a manager signs: the receiving inspection report and the bean summary */
 export type BatchDocument = 'inspection' | 'summary';
 
-/** One row of a stock count: what the app expected and what was counted, in kg */
-export interface StockCountLine { row: string; expected: number; counted: number }
+/** One row of a stock count: what the app expected and what was counted, in kg or in pieces */
+/** `unit` is 'units' for finished products, counted in pieces; kg rows leave it out */
+export interface StockCountLine { row: string; expected: number; counted: number; unit?: 'kg' | 'units' }
 
 /** The physical count of one day, one per day; counting again on the same day replaces it */
 export interface StockCount { id: string; day: string; lines: StockCountLine[]; countedBy: string; countedAt: string; note?: string }

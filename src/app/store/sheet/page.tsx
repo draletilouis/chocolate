@@ -26,7 +26,7 @@ function StockSheet() {
   const today = dayOf(new Date());
   const given = params.get('day') ?? '';
   const days = weekOf(/^\d{4}-\d{2}-\d{2}$/.test(given) ? given : today);
-  const { counts, rows } = weekSheet(store, days);
+  const { counts, rows, pieceRows } = weekSheet(store, days);
   // The paper's rows always print; a machine row or another material prints when it was counted that week
   const shown = rows.filter((r) => (sheetRows as readonly string[]).includes(r.row) || r.cells.some(Boolean));
   const go = (d: number) => router.push(`/store/sheet?day=${shiftDay(days[0], d)}`);
@@ -46,7 +46,7 @@ function StockSheet() {
         {counts.every((c) => !c) && <Notice tone="neutral">No count was saved in this week. The sheet prints empty, ready to fill in by hand.</Notice>}
       </div>
 
-      <PaperSheet wide title="Weekly stock sheet" subtitle={`Week of ${shortDate(days[0])} to ${shortDate(days[6])} · weights in kg`} docNumber={`ECL/SOP/PRO/ST/${days[0]}`}>
+      <PaperSheet wide title="Weekly stock sheet" subtitle={`Week of ${shortDate(days[0])} to ${shortDate(days[6])} · materials in kg, finished products in pieces`} docNumber={`ECL/SOP/PRO/ST/${days[0]}`}>
         <table className="paper-table">
           <thead>
             <tr><th>Item</th>{dayNames.map((d) => <th key={d} className="is-num">{d}</th>)}</tr>
@@ -63,6 +63,25 @@ function StockSheet() {
               </tr>
             ))}
             <tr><td>Counted by</td>{counts.map((c, i) => <td key={days[i]} className="is-num">{c ? userName(store, c.countedBy).split(' ')[0] : ''}</td>)}</tr>
+          </tbody>
+        </table>
+
+        <h3 className="paper-section">Finished products, in pieces</h3>
+        <table className="paper-table">
+          <thead>
+            <tr><th>Product</th>{dayNames.map((d, i) => <th key={d} className="is-num">{d.slice(0, 3)} {shortDate(days[i]).split('/').slice(0, 2).join('/')}</th>)}</tr>
+          </thead>
+          <tbody>
+            {pieceRows.length === 0 && <tr><td colSpan={8}>No finished products were counted this week.</td></tr>}
+            {pieceRows.map((r) => (
+              <tr key={r.row}>
+                <td><strong>{r.row}</strong></td>
+                {r.cells.map((cell, i) => {
+                  const diff = cell ? cell.counted - cell.expected : 0;
+                  return <td key={days[i]} className="is-num">{cell ? cell.counted : ''}{cell && diff !== 0 && <span className="is-off">{diff > 0 ? '+' : '−'}{Math.abs(diff)}</span>}</td>;
+                })}
+              </tr>
+            ))}
           </tbody>
         </table>
         {counts.some((c) => c?.note) && <p className="paper-note">Notes: {counts.flatMap((c) => (c?.note ? [`${shortDate(c.day)}: ${c.note}`] : [])).join(' · ')}</p>}

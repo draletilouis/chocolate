@@ -489,12 +489,18 @@ function runCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
     }
     case 'saveStockCount': {
       if (cmd.day > ctx.now.slice(0, 10)) fail('A count cannot be dated in the future.');
-      const expected = new Map(expectedStock(s).map((r) => [r.row, r.expected]));
+      const rows = new Map(expectedStock(s).map((r) => [r.row, r]));
       const seen = new Set<string>();
       const lines = cmd.lines.map((l) => {
         if (seen.has(l.row)) fail(`${l.row} is listed twice.`);
         seen.add(l.row);
-        return { row: l.row, expected: expected.get(l.row) ?? 0, counted: roundKg(l.counted) };
+        const row = rows.get(l.row);
+        // Finished products are counted whole
+        if (row?.unit === 'units') {
+          if (!Number.isInteger(l.counted)) fail(`${l.row} is counted in whole pieces.`);
+          return { row: l.row, expected: row.expected, counted: l.counted, unit: 'units' as const };
+        }
+        return { row: l.row, expected: row?.expected ?? 0, counted: roundKg(l.counted) };
       });
       const count: StockCount = { id: cmd.day, day: cmd.day, lines, countedBy: ctx.userId, countedAt: ctx.now, note: cmd.note || undefined };
       return { state: { ...s, stockCounts: [...s.stockCounts.filter((c) => c.id !== count.id), count].sort((a, b) => a.day.localeCompare(b.day)) } };
