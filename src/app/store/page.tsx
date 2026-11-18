@@ -34,6 +34,7 @@ export default function StorePage() {
   const store = useStore();
   const [shown, setShown] = useState<'All' | Section>('All');
   const [showUsedUp, setShowUsedUp] = useState(false);
+  const manager = store.signedInUser?.access === 'manager';
 
   // Ingredients: beans, what the recipes are made from, and anything else a supplier delivered.
   const known: string[] = [beans, ...chocolateIngredients, ...otherIngredients];
@@ -58,7 +59,7 @@ export default function StorePage() {
   return (
     <>
       <PageHeader eyebrow="Store" title="Store" subtitle="Everything in store by batch number: the ingredients, the chocolate, the finished pieces and every other product the line kept. Each use is taken off its lot automatically."
-        action={<><LinkButton variant="secondary" href="/store/count"><ClipboardList size={16} /> Count the stock</LinkButton><LinkButton variant="secondary" href="/store/sheet">Weekly sheet</LinkButton><LinkButton variant="secondary" href="/trace">Trace a batch</LinkButton><LinkButton variant="secondary" href="/dispatch/new"><Truck size={16} /> Dispatch goods</LinkButton><LinkButton href="/materials/receive"><Plus size={16} /> Receive ingredient</LinkButton></>} />
+        action={<><LinkButton variant="secondary" href="/store/count"><ClipboardList size={16} /> Count the stock</LinkButton><LinkButton variant="secondary" href="/store/sheet">Weekly sheet</LinkButton><LinkButton variant="secondary" href="/trace">Trace a batch</LinkButton>{manager && <LinkButton variant="secondary" href="/dispatch/new"><Truck size={16} /> Dispatch goods</LinkButton>}{manager && <LinkButton href="/materials/receive"><Plus size={16} /> Receive ingredient</LinkButton>}</>} />
 
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         {items.filter((i) => i.section === 'Ingredients').map((i) => <Stat key={i.name} label={i.name} value={kg(i.total)} hint={i.inStore.length ? `${i.inStore.length} batch${i.inStore.length === 1 ? '' : 'es'} in store` : 'None in store'} tone={low(i) ? 'warn' : undefined} />)}

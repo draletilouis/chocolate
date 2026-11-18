@@ -623,7 +623,15 @@ Three of the factory's paper forms are made from the records and print on A4 wit
 - **Screens.** `/discrepancies` (managers) has Open, Explained, Patterns (by station, kind, person and supplier) and Usual ranges. **Reports → Discrepancies** lists a period and exports all of it, with the patterns, to Excel.
 - **Telling the manager.** `DiscrepancyWatch` shows a system notification for a new serious item while the app is open on a device where a manager turned it on, and **Share today's digest** hands a text summary to the device's share sheet or the clipboard. There is no email and no notification while the app is closed: both need a mail or push service.
 
-## 17. Current scope and limitations
+## 17. One flow from delivery to dispatch
+
+- **The line map.** `/production` lists every stage in the order the work happens (`lineStages()` in `src/lib/line.ts`): delivery, each station, pieces, batch numbers, completion and dispatch, grouped by part of the line. A stage shows what is waiting there, in batches and kg, with the button that records it; stored beans and stored nibs appear where a batch can be started from them. Part and station pages remain behind it.
+- **The batch journey.** The batch page lists only the stations the batch went through or waits at. Stations it may still reach sit in one "May come later" row, with early entry as a button, until only completion is left. After the stations the list continues (`JourneyTail`): the chocolate it mixed and what is still to be made into pieces, each lot of pieces with its batch number, what was dispatched to whom, and everything else it kept in store or for sale. The receiving report and bean summary sit above the steps.
+- **Hand-offs.** Finished mixing offers "record pieces" for each chocolate lot; saved pieces ask for the batch number and then offer the next chocolate lot or dispatch; the completion screen says what chocolate is still to be made into pieces (a batch may still be completed before that).
+- **One alert language.** The batch page and the list of batches in progress show the register's open items for the batch (section 16) instead of `batchAlerts()`.
+- **Nothing hidden.** Each output's destination is a labelled "Goes to" choice; operators have the Store in their menu and can read lots, while receiving, editing, adjusting and dispatching stay with managers; on a phone managers have Overview, Discrepancies, Production, Store and Reports in the bar, and Overview lists the other pages.
+
+## 18. Current scope and limitations
 
 - One installation serves one factory. The whole state is loaded into each signed-in browser, which suits one factory's records but not many factories on one server.
 - Changes from other devices arrive by polling every 5 seconds, not instantly.
