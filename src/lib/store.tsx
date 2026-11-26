@@ -124,6 +124,8 @@ interface Actions {
   setIdleMinutes: (minutes: number) => Promise<boolean>;
   /** Uploads records an older version kept in this browser; answers how many people were added and how many need a new password or PIN */
   importBrowserData: (data: Record<string, unknown>) => Promise<{ people: number; needSecrets: number } | undefined>;
+  /** After training: removes every record and keeps the setup and the people (manager only) */
+  clearRecords: () => Promise<boolean>;
   /** A manager records on someone else's behalf (their own ID to stop) */
   setCurrentUser: (userId: string) => Promise<boolean>;
   signIn: (email: string, password: string, device?: { trustDevice: boolean; deviceName?: string }) => Promise<SignInResult>;
@@ -365,6 +367,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       deleteOutputCategory: (categoryId) => done({ type: 'deleteOutputCategory', categoryId }),
       setIdleMinutes: (minutes) => done({ type: 'setIdleMinutes', minutes }),
       importBrowserData: (data) => value<{ people: number; needSecrets: number }>({ type: 'importBrowserData', data }),
+      clearRecords: () => done({ type: 'clearRecords', confirm: 'CLEAR' }),
       async setCurrentUser(userId) {
         try {
           const res = await fetch('/api/session', { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({ recordingAs: userId }) });

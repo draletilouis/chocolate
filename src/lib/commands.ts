@@ -126,6 +126,8 @@ export const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('setIdleMinutes'), minutes: z.number().int().min(0).max(24 * 60) }),
   // Records a browser kept before the move to the server, uploaded once by a manager.
   z.object({ type: z.literal('importBrowserData'), data: z.record(z.unknown()) }),
+  // After training: removes every record (batches, the store, dispatches, stock counts, the plan, the mixer) and keeps the setup and the people.
+  z.object({ type: z.literal('clearRecords'), confirm: z.literal('CLEAR') }),
 ]);
 
 export type Command = z.infer<typeof commandSchema>;

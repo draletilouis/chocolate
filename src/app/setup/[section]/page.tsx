@@ -130,6 +130,59 @@ function DevicesPanel() {
 }
 
 /** Records a browser kept before the app moved to the server, uploaded once */
+/**
+ * After training the staff, a manager clears every practice record so the factory floor starts on a clean slate.
+ * The setup and the people (with their passwords, PINs and set-up devices) stay. See clearRecords() in reduce.ts.
+ */
+function ClearRecordsPanel() {
+  const store = useStore();
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [cleared, setCleared] = useState(false);
+  const counts: [number, string, string][] = [
+    [store.batches.length, 'batch', 'batches'], [store.lots.length, 'lot in the store', 'lots in the store'], [store.dispatches.length, 'dispatch note', 'dispatch notes'],
+    [store.stockCounts.length, 'stock count', 'stock counts'], [store.discrepancyNotes.length, 'discrepancy note', 'discrepancy notes'],
+  ];
+  const hasRecords = counts.some(([n]) => n > 0) || store.plan !== null || store.mixer.holds !== null;
+  const close = () => { setOpen(false); setTyped(''); };
+  return (
+    <Panel title="Clear training records" subtitle="After training the staff, start the factory floor on a clean slate.">
+      <div className="grid gap-3 p-5 text-[13px]">
+        {cleared && !hasRecords && <Notice tone="green">The training records are cleared. The next batch and lot numbers start again at 1.</Notice>}
+        <p>
+          <strong>Removed:</strong> every batch and its records, everything in the store, dispatch notes, stock counts, discrepancy notes, the production plan and what the mixer holds. Batch and lot numbers start again at 1.
+        </p>
+        <p>
+          <strong>Kept:</strong> the setup (chocolate types and recipes, products, routes, piece sizes, output rows, suppliers, customers, alert thresholds, business details) and every person, with their password, PIN and set-up devices. Nobody is signed out.
+        </p>
+        <p className="text-faint">Now on the server: {counts.map(([n, one, many]) => `${n} ${n === 1 ? one : many}`).join(', ')}.</p>
+        {!open ? (
+          <div><Button variant="danger" disabled={!hasRecords} onClick={() => setOpen(true)}><Trash2 size={15} /> Clear training records</Button></div>
+        ) : (
+          <form className="grid gap-3 border-t border-line pt-3" onSubmit={async (event) => {
+            event.preventDefault();
+            if (typed.trim().toUpperCase() !== 'CLEAR') return;
+            setBusy(true);
+            const ok = await store.clearRecords();
+            setBusy(false);
+            if (ok) { close(); setCleared(true); }
+          }}>
+            <Notice tone="danger">This cannot be undone. Every device sees the empty records within a few seconds. Do it once, after training and before real production starts.</Notice>
+            <Field label="Type CLEAR to confirm">
+              <Input value={typed} onChange={(event) => setTyped(event.target.value)} autoFocus autoComplete="off" placeholder="CLEAR" />
+            </Field>
+            <div className="flex gap-2">
+              <Button type="submit" variant="danger" disabled={busy || typed.trim().toUpperCase() !== 'CLEAR'}>{busy ? 'Clearing…' : 'Clear every record'}</Button>
+              <Button variant="secondary" onClick={close} disabled={busy}>Cancel</Button>
+            </div>
+          </form>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
 function BrowserDataPanel() {
   const store = useStore();
   const [legacy, setLegacy] = useState<{ raw: Record<string, unknown>; batches: number; lots: number } | null>(null);
@@ -209,11 +262,7 @@ export default function SetupPage() {
         </Panel>
       )}
       {current.id === 'business' && <BrowserDataPanel />}
-      {current.id === 'business' && store.demo && (
-        <Panel title="Demo data" subtitle="This is a demo: it can be started over at any time. The setup is kept; batches and people are not.">
-          <div className="p-5"><Button variant="danger" onClick={async () => { if (window.confirm('Start over? Every batch, the store, dispatches and every person except Draleti Louis are removed, and everyone is signed out. The setup is kept.')) await store.resetDemo(); }}>Reset demo data</Button></div>
-        </Panel>
-      )}
+      {current.id === 'business' && <ClearRecordsPanel />}
 
       {current.id === 'products' && (
         <Panel title="Products" subtitle="What the factory makes, and which route each product follows.">
