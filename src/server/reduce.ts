@@ -452,6 +452,7 @@ const wasMade = (s: State, recipeId: string) =>
  */
 export function applyCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
   const outcome = runCommand(s, cmd, ctx);
+  if (cmd.type === 'clearRecords') return outcome; // a clean start: batch and lot numbers begin again at 1
   const idCounters = issuedNumbers(outcome.state, s);
   return idCounters === outcome.state.idCounters ? outcome : { ...outcome, state: { ...outcome.state, idCounters } };
 }
@@ -721,7 +722,19 @@ function runCommand(s: State, cmd: Command, ctx: CommandContext): Outcome {
       return { state: { ...s, idleMinutes: cmd.minutes } };
     case 'importBrowserData':
       return importBrowserData(s, cmd.data, ctx);
+    case 'clearRecords':
+      return { state: clearRecords(s) };
   }
+}
+
+/**
+ * The clean slate after training: every batch, lot (so the whole store), dispatch, stock count and discrepancy
+ * note, the plan and the mixer are removed, and batch and lot numbers start again at 1. The setup (chocolate types,
+ * products, routes, piece sizes, output rows, suppliers, customers, limits, business details) and the people, their
+ * passwords, PINs and set-up devices are kept.
+ */
+export function clearRecords(s: State): State {
+  return { ...s, batches: [], lots: [], dispatches: [], stockCounts: [], discrepancyNotes: [], idCounters: { batches: {}, lots: {} }, mixer: { holds: null, lastRunId: null }, plan: null };
 }
 
 /**
